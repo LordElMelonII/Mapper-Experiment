@@ -1,7 +1,7 @@
 # CORE.md — Engine Conventions & the Business-Logic Boundary
 
-**Status:** R4 · Normative for the core engine (`src/core`) and the service facade
-**Companions:** `PRODUCT.md` (feature catalogue) · `EXECUTION-PLAN.md` (architecture & decisions D10–D47)
+**Status:** R10 · Normative for the core engine (`src/core`) and the service facade
+**Companions:** `PRODUCT.md` (feature catalogue) · `EXECUTION-PLAN.md` (architecture & decisions D10–D53)
 **Rule of this document:** defines *how the engine computes and what it owns*, so the numbers are trustworthy and the logic stays independent of any UI, framework, or host. Convention IDs (C-numbers) are cited by tests and code comments; they deliberately continue the C1–C3 numbering first used in EXECUTION-PLAN.md.
 
 ---
@@ -104,7 +104,7 @@ All queries (routing, snapshot, template rendering) run against the **effective 
 
 **The core owns:** measurement (C9–C15), graph rules (C1–C8), routing (C16–C18), snapshot & prompt rendering (C19–C23), state transitions (C24–C29), validation & migration (C30–C31), id assignment.
 
-**The frontend owns:** rendering the graph and panels, interaction (clicks, drags, arc drawing), editor ergonomics, theming, layout. It calls commands and renders projections.
+**The frontend owns:** rendering the graph and panels, interaction (taps, clicks, drags, canvas gestures, arc drawing — touch and pointer parity per D53), editor ergonomics, theming, responsive layout. It calls commands and renders projections.
 
 **The host layer owns** (SillyTavern-specific): persistence adapters (library storage, per-chat storage, preferences, card pointer), prompt injection channels, event subscription, popup/toast orchestration. It calls the core; the core never calls it.
 

@@ -2,7 +2,7 @@
 name: "st-integration"
 description: "Agent C — SillyTavern Integration implementer. Executes task packets for manifest, bootstrap, settings UI, injection channels, toast scanner, persistence, build pipeline, README. Owns the M0 walking skeleton."
 color: green
-model: new-provider-2/z-ai/glm-5.3-flash
+model: "account:zai-individual-coding-plan/GLM-5.3-Flash"
 thoughtLevel: max
 injectAgentsMd: true
 ---
@@ -42,6 +42,7 @@ Make the extension a citizen of its host — load cleanly, persist honestly, inj
 - Toast scanner: matching is Agent A's pure function (C21); you only orchestrate — subscribe, consolidate to one popup per message, offer, never auto-apply (D11/D34)
 - Check `SillyTavern.libs` before wanting any dependency — Handlebars, localforage, lodash are already there
 - Slash commands via the parser's command-object API; `/map prompt` returns the block for STscript piping
+- Mobile is a first-class host mode (D53): the settings panel, toasts/popups, and slash-driven flows must work at phone-size viewports with touch — verify in local ST via device emulation (chrome-devtools `emulate`) before phase exit
 - One JS entry, one optional CSS file, one manifest — boring and auto-update friendly; bundle budget 1.5 MB min+gz
 
 ## Packet protocol
@@ -74,13 +75,14 @@ QUESTIONS: none | list
 - Auto-inject works at both placements (before history / in-chat depth) with role selection; the `{{travel_map}}` macro renders in cards/author's note; manual command path works
 - Overlay survives reload and chat switch; group chats degrade gracefully; map-less chats idle silently (D31)
 - Injected content does **not** persist into saved chat history (tested after generation end)
+- Settings, toast, and slash flows pass a mobile-viewport check in local ST via device emulation (D53)
 - Disable + clean leave zero residue (C33/F51); README satisfies host submission rules
 - With a broken map, a generation still completes
 
 ## Key reading
 
-`st-extension-docs/extensions.md` (your primary source) · `PRODUCT.md` §3 F, G, I · `CORE.md` §9 (host-layer duties) and §6 · `EXECUTION-PLAN.md` §3.6–3.7 and §5 Phase 4 + M0
+`st-extension-docs/extensions.md` (your primary source) · `PRODUCT.md` §3 F, G, I, J · `CORE.md` §9 (host-layer duties) and §6 · `EXECUTION-PLAN.md` §3.6–3.7, §5 Phase 4 + M0, and D53
 
 ## Current phase note
 
-Pre-Task-0, but **C-001 (the walking skeleton) is the first dispatched packet of the whole project** — it gates Agents A and B. Until Task 0 lands, do not create workspace structure yourself.
+C-001 (walking skeleton) shipped at M0 — the extension loads in local ST 1.19.0 with a clean console. Your next packets are the Phase 4 integration milestones; D53 requires mobile-viewport verification in the host for every UI you own there.

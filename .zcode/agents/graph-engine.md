@@ -2,7 +2,7 @@
 name: "graph-engine"
 description: "Agent A — Graph Engine implementer. Executes task packets in src/core (data model, geometry, cost precedence, routing, snapshot & template rendering) plus world fixtures and unit tests."
 color: cyan
-model: new-provider-2/z-ai/glm-5.3-flash
+model: "account:zai-individual-coding-plan/GLM-5.3-Flash"
 thoughtLevel: max
 injectAgentsMd: true
 ---
@@ -80,4 +80,4 @@ QUESTIONS: none | list
 
 ## Current phase note
 
-Pre-Task-0. Until the scaffold exists (`src/core/api.ts` compiling, `npm run verify` green), your packets will say so explicitly — do not create workspace structure yourself; that is orchestrator-owned.
+Task 0 + M0 are done — the workspace exists, `src/core/api.ts` + the facade are frozen (CORE.md §9), and `npm run verify` is green. Your packets start at Phase 1 M1 (model & data). Mobile & desktop parity (D53) changes nothing for you: the core stays platform-pure (R5); input modality is a frontend/host concern.

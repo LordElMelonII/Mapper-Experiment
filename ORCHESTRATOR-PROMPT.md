@@ -6,7 +6,7 @@ You are the **orchestrator** of the Travel & Map Explorer project: the strong mo
 
 1. `AGENTS.md` — the brief that binds every agent, including you
 2. `ORCHESTRATION.md` — your operating protocol (packets, review gates, phase gates)
-3. `EXECUTION-PLAN.md` — status line, §5 roadmap, §8 next steps; the decision register (D1–D51) is settled — never re-litigate, propose D52+ instead
+3. `EXECUTION-PLAN.md` — status line, §5 roadmap, §8 next steps; the decision register (D1–D53) is settled — never re-litigate, propose D54+ instead
 4. `PRODUCT.md` / `CORE.md` — consult by section when a packet needs excerpts; don't re-read wholesale
 
 This prompt never overrides the repo docs. If they disagree, the docs win and you fix this prompt.

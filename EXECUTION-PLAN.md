@@ -1,7 +1,7 @@
 # Travel & Map Visualization Extension — Execution Plan
 
 **Role:** Lead Software Architect & Project Planner
-**Status:** R9 — decisions D10–D52 · PRODUCT.md (features) · CORE.md (conventions) · AGENTS.md + .zcode/agents/ (spawnable charters A–D) · ORCHESTRATION.md (delegation + phase gates) · **Task 0 done:** Angular 22 zoneless workspace scaffolded, `src/core/api.ts` + facade stubs frozen (CORE.md §9), `npm run verify` (typecheck + boundary lint + vitest) green. **M0 walking skeleton done (reviewed + independently reproduced by orchestrator):** `st-map-explorer` custom element loads in local ST 1.19.0 over https://localhost:8000, bundle 35.2 KB min+gz (budget 1.5 MB), zero zone.js, host console clean — D1/D2/D8 proven. Next: commit checkpoint, then M1 (model & data) A-packets.
+**Status:** R10 — decisions D10–D53 · PRODUCT.md (features) · CORE.md (conventions) · AGENTS.md + .zcode/agents/ (spawnable charters A–D) · ORCHESTRATION.md (delegation + phase gates) · **Task 0 done:** Angular 22 zoneless workspace scaffolded, `src/core/api.ts` + facade stubs frozen (CORE.md §9), `npm run verify` (typecheck + boundary lint + vitest) green. **M0 walking skeleton done (reviewed + independently reproduced by orchestrator):** `st-map-explorer` custom element loads in local ST 1.19.0 over https://localhost:8000, bundle 35.2 KB min+gz (budget 1.5 MB), zero zone.js, host console clean — D1/D2/D8 proven. Next: commit checkpoint, then M1 (model & data) A-packets.
 **Source inputs:** `st-extension-docs/extensions.md` (ST extension API), `Notes for locations.md` (spatial spec + Fuyuki dataset), `README.md` (placeholder — real README is a Phase 4 deliverable).
 
 ---
@@ -15,6 +15,8 @@ Three product pillars, in priority order:
 1. **A map you can make yourself.** A visual editor (nodes, arcs, backgrounds, layers) is a hard requirement, not a power feature. The Fuyuki dataset ships as a demo, not as the product.
 2. **Manual authority.** The LLM never moves the pin. The user moves it; the extension informs, suggests (a toast), and never aborts a generation.
 3. **Presentation freedom.** Geometry is the default, authored values win, and everything the LLM sees goes through a user-editable template — XML, markdown, brackets, plain text, metric units instead of time: all just templates.
+
+Both worlds, one build: every feature above — the editor included — must be fully operable on a phone-sized touch screen as well as with a desktop pointer (D53).
 
 The extension ships as a **single-file ES-module bundle** (Angular + Cytoscape compiled via esbuild) loaded through a standard `manifest.json`, exposed as a custom element running zoneless. One Cytoscape instance, owned by `GraphService`, lives headlessly for computation and mounts into the DOM only while a map view is open.
 
@@ -127,13 +129,19 @@ Single source of truth for product behavior. **D1–D9** are stack decisions fro
 |---|----------|
 | D52 | **Angular 22.2 workspace at repo root, zoneless, strict; `@angular/elements@22.2.1` is the sole dependency addition.** Task 0 scaffold: no `zone.js` in the dependency tree (D2 is native in Angular ≥21); `"strict": true` added to `tsconfig.json`; R5 + layering enforced by `scripts/lint-boundaries.mjs` (zero-dep Node script — no ESLint toolchain, per ponytail ethos) wired into `npm run verify` = typecheck (app + spec projects) + boundary lint + vitest (Node environment, bare DOM-free). `@angular/elements` justified: D1's custom-element bridge has no alternative entry (`createCustomElement`); verified against installed type declarations. |
 
+### R10 addition — platform parity (D53)
+
+| # | Decision |
+|---|----------|
+| D53 | **Mobile & desktop parity (owner revision).** v1 is fully usable on touch-only, phone-sized screens and on desktop pointers alike — viewer, editor, settings, toasts, and slash flows all included; nothing is desktop-recommended-only. (Owner rationale, confirmed at R10: roleplayers use SillyTavern on their phones — the map must follow the story there, editor included.) Means: no hover-dependent affordances; tap targets of usable size (≥ 44 px); canvas input through the graph library's unified pointer/touch events (tap, drag, pinch-zoom, pan — verify against installed declarations in Phase 2 M1) with `touch-action` set so gestures never scroll the host page; panels adapt to narrow viewports (collapse to sheets, never horizontal scroll). Where an earlier register row says "click" (D21, D35), it means tap-or-click. Parity is of **features, not pixels**: one responsive component tree, no separate mobile bundle, no new dependency; the core is untouched — platform is a frontend/host concern (R5). Proof: e2e specs for every interaction family run at both a desktop viewport and an emulated phone viewport with touch (§3.8); host verification includes one mobile-viewport pass. |
+
 ---
 
 ## 2. The Product in One Page
 
 **Building a map.** The user opens the editor, creates layers (World / Fuyuki / Misaki), optionally uploads background images, clicks to place nodes (naming them, assigning kind and parent district), draws arcs between nodes (toggling walk/car/train, terrain, authored overrides where geometry would lie), and draws cross-layer arcs station-to-station. Saving stores the map in the library; importing a lookup-table block auto-seeds coordinates (MDS) as a starter.
 
-**Playing.** In a chat, the user sets the current location. On every generation (if auto-inject is on), the extension renders the template from the live graph — current location, region, available routes with cardinal directions and costs, known destinations, blocked-route reasons — and injects it at the user-chosen position/depth/role. When the story moves somewhere, the user moves the pin; the toast offers to do it when it spots the name. A blocked bridge is two clicks. A detour around the volcano is a click on empty canvas — the waypoint persists for the chat and can be promoted into the map.
+**Playing.** In a chat, the user sets the current location. On every generation (if auto-inject is on), the extension renders the template from the live graph — current location, region, available routes with cardinal directions and costs, known destinations, blocked-route reasons — and injects it at the user-chosen position/depth/role. When the story moves somewhere, the user moves the pin; the toast offers to do it when it spots the name. A blocked bridge is two taps. A detour around the volcano is a tap on empty canvas — the waypoint persists for the chat and can be promoted into the map.
 
 **Out-of-scope by design (v1):** the LLM moving the pin, automatic travel parsing, fog of war, world clocks, vehicle/economy tracking, aborting generations.
 
@@ -370,8 +378,8 @@ Dev loop unchanged: `ng serve` harness (custom element + demo map, zero ST) → 
 |---|---|
 | `src/core` (Vitest, Node) | compass at boundaries; cost precedence (authored time > authored distance > geometry; blocked > all); **two-layer acceptance: Emiya Residence → Fuyuki Station → Shinto Station** (the owner's stated expected route); disconnected/all-blocked ⇒ `ok:false` + reason; template rendering snapshots (default XML + a markdown variant); validator rejections |
 | `src/app` (TestBed) | signal flow, mount/unmount, editor commands mutate graph + dirty flag, waypoint promote moves node overlay→library |
-| E2E (playwright, harness) | editor: create map from scratch (place node, draw arc, save, reload, route); viewer: tap-canvas waypoint + reroute; layer switch; resize |
-| ST integration (manual + playwright) | auto-inject at both positions; macro placement; toast on narrated location; overlay survives reload & chat switch; injected content does not persist into saved history; map-less chat idles |
+| E2E (playwright, harness) | editor: create map from scratch (place node, draw arc, save, reload, route); viewer: tap-canvas waypoint + reroute; layer switch; resize; **every interaction family also runs at an emulated phone viewport with touch (D53)** |
+| ST integration (manual + playwright) | auto-inject at both positions; macro placement; toast on narrated location; overlay survives reload & chat switch; injected content does not persist into saved history; map-less chat idles; one mobile-viewport pass over settings, toast, and slash flows (D53) |
 | Independent verification (`verifier` agent, phase gates) | adversarial suite in `tests/verify/**` derived from spec, not implementation: trivially-green tests in existing suites; uncovered F/C rows; the §6.2 edge-case catalog; FX gaming; ∞ leakage (C17); machine names in prompts (C23); precedence violations (C14); A/B/C seam behavior |
 
 ---
@@ -384,7 +392,7 @@ Contract-first rule unchanged: `src/core/api.ts` + `GraphService` surface frozen
 Owns `src/core/**`, `data/worlds/*`, `scripts/import-lookup-table.mjs`, unit tests. Delivers: model with layers/units/overrides; geometry + cost precedence; layer-agnostic dijkstra/aStar via `CyLike`; waypoint kNN-connect + promote; snapshot + **Handlebars-compiled template renderer** with the variable contract of §3.6; validators/migrations; MDS importer that seeds coordinates from a lookup-table paste. Done when: Vitest green incl. the Emiya→Misaki two-layer route and template snapshots; zero framework/ST imports (lint-enforced). *Ponytail: brute-force kNN; no graph DB; no custom algorithms before profiling.*
 
 ### Agent B — UI, Visualization & Editor
-Owns `src/app/**`, styles, harness, e2e. Delivers: viewer (mount/unmount, **layer switcher with per-layer backgrounds**, compound rendering, route sidebar, location inspector, blocked toggle, waypoint placement/promotion, cross-layer badges C3, `unbundled-bezier` curves) **and the editor** (create/edit/delete nodes with property panel, draw-arc mode with mode/terrain/authored fields, layer management, background upload, library save/load/export-import). Done when: playwright builds a usable two-town map from scratch in the harness; waypoints persist via service commands; resize-safe canvas; no global CSS leakage.
+Owns `src/app/**`, styles, harness, e2e. Delivers: viewer (mount/unmount, **layer switcher with per-layer backgrounds**, compound rendering, route sidebar, location inspector, blocked toggle, waypoint placement/promotion, cross-layer badges C3, `unbundled-bezier` curves) **and the editor** (create/edit/delete nodes with property panel, draw-arc mode with mode/terrain/authored fields, layer management, background upload, library save/load/export-import) — all of it responsive and touch-operable at phone viewports (D53: unified pointer/touch canvas input, no hover-only affordances, panels → sheets at narrow widths). Done when: playwright builds a usable two-town map from scratch in the harness — desktop and emulated phone viewport with touch alike (D53); waypoints persist via service commands; resize-safe canvas; no global CSS leakage.
 
 ### Agent C — SillyTavern Integration
 Owns `src/st/**`, `manifest.json`, `global.d.ts`, build script, README. Delivers: bootstrap; settings panel (injection config D23, template editor with live preview, defaults); injection channels (extension-prompt API — **verify then wire**, macro, slash commands); toast scanner (D11/D26, coordinated with WI keywords); persistence matrix incl. library + card pointer + optional WI mirroring with double-injection guard; `onClean` purge; README per submission rules. Done when: loads clean in local ST; auto-inject + macro + manual all demonstrable; overlay survives reload/chat switch; group chats degrade gracefully; no generation is ever aborted.
@@ -404,26 +412,26 @@ Owns `src/st/**`, `manifest.json`, `global.d.ts`, build script, README. Delivers
 *Exit: the extension answers "where am I, where can I go, at what cost, which direction, in the user's chosen format" as text, from Node, with no UI.*
 
 ### Phase 2 — Viewer *(~2 weeks)*
-- **M1 Canvas & layers:** mount/unmount, layer switcher, backgrounds, compound boxes, first-paint layout, drag.
+- **M1 Canvas & layers:** mount/unmount, layer switcher, backgrounds, compound boxes, first-paint layout, drag; unified pointer/touch input (tap, drag, pinch-zoom, pan — D53), verified at an emulated phone viewport.
 - **M2 Routing UX:** route sidebar with legs/totals/mode switch, blocked toggle with reason input (C2), cross-layer badges (C3).
 - **M3 Waypoints:** tap-to-place (kNN connect), remove, promote-to-map, rerender/reroute; `unbundled-bezier` for curved detours.
-- **M4 Polish:** ResizeObserver → `cy.resize()`, label culling, `cy.batch` bulk ops.
+- **M4 Polish:** ResizeObserver → `cy.resize()`, label culling, `cy.batch` bulk ops; responsive panels (sheets at narrow widths) and tap-target sizing (D53).
 
-*Exit: fully navigable demo map in the harness.*
+*Exit: fully navigable demo map in the harness — desktop pointer and phone-viewport touch alike (D53).*
 
 ### Phase 3 — Editor *(~2–3 weeks — the product requirement)*
 - **M1 Node editing:** place/rename/move nodes, kind & parent (district) assignment, aliases, property panel, **quick-connect** — select a node, pick targets, batch-create arcs with defaults (D42).
-- **M2 Arc editing:** draw-arc mode (click source → target), mode toggles, terrain, authored distance/time overrides, curve control, **"measure this arc" scale calibration** (D44).
+- **M2 Arc editing:** draw-arc mode (tap/click source → target), mode toggles, terrain, authored distance/time overrides, curve control, **"measure this arc" scale calibration** (D44) — operable by touch alone (D53).
 - **M3 Layers & backgrounds:** layer create/rename/reorder, per-layer background upload (assets → localforage), assign nodes to layers; drill-down portal behavior (D35).
 - **M4 Library & forks:** save/load/duplicate/delete maps, JSON export/import, MDS importer UI ("paste your lookup table"), fork-to-chat + save-fork-back-to-library (D41); card pointer surfaces as a picker suggestion (D40).
 
-*Exit: a user with zero JSON knowledge builds a two-town map with a background image and routes between them.*
+*Exit: a user with zero JSON knowledge builds a two-town map with a background image and routes between them — on a desktop and on a phone-sized touch screen (D53).*
 
 ### Phase 4 — SillyTavern Hookup *(~1.5–2 weeks)*
 - **M1 Lifecycle & settings:** bootstrap, settings panel, injection config + template editor with preview, persistence wiring, `CHAT_CHANGED` restore, migrations.
 - **M2 Injection:** extension-prompt API (verified) + macro + manual command; skip conditions; no-persist guarantee tested.
 - **M3 Awareness:** toast scanner (D11) with alias/WI-keyword coordination; corrective line; `/map` command suite.
-- **M4 Ship prep:** README (install/usage/features), versioned release, `onClean`, submission checklist.
+- **M4 Ship prep:** README (install/usage/features), versioned release, `onClean`, submission checklist; mobile-viewport smoke pass in local ST via device emulation — settings, toast, slash flows (D53).
 
 ### Phase 5 — Post-MVP backlog (explicitly out of scope until asked)
 Function tools (`travel_to` for LLM-driven movement), auto-travel parsing, position rollback journal, fog of war (D22), weather/time-of-day modifiers (D18), vehicle location & fares, promote blocks to world, multi-actor positions, fuzzy time phrasing, WI mirroring UX, **MCP server adapter** (§7).
@@ -442,6 +450,7 @@ Function tools (`travel_to` for LLM-driven movement), auto-travel parsing, posit
 | Template syntax collisions (ST `{{macros}}` vs our template) | M×M | Inner templates compiled by us via Handlebars; ST macro engine never sees stored template strings; e2e test with a `{{macro}}`-looking placeholder | A/C |
 | WI mirroring double-injects location lore + map block | M×M | Mirroring off by default; when on, either lore-only entries or block slimming; integration test counts injections | C |
 | Canvas sizing in ST's animating drawers (0×0 at mount) | H×M | Lazy mount on first open; ResizeObserver → `cy.resize()`; rAF poll until non-zero | B |
+| Touch & narrow-viewport gaps (hover-only affordances, pinch conflicting with host page scroll, cramped panels) | M×M | Unified pointer/touch canvas input + `touch-action` rules; no hover-only affordances; panels → sheets at narrow widths; e2e at emulated phone viewport (D53) | B |
 | Cross-layer edges confuse users (invisible connection) | M×M | Endpoint badges with destination/mode/cost (C3); e2e comprehension check | B |
 | Token bloat from block | M×M | Neighborhood-only + destinations cap (12) + template-side trimming; char budget asserted in snapshot tests | A |
 | Dense sub-graph perf | M×M | `cy.batch`, label culling, texture-on-hover; headless instance unaffected by render load | A/B |
@@ -456,6 +465,8 @@ Function tools (`travel_to` for LLM-driven movement), auto-travel parsing, posit
 **Waypoints & overlay:** tap inside a compound's box but not on a node ⇒ top-level user node in that layer; kNN considers leaves only; orphaned waypoints stay (removable); rapid taps ⇒ engine-assigned ids; promote moves the node overlay→library atomically (same id, `origin` flips to `authored`).
 
 **Layers:** cross-layer arc whose endpoints get re-parented to another layer — stays valid (edges reference ids, not layers); layer deletion with resident nodes ⇒ blocked with count, forces move-or-delete; background aspect ≠ canvas ⇒ fit-and-center with letterboxing, coordinates unaffected.
+
+**Touch & viewport (D53):** tap-vs-drag threshold on the canvas; pinch-zoom never scrolls the host page (`touch-action`); double-tap portal entry never triggers the browser's double-tap zoom; panels survive a live viewport resize and orientation change; editor draw-arc works with touch only; hover-only affordances are a defect, not a degradation.
 
 **SillyTavern lifecycle:** `CHAT_CHANGED` mid-edit ⇒ debounced `saveMetadata` flushed first; group chat ⇒ no card pointer write, library default applies with toast; generation with injection off / no location ⇒ zero-cost no-op; injected block must not persist into saved history (tested after `GENERATION_ENDED`); extension disabled ⇒ listeners removed, element detached, `onClean` purges settings + localforage.
 
@@ -476,9 +487,9 @@ Function tools (`travel_to` for LLM-driven movement), auto-travel parsing, posit
 
 ## 8. Immediate Next Steps
 
-Product spec is stable through R8 (D10–D51); features in `PRODUCT.md`, conventions in `CORE.md`, charters in `AGENTS.md` + `.zcode/agents/` (A–D, spawnable, cheap model), delegation & phase gates in `ORCHESTRATION.md`, tooling allocation in AGENTS.md §7. Remaining micro-confirmations (defaults in effect unless vetoed):
+Product spec is stable through R10 (D10–D53); features in `PRODUCT.md`, conventions in `CORE.md`, charters in `AGENTS.md` + `.zcode/agents/` (A–D, spawnable, cheap model), delegation & phase gates in `ORCHESTRATION.md`, tooling allocation in AGENTS.md §7. Remaining micro-confirmations (defaults in effect unless vetoed):
 
 1. **Fork default (D41):** forks attach to the chat; character-level forks and "save back to library" come as explicit actions.
 2. **Card pointer (D40):** shows as a *suggested* map in the picker, never auto-applied — this reconciles Q17 (R1) with Q27 (R3).
 3. **Q29 assumption:** the doubled "Q28: your rec" in R3 is read as covering Q29 too — floating, remembered-position panel with a maximize button; editor maximizes by default.
-4. **Greenlight Task 0 + M0:** orchestrator builds the scaffold (compiling `api.ts`, lint-enforced purity, `npm run verify`), then dispatches C-001 (walking skeleton) and the Phase 1 packets per `ORCHESTRATION.md`.
+4. **Task 0 + M0 — done at R9** (scaffold + walking skeleton loading in local ST); the next dispatch is Phase 1 A-packets per `ORCHESTRATION.md`. **R10 (D53):** mobile & desktop parity applies to every UI/host packet from Phase 2 on; Phase 1 (headless core) is unaffected.

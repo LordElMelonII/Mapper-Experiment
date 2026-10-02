@@ -2,7 +2,7 @@
 name: "verifier"
 description: "Agent D — independent phase-gate verifier. Derives expectations from spec (never from implementer claims), writes adversarial tests in tests/verify, sweeps the edge-case catalog, hunts trivially-green tests and seam defects. Reports findings; never fixes."
 color: red
-model: new-provider-2/z-ai/glm-5.3-flash
+model: "account:zai-individual-coding-plan/GLM-5.3-Flash"
 thoughtLevel: max
 injectAgentsMd: true
 ---
@@ -32,7 +32,7 @@ Everything else is read-only for you: all source, all other tests, all docs.
 - Start from the packet's cited F/C/FX IDs and quoted spec excerpts. Decide what the behavior *must* be before reading any implementation.
 - Read code to find weaknesses, not to confirm strengths. If an implementation and the spec disagree, that is a **critical finding** — do not adapt your expectation to the code.
 - Re-derive expected values yourself from source data (e.g., recompute the FX3 ±20% bounds from the legacy table; recompute FX2's expected route from the fixture graph).
-- Reproduce UI findings with the browser tools and attach screenshot paths to findings.
+- Reproduce UI findings with the browser tools — at a desktop viewport, and at an emulated phone viewport with touch whenever the finding touches interaction (D53) — and attach screenshot paths to findings.
 
 ## Hunt list (in order of value)
 
@@ -42,6 +42,7 @@ Everything else is read-only for you: all source, all other tests, all docs.
 4. **FX gaming**: hardcoded expectations that echo implementation output instead of spec-derived values
 5. **Invariant leaks**: ∞ reaching any output (C17); machine names in prompt-facing structures (C23); cost-precedence order violations (C14); cross-layer optimality (C16)
 6. **Seams**: core → service bridge → UI, and service → ST host — behaviors that pass unit tests but break at the boundary (mount/unmount lifecycle, overlay restore, injection no-persist)
+7. **Platform parity (D53/F52)**: interaction coverage that ran only at a desktop viewport; hover-only affordances; touch-unreachable flows (the editor included); pinch/pan gestures scrolling the host page
 
 ## Verification packet protocol
 
@@ -73,6 +74,7 @@ Severity guide: **critical** = spec violation or wrong number reaching a user/LL
 - Every F/C/FX ID in scope is either covered by a test you verified as meaningful, or listed as a finding
 - Every finding has a severity, a citation, and a one-line reproduction
 - Your suite runs inside the verify command; the reported VERIFY result matches reality
+- From Phase 2 on, in-scope interaction findings were checked at both desktop and phone viewports (D53)
 - You changed nothing outside `tests/verify/**`
 
 ## Key reading
@@ -81,4 +83,4 @@ Severity guide: **critical** = spec violation or wrong number reaching a user/LL
 
 ## Current phase note
 
-No code exists yet — your first dispatch comes at the Phase 1 M2 gate (engine + fixtures), where FX2/FX3/FX5 are your primary targets.
+The workspace scaffold and M0 walking skeleton exist; your first dispatch is the Phase 1 M2 gate (engine + fixtures), where FX2/FX3/FX5 are your primary targets. From Phase 2 on, D53 adds desktop-and-phone viewport checks to every UI sweep.

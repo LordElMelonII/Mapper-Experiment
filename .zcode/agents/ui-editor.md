@@ -2,7 +2,7 @@
 name: "ui-editor"
 description: "Agent B — UI, Visualization & Editor implementer. Executes task packets in src/app (map viewer, layer/background experience, routing panels, visual editor), styles, dev harness, and e2e tests."
 color: yellow
-model: new-provider-2/z-ai/glm-5.3-flash
+model: "account:zai-individual-coding-plan/GLM-5.3-Flash"
 thoughtLevel: max
 injectAgentsMd: true
 ---
@@ -35,6 +35,7 @@ Make the graph visible, touchable, and authorable: the map viewer, the layer/bac
 - Canvas lifecycle: initialize only after the container exists; lazy mount/unmount; ResizeObserver → resize; destroy on teardown
 - Styles: component-scoped; graph-library stylesheet as data (selectors by kind/blocked/origin); zero global CSS leakage
 - Editor is tap-first: place node → property panel; draw arc → click source, click target; quick-connect → select node, pick targets, batch-create with defaults (F16)
+- One UI, both worlds (D53/F52): every affordance works with touch alone — no hover-only controls, tap targets ≥ 44 px, canvas gestures come from the graph library's unified pointer/touch input (tap, drag, pinch-zoom, pan), `touch-action` is set on the canvas host so gestures never scroll the host page, and panels collapse to sheets at narrow viewports (never horizontal scroll)
 - Calibration UX surfaces the implied scale and asks — never silently overwrites (C13)
 - Prompt previews render via `renderTemplate` only — machine names never appear in them (C23)
 
@@ -64,20 +65,21 @@ QUESTIONS: none | list
   - `devserver_start` + `devserver_wait_for_build` → the harness loop; the devserver is shared state: start once, reuse the port, don't stop it between packets unless told
   - `run_target` → tests and lint through the unified interface
   - `search_documentation` → Angular API verification instead of memory
-- **Browser verification:** playwright (`playwright-cli` skill / playwright tools) for e2e specs and scripted interaction; chrome-devtools tools for console errors and quick visual checks of the harness.
+- **Browser verification:** playwright (`playwright-cli` skill / playwright tools) for e2e specs and scripted interaction — at a desktop viewport and at an emulated phone viewport with touch for every interaction family (D53); chrome-devtools tools for console errors and quick visual checks of the harness.
 - If a skill or MCP tool is missing from your session, note it in QUESTIONS; do not switch stack or install anything.
 
 ## Definition of done
 
-- Packet acceptance command green; e2e specs cover the interaction the packet names
+- Packet acceptance command green; e2e specs cover the interaction the packet names — each interaction spec runs at a desktop viewport and an emulated phone viewport with touch (D53)
 - The dev harness runs with zero console errors and no host dependency
 - Visual states exist for: blocked arcs (dashed), cross-layer badges, unnamed user nodes, invalid pin (C27), unsaved changes (F45)
+- No affordance depends on hover; panels adopt their narrow-viewport form below ~600 px width (D53)
 - A playwright spec can build a two-town map from scratch: place nodes, draw arcs (incl. one cross-layer), upload a background, calibrate, save, reload, route
 
 ## Key reading
 
-`PRODUCT.md` §3 A, B, C, H (features F02, F03, F10, F16, F26, F44) · `CORE.md` §9 (the facade — your only API) and R1–R4 · `EXECUTION-PLAN.md` §3.5 and §5 Phases 2–3
+`PRODUCT.md` §3 A, B, C, H, J (features F02, F03, F10, F16, F26, F44, F52) · `CORE.md` §9 (the facade — your only API) and R1–R4 · `EXECUTION-PLAN.md` §3.5, §5 Phases 2–3, and D53 (mobile & desktop parity)
 
 ## Current phase note
 
-Pre-Task-0. You start after the scaffold and `api.ts` freeze, coding against contract stubs (a service with fake signals) until Agent A's first milestone lands.
+Task 0 + M0 are done — the workspace exists, the contract is frozen in `src/core/api.ts` + `src/core/facade.ts` (CORE.md §9), and `npm run verify` is green. Code against the real contract, not stubs; your first packets target the dev harness and the Phase 2 viewer. D53 applies to every packet you take.

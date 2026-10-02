@@ -1,7 +1,7 @@
 # PRODUCT.md — Travel & Map Explorer: Feature Catalogue
 
-**Status:** R4 · Stack-free product specification
-**Companions:** `CORE.md` (engine conventions & logic boundaries) · `EXECUTION-PLAN.md` (architecture, phases, decision register D10–D47)
+**Status:** R10 · Stack-free product specification
+**Companions:** `CORE.md` (engine conventions & logic boundaries) · `EXECUTION-PLAN.md` (architecture, phases, decision register D10–D53)
 **Rule of this document:** it describes *what* the product does and what users experience — no frameworks, libraries, or host APIs. Where a feature exists because of a recorded product decision, the decision ID is cited (D-numbers live in EXECUTION-PLAN.md).
 
 ---
@@ -42,7 +42,7 @@ F-numbers are stable feature IDs. The roadmap and test plan cite them.
 ### A. Maps & layers
 
 - **F01 Multi-layer maps** — a map contains any number of layers, each its own coordinate plane (D16).
-- **F02 Drill-down navigation** — one layer visible at a time behind a breadcrumb; nodes on coarser layers act as portals (enter by double-click). Upper-layer positions still give inter-town directions for narration ("Misaki lies north") (D35).
+- **F02 Drill-down navigation** — one layer visible at a time behind a breadcrumb; nodes on coarser layers act as portals (enter by double-tap or double-click). Upper-layer positions still give inter-town directions for narration ("Misaki lies north") (D35).
 - **F03 Background images** — user-uploaded, per layer, fitted and centered; the node graph is always the interface on top (D29).
 - **F04 Map library** — save, load, duplicate, delete; chats reference library maps live, with an update notice when a map they use changed (D33).
 - **F05 Import / export** — whole maps as JSON files, in and out.
@@ -53,7 +53,7 @@ F-numbers are stable feature IDs. The roadmap and test plan cite them.
 - **F07 Kinds & nesting** — places organize into containers (districts inside cities inside regions); containers label and group, they never carry the pin and never connect to arcs.
 - **F08 Names & aliases** — a display name plus alternate spellings; aliases feed message matching (F31, F38).
 - **F09 Hubs & transit metadata** — a node may declare itself a station/port/stop with a line name.
-- **F10 User nodes (waypoints)** — placed at runtime by clicking empty canvas; persist for the chat; promotable into the map under a proper name. Unnamed user nodes never reach the LLM (D21).
+- **F10 User nodes (waypoints)** — placed at runtime by tapping empty canvas; persist for the chat; promotable into the map under a proper name. Unnamed user nodes never reach the LLM (D21).
 
 ### C. Arcs
 
@@ -78,7 +78,7 @@ F-numbers are stable feature IDs. The roadmap and test plan cite them.
 - **F23 Multi-modal shortest route** — between any two nodes, across layers, honoring modes, blocks, and authored costs; results carry per-leg detail (mode, cost, blocked reason).
 - **F24 Unreachable reporting** — no finite route yields a human-readable reason, never a raw "infinity".
 - **F25 Destination awareness** — the prompt block can include a compact list of known far destinations with best-mode costs, routed through hubs (D25).
-- **F26 Runtime detours** — blocked volcano pass? Click to place a user node; routes recompute through it (F10).
+- **F26 Runtime detours** — blocked volcano pass? Tap to place a user node; routes recompute through it (F10).
 
 ### F. Presence & travel
 
@@ -117,6 +117,10 @@ F-numbers are stable feature IDs. The roadmap and test plan cite them.
 - **F50 Validation & migration** — malformed or future-version data is rejected with precise messages, never half-loaded.
 - **F51 Hygiene** — disable/remove leaves no settings, assets, or listeners behind.
 
+### J. Platform
+
+- **F52 Mobile & desktop parity** — every feature above, the editor included, works with touch alone on a phone-sized screen and with a mouse on a desktop: no hover-dependent affordances, tap-and-drag targets of usable size, pinch-zoom/pan/tap canvas gestures, and panels that adapt to narrow viewports instead of overflowing. One responsive UI — there is no separate mobile mode, and no feature is desktop-only (D53).
+
 ---
 
 ## 4. Explicit non-features (v1)
@@ -132,10 +136,10 @@ F-numbers are stable feature IDs. The roadmap and test plan cite them.
 | Editor undo / multi-select / snapping | Tar-pit fencing (F46) |
 | Map embedded in character export | Sharing story later (D40) |
 | MCP server | Redundant with native function tools for now (D32) |
-| i18n, mobile polish | Post-adoption |
+| i18n | Post-adoption — mobile support is in scope (F52/D53); translations are not |
 
 ---
 
 ## 5. Traceability
 
-Features cite decision IDs (D10–D47) from EXECUTION-PLAN.md. Tests cite feature IDs (F-numbers). CORE.md defines the engine rules that make every number the product shows trustworthy.
+Features cite decision IDs (D10–D53) from EXECUTION-PLAN.md. Tests cite feature IDs (F-numbers). CORE.md defines the engine rules that make every number the product shows trustworthy.
