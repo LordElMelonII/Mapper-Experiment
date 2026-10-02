@@ -1,0 +1,258 @@
+// Behavior tests for the M1 facade commands (A-002).
+// C8 materialization & stale flag · C24 live references · C27 orphan policy
+// (keep, never snap) · C30 reject-before-mutate · C1 leaf-to-leaf pin ·
+// C31 migration refusal · D17/D19 presence round-trip · D38 silent pin ·
+// D56 fork deferral.
+import { describe, expect, it } from 'vitest';
+import { createFacade, facadeStateOf } from '../../src/core/facade';
+import { MapValidationError } from '../../src/core/model/validate';
+import type { ChatMapOverlay, WorldMapData } from '../../src/core/api';
+
+// --- tiny inline map & overlay (fixtures are A-003's business) ----------------
+
+const tinyMap = (): WorldMapData => ({
+  schemaVersion: 2,
+  id: 'map-tiny',
+  name: 'Tiny',
+  layers: [{ id: 'layer-1', name: 'Tiny Layer' }],
+  scale: { unitPerPx: 1, unitLabel: 'km', unitKind: 'distance' },
+  nodes: [
+    { id: 'n-district', label: 'Old District', kind: 'district', layer: 'layer-1' },
+    { id: 'n-alpha', label: 'Alpha', kind: 'location', layer: 'layer-1', parent: 'n-district', position: { x: 10, y: 10 } },
+    { id: 'n-beta', label: 'Beta', kind: 'location', layer: 'layer-1', parent: 'n-district', position: { x: 50, y: 10 } },
+  ],
+  edges: [
+    { id: 'e-ab', source: 'n-alpha', target: 'n-beta', modes: { walk: { allowed: true } } },
+  ],
+});
+
+const tinyOverlay = (): ChatMapOverlay => ({
+  mapId: 'map-tiny',
+  currentLocationId: 'n-alpha',
+  travelMode: 'walk',
+  userNodes: [
+    { id: 'u-camp', label: 'Camp', kind: 'waypoint', layer: 'layer-1', position: { x: 30, y: 30 } },
+  ],
+  userEdges: [
+    { id: 'e-uc', source: 'n-beta', target: 'u-camp', modes: { walk: { allowed: true } } },
+  ],
+  blocked: {},
+});
+
+// Deliberately invalid — loadMap must refuse it at runtime (typed lie for TS).
+const brokenMap = (): WorldMapData => {
+  const m = JSON.parse(JSON.stringify(tinyMap()));
+  m.name = '';                      // defect 1: empty name
+  m.nodes[1].layer = 'layer-ghost'; // defect 2: unknown layer — collected, not first-only (C30)
+  return m;
+};
+
+// Deliberately invalid overlay — loadMap must refuse it at runtime.
+const brokenOverlay = (): ChatMapOverlay => {
+  const o = JSON.parse(JSON.stringify(tinyOverlay()));
+  o.travelMode = 'teleport';
+  return o;
+};
+
+// --- loadMap (C30, C8, C24) -----------------------------------------------------
+
+describe('loadMap', () => {
+  it('refuses an invalid map with a collected report and leaves the prior load untouched (C30)', () => {
+    const f = createFacade();
+    const map = tinyMap();
+    const overlay = tinyOverlay();
+    f.loadMap(map, overlay);
+    f.materialize();
+    const before = facadeStateOf(f).effective;
+
+    let err: unknown = null;
+    try {
+      f.loadMap(brokenMap(), tinyOverlay());
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(MapValidationError);
+    expect((err as MapValidationError).issues.map((i) => i.path)).toEqual(['name', 'nodes[1].layer']);
+
+    // prior state survives untouched: same references, same rebuilt graph (C30)
+    expect(facadeStateOf(f).map).toBe(map);
+    expect(facadeStateOf(f).overlay).toBe(overlay);
+    f.materialize();
+    expect(facadeStateOf(f).effective).toEqual(before);
+  });
+
+  it('refuses an invalid overlay the same way, before any state change (C30)', () => {
+    const f = createFacade();
+    expect(() => f.loadMap(tinyMap(), brokenOverlay())).toThrow(MapValidationError);
+    expect(facadeStateOf(f).map).toBeNull();
+    expect(facadeStateOf(f).overlay).toBeNull();
+  });
+
+  it('stores references and marks stale; materialize() then yields the merged graph (C8, C24)', () => {
+    const f = createFacade();
+    const map = tinyMap();
+    f.loadMap(map, tinyOverlay());
+    expect(facadeStateOf(f).stale).toBe(true); // loadMap marks stale (C8)
+    expect(facadeStateOf(f).map).toBe(map);    // the library object itself (C24)
+
+    f.materialize();
+    expect(facadeStateOf(f).stale).toBe(false);
+    const eff = facadeStateOf(f).effective;
+    expect(eff).not.toBeNull();
+    expect(eff!.mapId).toBe('map-tiny');
+    expect(eff!.nodes.map((n) => n.id)).toEqual(['n-district', 'n-alpha', 'n-beta', 'u-camp']);
+    expect(eff!.edges.map((e) => e.id)).toEqual(['e-ab', 'e-uc']);
+    expect(eff!.pin).toEqual({ id: 'n-alpha', valid: true });
+  });
+
+  it('reflects in-place library edits on the next materialize() — references, never copies (C24, C8)', () => {
+    const map = tinyMap();
+    const f = createFacade();
+    f.loadMap(map, tinyOverlay());
+    f.materialize();
+
+    map.nodes.push({ id: 'n-gamma', label: 'Gamma', kind: 'location', layer: 'layer-1', parent: 'n-district' });
+    map.nodes[1].label = 'Alpha Renamed';
+    f.materialize(); // the C24 hook
+
+    const eff = facadeStateOf(f).effective!;
+    expect(eff.nodes.some((n) => n.id === 'n-gamma')).toBe(true);
+    expect(eff.nodes.find((n) => n.id === 'n-alpha')?.label).toBe('Alpha Renamed');
+  });
+});
+
+// --- validateImport / migrateData (C30, C31) -------------------------------------
+
+describe('validateImport / migrateData', () => {
+  it('validateImport checks the map and changes no state (C30)', () => {
+    const f = createFacade();
+    expect(() => f.validateImport(tinyMap())).not.toThrow();
+    expect(() => f.validateImport(brokenMap())).toThrow(MapValidationError);
+    expect(facadeStateOf(f).map).toBeNull(); // pure — nothing was loaded
+  });
+
+  it('migrateData returns validated data and changes no state; newer versions are refused (C31)', () => {
+    const f = createFacade();
+    expect(f.migrateData(tinyMap())).toEqual(tinyMap());
+    expect(facadeStateOf(f).map).toBeNull();
+    expect(() => f.migrateData({ schemaVersion: 3 } as unknown)).toThrow(MapValidationError);
+  });
+});
+
+// --- setCurrentLocation (C1, D38) -------------------------------------------------
+
+describe('setCurrentLocation', () => {
+  it('moves the pin onto a leaf silently; null clears it (C1, D38)', () => {
+    const f = createFacade();
+    f.loadMap(tinyMap(), tinyOverlay());
+    f.materialize();
+
+    expect(() => f.setCurrentLocation('n-beta')).not.toThrow(); // silent (D38)
+    f.materialize();
+    expect(facadeStateOf(f).effective!.pin).toEqual({ id: 'n-beta', valid: true });
+
+    f.setCurrentLocation(null);
+    f.materialize();
+    expect(facadeStateOf(f).effective!.pin).toEqual({ id: null, valid: false });
+  });
+
+  it('refuses a container node with a field-precise error and leaves the pin alone (C1)', () => {
+    const f = createFacade();
+    f.loadMap(tinyMap(), tinyOverlay());
+    f.materialize();
+
+    expect(() => f.setCurrentLocation('n-district')).toThrow(/n-district/);
+    expect(() => f.setCurrentLocation('n-district')).toThrow(/container/i);
+    f.materialize();
+    expect(facadeStateOf(f).effective!.pin.id).toBe('n-alpha'); // unchanged after the throw
+  });
+
+  it("refuses a childless container kind per D58 — 'districts never hold it' is unconditional (C1/F27)", () => {
+    const map = tinyMap();
+    map.nodes.push({ id: 'n-shinto', label: 'Shinto', kind: 'district', layer: 'layer-1' });
+    const f = createFacade();
+    f.loadMap(map, tinyOverlay());
+    f.materialize();
+
+    expect(() => f.setCurrentLocation('n-shinto')).toThrow(/container/i);
+    f.materialize();
+    expect(facadeStateOf(f).effective!.pin.id).toBe('n-alpha'); // refused before mutating (C30)
+  });
+
+  it('refuses an unknown node id (C1)', () => {
+    const f = createFacade();
+    f.loadMap(tinyMap(), tinyOverlay());
+    f.materialize();
+    expect(() => f.setCurrentLocation('ghost')).toThrow(/ghost/);
+  });
+
+  it("throws '[TravelMapper] no map loaded' when nothing is loaded", () => {
+    const f = createFacade();
+    expect(() => f.setCurrentLocation('n-alpha')).toThrow('[TravelMapper] no map loaded');
+  });
+});
+
+// --- setStatusNote / setTravelMode (D17, D19) --------------------------------------
+
+describe('setStatusNote / setTravelMode', () => {
+  it('round-trips the status note and travel mode on the overlay (D17, D19)', () => {
+    const f = createFacade();
+    f.loadMap(tinyMap(), tinyOverlay());
+
+    f.setStatusNote('on the road to the station');
+    f.setTravelMode('train');
+    const state = facadeStateOf(f);
+    expect(state.overlay!.statusNote).toBe('on the road to the station');
+    expect(state.overlay!.travelMode).toBe('train');
+    expect(state.stale).toBe(true); // mutations only set the flag (C8)
+
+    f.setStatusNote(undefined);
+    expect('statusNote' in facadeStateOf(f).overlay!).toBe(false); // cleared, not undefined-held
+    f.materialize();
+    expect(facadeStateOf(f).stale).toBe(false); // rebuild consumes the flag
+  });
+
+  it('presence commands refuse to act with nothing loaded', () => {
+    const f = createFacade();
+    expect(() => f.setStatusNote('x')).toThrow('[TravelMapper] no map loaded');
+    expect(() => f.setTravelMode('walk')).toThrow('[TravelMapper] no map loaded');
+  });
+
+  it('setTravelMode refuses a runtime value outside {walk, car, train} before mutating the overlay (C30, F50)', () => {
+    const f = createFacade();
+    f.loadMap(tinyMap(), tinyOverlay());
+    expect(() => f.setTravelMode('teleport' as never)).toThrow(/\[TravelMapper\]/);
+    expect(facadeStateOf(f).overlay!.travelMode).toBe('walk'); // untouched by the refused call
+  });
+
+  it('setStatusNote refuses a non-string note before mutating the overlay (C30, D17)', () => {
+    const f = createFacade();
+    f.loadMap(tinyMap(), tinyOverlay());
+    expect(() => f.setStatusNote(42 as never)).toThrow(/\[TravelMapper\]/);
+    expect('statusNote' in facadeStateOf(f).overlay!).toBe(false); // untouched by the refused call
+  });
+});
+
+// --- orphan policy (C27) ------------------------------------------------------------
+
+describe('orphan policy', () => {
+  it('keeps a dangling pin as { id, valid: false } — never snaps to a neighbor (C27)', () => {
+    const f = createFacade();
+    const overlay = tinyOverlay();
+    overlay.currentLocationId = 'ghost-node'; // stale pin: not a load error (C27)
+    f.loadMap(tinyMap(), overlay);
+
+    expect(() => f.materialize()).not.toThrow();
+    expect(facadeStateOf(f).effective!.pin).toEqual({ id: 'ghost-node', valid: false });
+  });
+});
+
+// --- deferred fork commands (D56) ------------------------------------------------------
+
+describe('fork stubs', () => {
+  it('forkMap / saveForkToLibrary stay deferred to Phase 3 M4 (D56)', () => {
+    const f = createFacade();
+    expect(() => f.forkMap()).toThrow('TODO(Phase 3 M4): forkMap');
+    expect(() => f.saveForkToLibrary()).toThrow('TODO(Phase 3 M4): saveForkToLibrary');
+  });
+});

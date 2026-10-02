@@ -1,6 +1,7 @@
-// Task 0 smoke test: the frozen contract compiles and the facade stub surface
-// is complete per CORE.md §9. Phase 1 packets replace the throwing stubs with
-// real implementations; this file pins the facade shape (R2).
+// Facade surface test: the frozen contract compiles and the facade exposes
+// exactly the CORE.md §9 command list (R2). A-002 implemented the seven M1
+// commands; every remaining stub still throws its exact TODO marker — no fake
+// data. The surface test below stays verbatim from Task 0.
 import { describe, expect, it } from 'vitest';
 import { createFacade } from '../../src/core/facade';
 import type { MapFacade } from '../../src/core/facade';
@@ -20,6 +21,35 @@ const FACADE_COMMANDS: (keyof MapFacade)[] = [
   'setActiveLayer',
 ];
 
+// Commands still on the TODO path after A-002, each with the milestone whose
+// packet must implement it. forkMap / saveForkToLibrary were relabeled from M1
+// to Phase 3 M4 (D56 — forks have no consumer before then).
+const UNIMPLEMENTED: readonly (readonly [keyof MapFacade, string])[] = [
+  ['forkMap', 'Phase 3 M4'],
+  ['saveForkToLibrary', 'Phase 3 M4'],
+  ['setBlocked', 'M2'],
+  ['addUserNodeAt', 'M2'],
+  ['removeUserNode', 'M2'],
+  ['promoteUserNode', 'M2'],
+  ['upsertNode', 'Phase 3'],
+  ['upsertEdge', 'Phase 3'],
+  ['removeNode', 'Phase 3'],
+  ['removeEdge', 'Phase 3'],
+  ['calibrateScale', 'Phase 3'],
+  ['saveMap', 'Phase 3'],
+  ['findRoute', 'M2'],
+  ['getSnapshot', 'M3'],
+  ['renderTemplate', 'M3'],
+  ['getPromptBlock', 'M3'],
+  ['setActiveLayer', 'Phase 2'],
+];
+
+// The seven commands A-002 implemented — gone from the TODO list above.
+const M1_COMMANDS = [
+  'loadMap', 'materialize', 'validateImport', 'migrateData',
+  'setCurrentLocation', 'setStatusNote', 'setTravelMode',
+] as const;
+
 describe('facade stub (Task 0)', () => {
   it('exposes exactly the CORE.md §9 command surface', () => {
     const facade = createFacade();
@@ -27,12 +57,19 @@ describe('facade stub (Task 0)', () => {
     expect(keys).toEqual([...FACADE_COMMANDS].sort());
   });
 
-  it('every stub throws an explicit TODO — no fake data (Task 0 rule)', () => {
+  it('every still-unimplemented command throws its exact TODO marker — no fake data', () => {
     const facade = createFacade();
-    for (const command of FACADE_COMMANDS) {
-      // each stub is a zero-arg-invocable thrower for this check
+    for (const [command, milestone] of UNIMPLEMENTED) {
       const fn = facade[command] as () => unknown;
-      expect(() => fn()).toThrow(/^TODO\(/);
+      expect(() => fn(), command).toThrow(`TODO(${milestone})`);
+    }
+  });
+
+  it('the seven M1 commands no longer throw a TODO (A-002)', () => {
+    const facade = createFacade();
+    for (const command of M1_COMMANDS) {
+      const fn = facade[command] as () => unknown;
+      expect(() => fn(), command).not.toThrow(/^TODO\(/);
     }
   });
 });

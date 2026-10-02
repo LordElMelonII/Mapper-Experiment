@@ -15,7 +15,7 @@ Travel & Map Explorer: a SillyTavern extension that replaces static distance loo
 | 1 | `AGENTS.md` (this file) | What binds everyone |
 | 2 | `PRODUCT.md` | *What* — feature catalogue F01–F52, vocabulary, non-features |
 | 3 | `CORE.md` | *How the engine guarantees it* — conventions C1–C33, separation contract R1–R6, facade command list, fixtures FX1–FX5 |
-| 4 | `EXECUTION-PLAN.md` | *Build plan* — architecture D1–D9, decision register D10–D53, phases, risks |
+| 4 | `EXECUTION-PLAN.md` | *Build plan* — architecture D1–D9, decision register D10–D59, phases, risks |
 | 5 | `ORCHESTRATION.md` | *How work is delegated* — task packets, report format, review gates, Task 0 |
 | ref | `st-extension-docs/extensions.md` | Host (SillyTavern) API reference — read before any host-layer work |
 
@@ -30,7 +30,7 @@ ID scheme: **D** = decisions (why) · **F** = features (what) · **C** = engine 
 | `npx ng build -c extension` | Angular build only (no merge pass) |
 | `npx ng serve` | dev harness (Agent B owns; shared server, reuse the port) |
 
-Deploy target: `SillyTavern/public/scripts/extensions/third-party/travel-map-explorer/` (server: `https://localhost:8000`).
+Deploy target: `SillyTavern/public/scripts/extensions/third-party/travel-map-explorer/` (server: `http://localhost:8000` — SSL disabled in the local ST config).
 
 ## 3. Non-negotiables (violations are defects, not style)
 
@@ -44,8 +44,7 @@ Deploy target: `SillyTavern/public/scripts/extensions/third-party/travel-map-exp
 
 ## 4. Repo status & phase discipline
 
-- **Status:** Task 0 + M0 done — Angular 22 zoneless workspace at repo root; contract freeze in force (`src/core/api.ts` + `src/core/facade.ts` per CORE.md §9). The walking skeleton loads in local ST 1.19.0 (bundle ≤ 1.5 MB, zero zone.js, clean console). Phase 1 engine work (M1+) is unblocked. **R10 (D53): mobile & desktop parity is a v1 requirement** — every UI/host packet from Phase 2 on must satisfy it and ship phone-viewport e2e; Phase 1 core work is unaffected.
-- **M0 (walking skeleton) gates all parallel work.** It proves the bundle loads inside SillyTavern before anything depends on it.
+- **Status (R12):** Task 0 + M0 done and committed (`17275b9`); contract freeze in force (`src/core/api.ts` + `src/core/facade.ts` per CORE.md §9). **M1 done & verifier gate passed** (125/125 tests; rulings D58/D59; committed on `develop`). **M2 decomposed:** packets A-005 → A-006 → A-007 in `.zcode/packets/M2.md` — dispatch sequentially per ORCHESTRATION.md. The EXECUTION-PLAN status line is the state of record when this line drifts. **R10 (D53): mobile & desktop parity is a v1 requirement** — every UI/host packet from Phase 2 on must satisfy it and ship phone-viewport e2e; Phase 1 core work is unaffected.
 - **Parallel work starts only after the contract freeze:** `src/core/api.ts` types + the CORE.md §9 facade. Agents code against the frozen contract, never against each other's working trees.
 - Current milestone, phase gates, and acceptance criteria live in EXECUTION-PLAN §5. Check them before starting any task.
 
@@ -65,13 +64,13 @@ Cross-cutting or unclear ownership goes to the Lead (whoever holds the plan). Wh
 ## 6. How to work
 
 - **Know your seat.** If you are a sub-agent, you execute task packets (ORCHESTRATION.md): implement exactly the packet, run the acceptance command, report per §5 there — never commit, never edit the register or spec docs, and stop to report when anything is ambiguous. If you are the orchestrator, you own decomposition, packets, review gates, merges, shared files, and the register.
-- **Don't re-litigate decided items** (D1–D53). If reality contradicts a decision, draft a new register row and surface it:
+- **Don't re-litigate decided items** (D1–D59). If reality contradicts a decision, draft a new register row and surface it:
   `| D<n> | **Title (source).** One-paragraph decision. |` — appended to EXECUTION-PLAN.md under a new round heading, with PRODUCT.md / CORE.md updated in the same change.
 - **Docs are the spec.** Any behavior change updates PRODUCT.md and/or CORE.md in the same commit — documentation drift is a defect.
 - **Ponytail ethos:** standard library and library built-ins before custom code; brute force before cleverness at these scales; delete speculation. Editor scope stays fenced (F46: no undo/multi-select/snapping). No new dependency without a register entry justifying it.
 - **Degrade, never throw** on generation-time paths (C32).
 - Console discipline: consistent `[TravelMapper]` prefix, no spam in production paths.
-- **Host-verification gotchas (learned at the M0 gate):** local ST serves HTTPS with a self-signed cert — browser checks need cert-ignore (playwright `ignoreHTTPSErrors: true`; the in-app browser cannot do it). `APP_READY` fires late on a cold cache: wait ~10s before DOM assertions or you get false negatives. Fresh builds must be re-copied to the deploy target before reloading.
+- **Host-verification gotchas (learned at the M0 gate):** local ST serves plain HTTP on `http://localhost:8000` (owner disabled SSL — no cert handling needed in browser checks). `APP_READY` fires late on a cold cache: wait ~10s before DOM assertions or you get false negatives. Fresh builds must be re-copied to the deploy target before reloading.
 
 ## 7. Tooling, skills & MCP
 
@@ -96,7 +95,7 @@ Rules:
 
 | Layer | Bar |
 |---|---|
-| Core | `vitest` green in bare Node, zero DOM; new core logic ships with tests citing C/F/FX IDs |
+| Core | `vitest` green in bare Node, zero DOM — unit suites plus the merged `tests/verify/**` adversarial suites (D51); new core logic ships with tests citing C/F/FX IDs |
 | UI | dev harness serves; interaction changes ship playwright e2e specs, including a phone-viewport run with touch emulation (D53/F52) |
 | Integration | manual + playwright against a local SillyTavern before phase exit, including one mobile-viewport pass (D53) |
 | Build | single-file bundle within the 1.5 MB budget; clean host console on load |

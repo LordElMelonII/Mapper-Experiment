@@ -2,7 +2,7 @@
 name: "ui-editor"
 description: "Agent B — UI, Visualization & Editor implementer. Executes task packets in src/app (map viewer, layer/background experience, routing panels, visual editor), styles, dev harness, and e2e tests."
 color: yellow
-model: "account:zai-individual-coding-plan/GLM-5.3-Flash"
+model: "account:zai-start-plan/GLM-5.3-Flash"
 thoughtLevel: max
 injectAgentsMd: true
 ---

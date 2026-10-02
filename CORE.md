@@ -1,7 +1,7 @@
 # CORE.md — Engine Conventions & the Business-Logic Boundary
 
-**Status:** R10 · Normative for the core engine (`src/core`) and the service facade
-**Companions:** `PRODUCT.md` (feature catalogue) · `EXECUTION-PLAN.md` (architecture & decisions D10–D53)
+**Status:** R12 · Normative for the core engine (`src/core`) and the service facade
+**Companions:** `PRODUCT.md` (feature catalogue) · `EXECUTION-PLAN.md` (architecture & decisions D10–D59)
 **Rule of this document:** defines *how the engine computes and what it owns*, so the numbers are trustworthy and the logic stays independent of any UI, framework, or host. Convention IDs (C-numbers) are cited by tests and code comments; they deliberately continue the C1–C3 numbering first used in EXECUTION-PLAN.md.
 
 ---
@@ -33,7 +33,7 @@ All queries (routing, snapshot, template rendering) run against the **effective 
 
 ## 3. Graph & structure conventions
 
-- **C1 — Leaf-to-leaf.** Arcs terminate on leaf nodes only. Containers (districts, cities) organize and label; they never connect and never hold the pin.
+- **C1 — Leaf-to-leaf.** Arcs terminate on leaf nodes only. Containers (districts, cities) organize and label; they never connect and never hold the pin. (D58: pin eligibility is *kind*-based — only `location`, `hub`, `waypoint`, and currently childless — while arc endpoints are *parent*-based per §6.2's "compound parents".)
 - **C2 — Blocked ≠ hidden.** A blocked arc is excluded from routing (infinite cost) but remains in the snapshot with its reason, so the LLM knows *why* a route is unavailable.
 - **C3 — Cross-layer arcs are ordinary arcs** whose endpoints happen to live on different layers. No special routing semantics; the frontend renders them as badges at their endpoints.
 - **C4 — The graph is the author's truth.** The core never invents connections: no implicit adjacency, no obstacle inference, no "these two are close so connect them". Chokepoints (bridges, mountain passes) are nodes the author creates (D43).
@@ -98,6 +98,8 @@ All queries (routing, snapshot, template rendering) run against the **effective 
 - **C32 — Degrade, never throw.** Any core failure on a generation-time path yields an empty or stale snapshot, not an exception. The host's generation must never be endangered by the map.
 - **C33 — Completeness of cleanup.** Disable/uninstall paths remove listeners, storage keys, and assets without residue.
 
+**Validator/load seam (D58):** `validateOverlay` enforces pin eligibility strictly by default; `loadMap` passes `tolerateIneligiblePin` because the pin is chat state a live library edit can invalidate at any moment (C27) — load neither refuses nor snaps. `buildEffectiveGraph` marks an ineligible pin `valid: false` and `setCurrentLocation` throws; those two carry the runtime enforcement.
+
 ---
 
 ## 9. The separation contract (core vs frontend vs host)
@@ -135,7 +137,7 @@ Anything the frontend or host needs beyond this list is a core design gap, not a
 ## 10. Test fixtures & acceptance (normative)
 
 - **FX1 — Fuyuki/Misaki two-layer fixture.** Derived from `Notes for locations.md`: 13 locations, districts, a cross-layer station arc, one blocked-bridge sample. Canonical unit: time (minutes), matching the legacy table.
-- **FX2 — Emiya → Misaki.** Expected route: Emiya Residence → Fuyuki Station → Shinto Station (train). The owner's stated acceptance case.
-- **FX3 — Legacy regression.** Derived values within ±20% of the original lookup table across its pairs.
+- **FX2 — Emiya → Misaki.** Expected route: Emiya Residence → Fuyuki Station → Misaki Town (walk 50 min, then train 5h). The owner's stated acceptance case; wording normalized to the FX1 dataset per D54 — the Fuyuki material is a demo, not canon.
+- **FX3 — Legacy regression.** Derived values within ±20% of the original lookup table across its pairs. Enforced at M3 against MDS-importer-seeded maps (D55); the hand-authored FX1 fixture is held to plausible geography plus FX2, not to FX3.
 - **FX4 — Template snapshots.** Default XML template plus one markdown variant, golden-file tested.
 - **FX5 — Precedence matrix.** Every row of C14 exercised by a unit test, including blocked, disallowed-mode, authored-time, authored-distance, terrain, and no-speeds cases.
