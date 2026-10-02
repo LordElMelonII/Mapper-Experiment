@@ -1,6 +1,6 @@
 # AGENTS.md — Binding Brief for All Agents
 
-**Read this first.** Every agent — lead or sub — working in this repository reads AGENTS.md before touching anything, then the documents its role requires. Charters for the three sub-agents live in `agents/`.
+**Read this first.** Every agent — lead or sub — working in this repository reads AGENTS.md before touching anything, then the documents its role requires. Charters for the three sub-agents live in `.zcode/agents/`.
 
 ---
 
@@ -21,6 +21,17 @@ Travel & Map Explorer: a SillyTavern extension that replaces static distance loo
 
 ID scheme: **D** = decisions (why) · **F** = features (what) · **C** = engine conventions · **R** = separation rules · **FX** = test fixtures. Cite IDs in code comments, tests, and commits; never restate a rule inline when an ID exists.
 
+### Commands (canonical)
+
+| Command | Purpose |
+|---|---|
+| `npm run verify` | typecheck (app+spec) + `scripts/lint-boundaries.mjs` + vitest — the per-packet acceptance command |
+| `npm run build:extension` | full bundle → `dist/extension/` (single ESM, enforces the 1.5 MB min+gz budget, copies manifest) |
+| `npx ng build -c extension` | Angular build only (no merge pass) |
+| `npx ng serve` | dev harness (Agent B owns; shared server, reuse the port) |
+
+Deploy target: `SillyTavern/public/scripts/extensions/third-party/travel-map-explorer/` (server: `https://localhost:8000`).
+
 ## 3. Non-negotiables (violations are defects, not style)
 
 1. **User authority** (D10): nothing moves the pin, blocks a generation (D30/F47), or auto-applies without the user.
@@ -33,7 +44,7 @@ ID scheme: **D** = decisions (why) · **F** = features (what) · **C** = engine 
 
 ## 4. Repo status & phase discipline
 
-- **Status:** pre-implementation. Planning is complete (R1–R5); `src/` does not exist yet — it is created at M0.
+- **Status:** Task 0 + M0 done — Angular 22 zoneless workspace at repo root; contract freeze in force (`src/core/api.ts` + `src/core/facade.ts` per CORE.md §9). The walking skeleton loads in local ST 1.19.0 (bundle ≤ 1.5 MB, zero zone.js, clean console). Phase 1 engine work (M1+) is unblocked.
 - **M0 (walking skeleton) gates all parallel work.** It proves the bundle loads inside SillyTavern before anything depends on it.
 - **Parallel work starts only after the contract freeze:** `src/core/api.ts` types + the CORE.md §9 facade. Agents code against the frozen contract, never against each other's working trees.
 - Current milestone, phase gates, and acceptance criteria live in EXECUTION-PLAN §5. Check them before starting any task.
@@ -60,6 +71,7 @@ Cross-cutting or unclear ownership goes to the Lead (whoever holds the plan). Wh
 - **Ponytail ethos:** standard library and library built-ins before custom code; brute force before cleverness at these scales; delete speculation. Editor scope stays fenced (F46: no undo/multi-select/snapping). No new dependency without a register entry justifying it.
 - **Degrade, never throw** on generation-time paths (C32).
 - Console discipline: consistent `[TravelMapper]` prefix, no spam in production paths.
+- **Host-verification gotchas (learned at the M0 gate):** local ST serves HTTPS with a self-signed cert — browser checks need cert-ignore (playwright `ignoreHTTPSErrors: true`; the in-app browser cannot do it). `APP_READY` fires late on a cold cache: wait ~10s before DOM assertions or you get false negatives. Fresh builds must be re-copied to the deploy target before reloading.
 
 ## 7. Tooling, skills & MCP
 

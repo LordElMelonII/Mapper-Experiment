@@ -1,7 +1,7 @@
 # Travel & Map Visualization Extension — Execution Plan
 
 **Role:** Lead Software Architect & Project Planner
-**Status:** R8 — decisions D10–D51 · PRODUCT.md (features) · CORE.md (conventions) · AGENTS.md + .zcode/agents/ (spawnable charters A–D) · ORCHESTRATION.md (delegation + phase gates)
+**Status:** R9 — decisions D10–D52 · PRODUCT.md (features) · CORE.md (conventions) · AGENTS.md + .zcode/agents/ (spawnable charters A–D) · ORCHESTRATION.md (delegation + phase gates) · **Task 0 done:** Angular 22 zoneless workspace scaffolded, `src/core/api.ts` + facade stubs frozen (CORE.md §9), `npm run verify` (typecheck + boundary lint + vitest) green. **M0 walking skeleton done (reviewed + independently reproduced by orchestrator):** `st-map-explorer` custom element loads in local ST 1.19.0 over https://localhost:8000, bundle 35.2 KB min+gz (budget 1.5 MB), zero zone.js, host console clean — D1/D2/D8 proven. Next: commit checkpoint, then M1 (model & data) A-packets.
 **Source inputs:** `st-extension-docs/extensions.md` (ST extension API), `Notes for locations.md` (spatial spec + Fuyuki dataset), `README.md` (placeholder — real README is a Phase 4 deliverable).
 
 ---
@@ -120,6 +120,12 @@ Single source of truth for product behavior. **D1–D9** are stack decisions fro
 | # | Decision |
 |---|----------|
 | D51 | **Testing is two jobs, split deliberately.** (1) *Tests as acceptance* stay with the implementers — FX fixtures are normative and packets close on commands passing, so per-packet test authorship is load-bearing. (2) *Independent verification* is a dedicated **Verifier agent (D)**, `.zcode/agents/verifier.md`: dispatched only at phase gates (ORCHESTRATION.md §11), derives expectations from spec citations alone — never implementer claims — writes only to `tests/verify/**` (merged afterward as regression protection), and reports findings with severity instead of fixing. Mitigates cheap-model self-confirmation bias (a misread convention would otherwise be encoded in the implementer's own tests). |
+
+### R9 addition — workspace scaffold (D52)
+
+| # | Decision |
+|---|----------|
+| D52 | **Angular 22.2 workspace at repo root, zoneless, strict; `@angular/elements@22.2.1` is the sole dependency addition.** Task 0 scaffold: no `zone.js` in the dependency tree (D2 is native in Angular ≥21); `"strict": true` added to `tsconfig.json`; R5 + layering enforced by `scripts/lint-boundaries.mjs` (zero-dep Node script — no ESLint toolchain, per ponytail ethos) wired into `npm run verify` = typecheck (app + spec projects) + boundary lint + vitest (Node environment, bare DOM-free). `@angular/elements` justified: D1's custom-element bridge has no alternative entry (`createCustomElement`); verified against installed type declarations. |
 
 ---
 

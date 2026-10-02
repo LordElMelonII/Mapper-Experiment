@@ -71,7 +71,7 @@ QUESTIONS: none | list
 ## 7. Parallelism & file safety
 
 - Ownership directories (`src/core`, `src/app`, `src/st`, `tests/`, `data/`) make parallel dispatch *mostly* safe.
-- **Orchestrator-only files:** `package.json`, workspace/build configs, tsconfig, lint rules, `manifest.json`, `scripts/`, all root docs (`*.md`, `agents/`). A packet needing a change there flags it in QUESTIONS.
+- **Orchestrator-only files:** `package.json`, workspace/build configs, tsconfig, lint rules, `manifest.json`, `scripts/`, all root docs (`*.md`, `.zcode/agents/`). A packet needing a change there flags it in QUESTIONS.
 - When in doubt, sequence. Correctness beats wall-clock, and reviews can be batched to save orchestrator cost.
 
 ## 8. Cheap-model failure modes → mandated mitigations

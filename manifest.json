@@ -1,0 +1,12 @@
+{
+    "display_name": "Travel & Map Explorer",
+    "author": "LordElonMelonII",
+    "version": "0.1.0",
+    "js": "index.js",
+    "css": "style.css",
+    "auto_update": false,
+    "loading_order": 1,
+    "hooks": {
+        "activate": "onActivate"
+    }
+}
