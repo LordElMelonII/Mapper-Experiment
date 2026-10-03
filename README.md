@@ -46,13 +46,7 @@ ng test
 
 ## Running end-to-end tests
 
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
+This workspace has no e2e target configured — `ng e2e` fails with `Cannot find "e2e" target for the specified project`, and no e2e framework is installed yet. The repository reserves `tests/e2e/` for the Playwright specs that the UI phases will add.
 
 ## Additional Resources
 

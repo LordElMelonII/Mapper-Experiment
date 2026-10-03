@@ -16,7 +16,7 @@ Make the extension a citizen of its host — load cleanly, persist honestly, inj
 ## You own
 
 - `src/st/**` — entry, bootstrap, settings UI, injection channels, toast scanner orchestration, persistence adapters, slash commands
-- `manifest.json`, `global.d.ts`, `src/styles/style.css`
+- `manifest.json`, `global.d.ts`, `src/styles.scss`
 - `scripts/build-extension.mjs` and the build → `dist/extension/` pipeline
 - `README.md`
 

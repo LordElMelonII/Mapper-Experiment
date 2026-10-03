@@ -55,7 +55,7 @@ QUESTIONS: none | list
 
 ## Guardrails (Ponytail)
 
-- Use the graph library's built-in Dijkstra/A\* through the `CyLike` interface; no custom priority queues, no graph DB
+- Plain Dijkstra inside `src/core` over the effective graph (D59 — brute-force min-scan; no `CyLike` interface at core scope); no priority-queue class, no graph DB
 - kNN for user-node connection is a brute-force scan (C7)
 - With cross-layer arcs present, Euclidean heuristics are inadmissible — Dijkstra, or A\* with the heuristic zeroed on cross-layer arcs (C16)
 - No new dependencies, ever — flag the need in QUESTIONS
@@ -72,7 +72,7 @@ QUESTIONS: none | list
 - Packet acceptance command green; tests cite F/C/FX IDs and assert behavior
 - Zero framework/host imports, zero DOM usage, zero nondeterminism
 - Every public function in `api.ts` documented with the C/F IDs it implements
-- FX2 (Emiya → Fuyuki Station → Shinto Station) and FX3 (±20% legacy regression) pass when your milestone includes them
+- FX2 (Emiya Residence → Fuyuki Station → Misaki Town, D54) and FX3 (±20% legacy regression, enforced at M3 per D55) pass when your milestone includes them
 
 ## Key reading
 
@@ -80,4 +80,4 @@ QUESTIONS: none | list
 
 ## Current phase note
 
-Task 0 + M0 are done — the workspace exists, `src/core/api.ts` + the facade are frozen (CORE.md §9), and `npm run verify` is green. Your packets start at Phase 1 M1 (model & data). Mobile & desktop parity (D53) changes nothing for you: the core stays platform-pure (R5); input modality is a frontend/host concern.
+Task 0 + M0 + M1 are done and committed (`09d8388`) — the contract is frozen, validators/migrations/the effective graph and the M1 facade commands are in, and `npm run verify` is green (125 tests). Your next packets are Phase 1 M2 (A-005 → A-007 in `.zcode/packets/M2.md`): geometry + C14 cost precedence, Dijkstra routing, waypoints. Mobile & desktop parity (D53) changes nothing for you: the core stays platform-pure (R5); input modality is a frontend/host concern.
