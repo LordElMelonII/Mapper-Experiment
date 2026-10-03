@@ -31,7 +31,9 @@ const overlayFor = (map: WorldMapData, pin: string | null, extra: Partial<ChatMa
   ...extra,
 });
 
-const neverRoute = (): RouteResult => ({ ok: false, total: 0, legs: [] });
+// D72: ok:false stub — buildSnapshot reads only ok/total/legs, so the label is
+// inert at this seam; a fixed canonical-style label keeps the literal honest.
+const neverRoute = (): RouteResult => ({ ok: false, total: 0, legs: [], unit: 'km' });
 
 // The facade's getSnapshot recipe (facade.ts, D65): price at ONE currency with
 // the block stripped (C2 — the ∞ sentinel never surfaces, C17); honest on a
@@ -283,18 +285,19 @@ describe('buildSnapshot — C20/D25 destinations', () => {
     const overlay = overlayFor(m, 'p');
     const routes: Record<string, RouteResult> = {
       // single leg: via is the hub itself; cost 20
-      h1: { ok: true, total: 20, legs: [{ arcId: 'a1', from: 'p', to: 'h1', mode: 'walk', cost: 20 }] },
+      h1: { ok: true, total: 20, legs: [{ arcId: 'a1', from: 'p', to: 'h1', mode: 'walk', cost: 20 }], unit: 'min' }, // D72 — destinationMap's canonical label
       // two legs: via/mode from the FIRST leg only
       h5: {
         ok: true,
         total: 10,
+        unit: 'min', // D72
         legs: [
           { arcId: 'a5', from: 'p', to: 'mid', mode: 'car', cost: 2 },
           { arcId: 'a6', from: 'mid', to: 'h5', mode: 'train', cost: 8 },
         ],
       },
       // single leg, cost 5 — sorts first
-      h4: { ok: true, total: 5, legs: [{ arcId: 'a4', from: 'p', to: 'h4', mode: 'car', cost: 5 }] },
+      h4: { ok: true, total: 5, legs: [{ arcId: 'a4', from: 'p', to: 'h4', mode: 'car', cost: 5 }], unit: 'min' }, // D72
     };
     const routeTo = (id: string): RouteResult => routes[id] ?? neverRoute(); // unrouted hubs ⇒ ok:false ⇒ dropped
     const snap = build(m, overlay, () => null, routeTo);
@@ -313,7 +316,7 @@ describe('buildSnapshot — C20/D25 destinations', () => {
       m,
       overlay,
       () => null,
-      (id) => (id === 'h1' ? { ok: false, total: 0, legs: [], reason: 'no path connects' } : neverRoute()),
+      (id) => (id === 'h1' ? { ok: false, total: 0, legs: [], reason: 'no path connects', unit: 'min' } : neverRoute()), // D72
     );
     expect(snap.destinations).toEqual([]); // h1 unreachable, the rest never routed (neverRoute ⇒ ok:false)
   });
@@ -330,6 +333,7 @@ describe('buildSnapshot — C20/D25 destinations', () => {
       () => ({
         ok: true,
         total: 30,
+        unit: 'min', // D72
         legs: [
           { arcId: 'a2', from: 'p', to: 'wp-9', mode: 'walk', cost: 10 },
           { arcId: 'a3', from: 'wp-9', to: 'h2', mode: 'train', cost: 20 },
@@ -351,7 +355,7 @@ describe('buildSnapshot — C20/D25 destinations', () => {
       () => null,
       (id) => {
         if (id === 'p' || id === 'wp-h') throw new Error(`routeTo must not be called for '${id}'`);
-        return { ok: true, total: 7, legs: [{ arcId: 'a', from: 'p', to: id, mode: 'walk', cost: 7 }] };
+        return { ok: true, total: 7, legs: [{ arcId: 'a', from: 'p', to: id, mode: 'walk', cost: 7 }], unit: 'min' }; // D72
       },
     );
     // h1..h5 all routed at 7 — no entry for the pin, none for the unnamed hub
@@ -400,6 +404,7 @@ describe('buildSnapshot — C20 cap (DESTINATIONS_CAP = 12, truncation marked, D
       (id) => ({
         ok: true,
         total: Number(id.slice(1)) + 1,
+        unit: 'min', // D72
         legs: [{ arcId: `e-${id}`, from: 'p', to: id, mode: 'walk', cost: Number(id.slice(1)) + 1 }],
       }),
     );
@@ -417,6 +422,7 @@ describe('buildSnapshot — C20 cap (DESTINATIONS_CAP = 12, truncation marked, D
       (id) => ({
         ok: true,
         total: Number(id.slice(1)) + 1,
+        unit: 'min', // D72
         legs: [{ arcId: `e-${id}`, from: 'p', to: id, mode: 'walk', cost: Number(id.slice(1)) + 1 }],
       }),
     );

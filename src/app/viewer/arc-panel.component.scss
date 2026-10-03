@@ -1,0 +1,140 @@
+// PKG B-106 — component-scoped chrome only (D7: zero global leakage; the
+// graph's visual language is GRAPH_STYLESHEET data in graph.service.ts). The
+// host element is sized by the map viewer's flex layout (a third region,
+// beside the route panel on wide viewports / under it on narrow ones); here
+// it only guarantees its own content never forces horizontal overflow (D53)
+// and scrolls its own overflow vertically.
+:host {
+  display: block;
+  min-width: 0; // never propagate content width into the flex layout (D53)
+  box-sizing: border-box;
+  padding: 0.75rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: #e6ebf2;
+  font:
+    400 0.875rem/1.5 system-ui,
+    -apple-system,
+    sans-serif;
+}
+
+.tme-title {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.tme-endpoints {
+  margin: 0 0 0.375rem;
+  font-weight: 600;
+}
+
+.tme-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin: 0 0 0.5rem;
+}
+
+.tme-mode-word {
+  padding: 0.125rem 0.5rem;
+  border: 1px solid rgba(174, 189, 211, 0.4);
+  border-radius: 999px;
+  color: #c7d0dd;
+}
+
+// C2: the blocked row — the red key matches the canvas's dashed tme-blocked
+// line; the reason is verbatim authored/overlay text.
+.tme-blocked {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.375rem;
+  margin: 0 0 0.625rem;
+}
+
+.tme-blocked-tag {
+  font-weight: 700;
+  color: #e08a84;
+}
+
+.tme-blocked-reason {
+  color: #9aa7b8;
+}
+
+.tme-open {
+  margin: 0 0 0.625rem;
+  color: #9aa7b8;
+}
+
+.tme-field-label {
+  display: block;
+  margin: 0 0 0.25rem;
+  color: #c7d0dd;
+  font-size: 0.8125rem;
+}
+
+.tme-reason-input {
+  display: block;
+  box-sizing: border-box; // padding never forces horizontal scroll (D53)
+  width: 100%;
+  min-height: 44px; // F52: >= 44px tap target
+  margin: 0 0 0.5rem;
+  padding: 0 0.625rem;
+  border: 1px solid rgba(174, 189, 211, 0.4);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #e6ebf2;
+  // 16px: iOS Safari never focus-zooms a >= 16px input font (D53 — a focus
+  // zoom would scroll the host page and break the no-horizontal-scroll bar).
+  font:
+    400 1rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+.tme-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tme-button {
+  min-width: 44px; // F52: >= 44px tap targets, touch-only parity
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+.tme-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.tme-block-button {
+  border-color: rgba(201, 86, 78, 0.7);
+  color: #e08a84;
+}
+
+.tme-block-button:disabled {
+  border-color: rgba(201, 86, 78, 0.35);
+}
+
+// D20 made visible: the static note under a disabled Lift — why the chat
+// cannot lift a library-level block.
+.tme-authored-note {
+  margin: 0;
+  color: #9aa7b8;
+  font-size: 0.8125rem;
+}

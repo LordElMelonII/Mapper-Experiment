@@ -58,7 +58,7 @@ All queries (routing, snapshot, template rendering) run against the **effective 
   4. authored distance → converted via the mode's speed (when speeds are defined)
   5. geometric distance × scale × terrain multiplier → converted via speed when defined
   6. no speeds defined anywhere → cost is denominated in canonical units; routing optimizes by distance and every label says so
-- **C15 — Routing currency.** Minutes whenever time is derivable; otherwise canonical units. One currency per route computation — costs are never mixed within a route. (Enforced at the `findRoute` seam per D60: minutes-first, whole-computation canonical fallback, cross-currency modes unroutable in a run. At the snapshot seam per D65: one currency per **snapshot** — minutes only when at least one live incident arc exists and all price in minutes; blocked arcs are currency-neutral and always listed (C2); hub destinations run currency-forced, and a hub with no in-currency route drops like a cross-currency arc.)
+- **C15 — Routing currency.** Minutes whenever time is derivable; otherwise canonical units. One currency per route computation — costs are never mixed within a route. (Enforced at the `findRoute` seam per D60: minutes-first, whole-computation canonical fallback, cross-currency modes unroutable in a run; the run's currency is stated in `RouteResult.unit` — D72. At the snapshot seam per D65: one currency per **snapshot** — minutes only when at least one live incident arc exists and all price in minutes; blocked arcs are currency-neutral and always listed (C2); hub destinations run currency-forced, and a hub with no in-currency route drops like a cross-currency arc.)
 
 ---
 
@@ -66,7 +66,7 @@ All queries (routing, snapshot, template rendering) run against the **effective 
 
 - **C16 — Optimality.** Route results must be optimal for the active cost function. Because cross-layer arcs have no meaningful geometry, Euclidean heuristics are inadmissible when they exist: use plain Dijkstra, or A\* with the heuristic zeroed on cross-layer arcs.
 - **C17 — Unreachability.** No finite path ⇒ `ok: false` plus a human-readable reason (disconnected, or all candidate arcs blocked/disallowed). The value ∞ never appears in any output.
-- **C18 — Route shape.** `{ ok, total, legs[] }`; each leg carries arc id, from, to, mode, cost, and optional blocked/detour reason. Legs are the unit of UI display and of template loops.
+- **C18 — Route shape.** `{ ok, total, legs[], unit }`; each leg carries arc id, from, to, mode, cost, and optional blocked/detour reason; `unit` is the currency the total/legs are stated in — `'min'` when the run priced minutes, else `scale.unitLabel`, the same rule `MapSnapshot.unit` follows (D72; deterministic on every branch, `ok:false` included). Legs are the unit of UI display and of template loops.
 
 ---
 

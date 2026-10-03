@@ -1,0 +1,107 @@
+// PKG B-105 — component-scoped chrome only (D7: zero global leakage; graph
+// visual language stays GRAPH_STYLESHEET data in graph.service.ts). The host
+// element is sized by the map viewer's flex layout; here it only guarantees
+// its own content never forces horizontal overflow (D53) and scrolls its own
+// overflow vertically.
+:host {
+  display: block;
+  min-width: 0; // never propagate content width into the flex row (D53)
+  box-sizing: border-box;
+  padding: 0.75rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: #e6ebf2;
+  font:
+    400 0.875rem/1.5 system-ui,
+    -apple-system,
+    sans-serif;
+}
+
+.tme-title {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.tme-target {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+
+.tme-state {
+  margin: 0 0 0.75rem;
+  color: #c7d0dd;
+}
+
+// C18: one row per leg, order preserved.
+.tme-legs {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  list-style: none;
+  color: #c7d0dd;
+}
+
+// C15/D72: the unit appears exactly once — on the total line, accented.
+.tme-total {
+  margin: 0 0 0.75rem;
+  font-weight: 700;
+  color: #ffd166;
+}
+
+// Ruling 3: the mode switch — three buttons, each a >= 44px tap target
+// (F52/D53), touch-action: manipulation so double-taps never zoom the chrome
+// (§6.2). No hover-only affordances: active state is signal-driven, visible.
+.tme-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+}
+
+.tme-mode {
+  min-width: 44px; // F52
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+.tme-mode.tme-active {
+  border-color: #ffd166;
+  color: #ffd166;
+}
+
+// C2: blocked arcs are never hidden — mirrored here as panel rows with their
+// reason verbatim; the red key matches the canvas's dashed tme-blocked line.
+.tme-blocked-title {
+  margin: 0 0 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #e08a84;
+}
+
+.tme-blocked-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.375rem;
+  margin: 0;
+  color: #c7d0dd;
+}
+
+.tme-blocked-sep {
+  opacity: 0.55;
+}
+
+.tme-blocked-reason {
+  color: #9aa7b8;
+}

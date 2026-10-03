@@ -289,7 +289,7 @@ describe('findRoute / setBlocked argument discipline (C30)', () => {
 
   it('route-to-self is trivially ok — pinned shape (§6.2)', () => {
     const { f } = loadFuyuki();
-    expect(f.findRoute('emiya-residence', 'emiya-residence')).toEqual({ ok: true, total: 0, legs: [] });
+    expect(f.findRoute('emiya-residence', 'emiya-residence')).toEqual({ ok: true, total: 0, legs: [], unit: 'min' }); // D72 — FX1's canonical label (route-to-self runs nothing)
   });
 
   it('no map loaded ⇒ both commands throw the standard message', () => {
@@ -301,5 +301,19 @@ describe('findRoute / setBlocked argument discipline (C30)', () => {
   it('setBlocked on an unknown edge throws field-precisely (C30)', () => {
     const { f } = loadFuyuki();
     expect(() => f.setBlocked('arc-ghost', 'reason')).toThrow(/unknown edge id 'arc-ghost'/);
+  });
+
+  it('setBlocked refuses a whitespace-only reason like an empty one, stores valid strings verbatim (C30, P2 M2 verifier finding 3)', () => {
+    const { f } = loadFuyuki();
+    expect(() => f.setBlocked('arc-outskirts-einzbern-castle', '   ')).toThrow(
+      /reason must be a non-empty string or undefined/,
+    );
+    expect(() => f.setBlocked('arc-outskirts-einzbern-castle', '\t\n')).toThrow(
+      /reason must be a non-empty string or undefined/,
+    );
+    // Valid strings persist verbatim, untrimmed — the reason is the author's payload (C2).
+    f.setBlocked('arc-outskirts-einzbern-castle', '  Rockslide  ');
+    const { overlay } = facadeStateOf(f);
+    expect(overlay?.blocked['arc-outskirts-einzbern-castle']).toBe('  Rockslide  ');
   });
 });

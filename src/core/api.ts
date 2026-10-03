@@ -98,6 +98,7 @@ export interface RouteResult {
   total: number;
   legs: RouteLeg[];
   reason?: string;
+  unit: string;                        // the currency the total/legs costs are stated in — 'min' when minutes, else scale.unitLabel (D72; same rule as MapSnapshot.unit)
 }
 
 // Snapshot shape (C19–C22): plain serializable data; template variables per

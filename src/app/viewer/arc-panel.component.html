@@ -1,0 +1,76 @@
+<!-- PKG B-106 (ruling 3) — the arc panel: endpoints/modes/blocked state off
+     ArcInfo (authored + overlay data, verbatim — R1/R4) and the chat-scoped
+     blocked toggle (F14/C2/D20). Rendered by the viewer only while an edge is
+     selected (ruling 1); every control >= 44px, no hover affordances
+     (F52/D53). -->
+<section class="tme-arc" data-testid="tme-arc-panel" aria-label="Arc">
+  <h2 class="tme-title">Arc</h2>
+
+  @if (arc(); as info) {
+    <!-- Endpoints in AUTHORED order (source ↔ target) — labels via labelOf,
+         authored strings, never ids. -->
+    <p class="tme-endpoints" data-testid="tme-arc-endpoints">{{ info.sourceLabel }} ↔ {{ info.targetLabel }}</p>
+
+    <!-- Allowed modes in authored key order — the authored mode words
+         themselves (display words, not UI logic). -->
+    <p class="tme-modes" data-testid="tme-arc-modes">
+      @for (mode of info.modes; track mode) {
+        <span class="tme-mode-word" [attr.data-testid]="'tme-arc-mode-' + mode">{{ mode }}</span>
+      }
+    </p>
+
+    @if (info.blockedReason !== null) {
+      <!-- C2/D20: blocked ≠ hidden — the reason is displayed verbatim (the
+           overlay's restated text when both exist, per the facade contract).
+           The dashed canvas line is the twin of this row. -->
+      <p class="tme-blocked" data-testid="tme-arc-blocked">
+        <span class="tme-blocked-tag">Blocked</span>
+        <span class="tme-blocked-reason" data-testid="tme-arc-blocked-reason">{{ info.blockedReason }}</span>
+      </p>
+    } @else {
+      <p class="tme-open" data-testid="tme-arc-open">Open</p>
+    }
+
+    <!-- The chat-scoped toggle: reason input + Block (F14). Controlled input —
+         [value] from the signal, (input) writes the signal (R3/D2). -->
+    <label class="tme-field-label" for="tme-arc-reason-input">Reason</label>
+    <input
+      id="tme-arc-reason-input"
+      class="tme-reason-input"
+      type="text"
+      autocomplete="off"
+      data-testid="tme-arc-reason-input"
+      [value]="reason()"
+      (input)="onReasonInput($event)"
+    />
+
+    <div class="tme-actions">
+      <!-- C30 honesty: Block is disabled while the trimmed reason is empty —
+           the facade stays the authority; the UI refuses to offer the throw. -->
+      <button
+        type="button"
+        class="tme-button tme-block-button"
+        data-testid="tme-arc-block"
+        [disabled]="!canBlock()"
+        (click)="block()"
+      >
+        Block
+      </button>
+
+      @if (info.overlay) {
+        <!-- An overlay block exists — the contract allows lifting (C2). -->
+        <button type="button" class="tme-button tme-lift-button" data-testid="tme-arc-lift" (click)="lift()">
+          Lift
+        </button>
+      } @else if (info.authored) {
+        <!-- D20/facade contract: the overlay can only ADD a block — a
+             library-level block survives the lift delete (a no-op there), so
+             Lift is visibly disabled with the reason why, never hidden. -->
+        <button type="button" class="tme-button tme-lift-button" data-testid="tme-arc-lift" disabled>Lift</button>
+        <p class="tme-authored-note" data-testid="tme-arc-authored-note">authored — the chat cannot lift it</p>
+      }
+      <!-- No block at all: no Lift row — nothing to lift (ruling 3: "Lift
+           shown when an OVERLAY block exists"). -->
+    </div>
+  }
+</section>

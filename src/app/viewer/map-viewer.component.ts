@@ -1,8 +1,12 @@
-// src/app/viewer/map-viewer.component.ts — PKG B-102. The M1 viewer: canvas
-// host for the GraphService's cy instance (D3), per-layer background beneath
-// it (F03/D29/D69), snapshot header line (R1 — verbatim core strings) and the
-// layer switcher (F01/FX1). Zoneless + OnPush (D2): only signal writes reach
-// the template; the ResizeObserver fires outside Angular and touches none.
+// src/app/viewer/map-viewer.component.ts — PKG B-102, extended by B-105 (the
+// route panel joins the layout) and B-106 (the arc panel joins as a third
+// region — beside the route panel on wide viewports, under it on narrow
+// ones, rendered only while an edge is selected, ruling 1/3). The M1 viewer:
+// canvas host for the GraphService's cy instance (D3), per-layer background
+// beneath it (F03/D29/D69), snapshot header line (R1 — verbatim core
+// strings) and the layer switcher (F01/FX1). Zoneless + OnPush (D2): only
+// signal writes reach the template; the ResizeObserver fires outside Angular
+// and touches none.
 import {
   AfterViewInit,
   ChangeDetectionStrategy,
@@ -13,9 +17,12 @@ import {
   viewChild,
 } from '@angular/core';
 import { GraphService } from '../graph/graph.service';
+import { ArcPanelComponent } from './arc-panel.component';
+import { RoutePanelComponent } from './route-panel.component';
 
 @Component({
   selector: 'tme-map-viewer',
+  imports: [RoutePanelComponent, ArcPanelComponent],
   templateUrl: './map-viewer.component.html',
   styleUrl: './map-viewer.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -52,6 +59,6 @@ export class MapViewerComponent implements AfterViewInit, OnDestroy {
    * service's effect (R3).
    */
   protected dismissSelection(): void {
-    this.graph.selectedNode.set(null);
+    this.graph.selection.set(null);
   }
 }

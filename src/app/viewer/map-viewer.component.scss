@@ -1,5 +1,12 @@
 // PKG B-102 — component-scoped chrome only (D7: zero global leakage; the
 // graph's visual language is GRAPH_STYLESHEET data in graph.service.ts).
+// B-105 (ruling 5): the figure is now a flex LAYOUT — the map stage and the
+// route panel are its two regions: side by side on wide viewports, stacked
+// (canvas above, panel below) on narrow ones. Narrow is the DEFAULT so the
+// phone never depends on a media query resolving in time. B-106 (ruling 3):
+// the arc panel is a third region — beside the route panel when wide, under
+// it when narrow — with the same rules (internal scroll only, never the
+// page; D53).
 :host {
   display: block;
   width: 100%;
@@ -7,13 +14,74 @@
 }
 
 .tme-viewer {
-  position: relative;
+  display: flex;
+  flex-direction: column; // narrow default: the panel stacks BELOW the canvas
   margin: 0;
   width: 100%;
   height: 100%;
   min-height: 0;
+  background: #14171c;
+}
+
+// The map region: canvas + every M1 overlay (background, header, layers,
+// chip) positioned exactly as before, relative to this container — so the
+// per-layer background can never paint under the panel.
+.tme-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden; // never horizontal scroll at phone width (D53)
   background: #14171c;
+}
+
+// The route panel region (B-105): capped below half the height on narrow
+// viewports — the map stays the primary surface and the panel scrolls its own
+// overflow internally (route-panel.component.scss), never the page (D53).
+.tme-panel {
+  flex: 0 0 auto;
+  min-height: 0;
+  max-height: 45%;
+  border-top: 1px solid rgba(174, 189, 211, 0.25);
+}
+
+// B-106 (ruling 3): the arc panel region — beside the route panel on wide
+// viewports, under it on narrow ones (the SAME 700px breakpoint and flex
+// rules as .tme-panel). Rendered only while an edge is selected, so the map
+// never shares height with it until an arc is actually being managed; it
+// scrolls its own overflow internally (arc-panel.component.scss), never the
+// page (D53).
+.tme-arc-panel {
+  flex: 0 0 auto;
+  min-height: 0;
+  max-height: 38%;
+  border-top: 1px solid rgba(174, 189, 211, 0.25);
+}
+
+@media (min-width: 700px) {
+  // Wide: side by side. 700, not the ruling's ~600, so the existing
+  // orientation-change e2e (viewport.e2e-spec.ts: a 664px-landscape phone
+  // keeps the canvas wider than tall) stays green — a 320px panel beside a
+  // 664px canvas would invert that. Listed in this packet's DEVIATIONS.
+  .tme-viewer {
+    flex-direction: row;
+  }
+
+  .tme-panel {
+    flex: 0 0 20rem;
+    max-width: 40%; // ultra-narrow wide-mode windows never crush the stage
+    max-height: none;
+    border-top: none;
+    border-left: 1px solid rgba(174, 189, 211, 0.25);
+  }
+
+  .tme-arc-panel {
+    flex: 0 0 15rem;
+    max-width: 30%; // ultra-narrow wide-mode windows never crush the stage
+    max-height: none;
+    border-top: none;
+    border-left: 1px solid rgba(174, 189, 211, 0.25);
+  }
 }
 
 .tme-bg {

@@ -1,53 +1,74 @@
-<!-- PKG B-102 — the M1 map viewer (F01/F03/F07, D2/D3/D7, F52/D53). -->
+<!-- PKG B-102 — the M1 map viewer (F01/F03/F07, D2/D3/D7, F52/D53), extended
+     by B-105: the route panel joins as a sibling REGION of the map stage —
+     beside it on wide viewports, stacked below it on narrow ones (ruling 5).
+     B-106: the arc panel joins as a third region — beside the route panel on
+     wide viewports, under it on narrow ones (ruling 3) — and renders ONLY
+     while an edge is selected (ruling 1: mutually exclusive with the node
+     selection, so the two panels never fight for the same slot). -->
 <figure class="tme-viewer">
-  @if (graph.activeBackground(); as asset) {
-    <!-- F03/D29/D69: the active layer's background — fitted + centered
-         (object-fit contain letterboxes aspect mismatch), never interactive;
-         the node graph is always the interface on top. -->
-    <img class="tme-bg" data-testid="tme-bg" [src]="asset" alt="" />
-  }
+  <div class="tme-stage">
+    @if (graph.activeBackground(); as asset) {
+      <!-- F03/D29/D69: the active layer's background — fitted + centered
+           (object-fit contain letterboxes aspect mismatch), never interactive;
+           the node graph is always the interface on top. -->
+      <img class="tme-bg" data-testid="tme-bg" [src]="asset" alt="" />
+    }
 
-  <!-- D53/§6.2: touch-action: none lives in the SCSS on this host so canvas
-       gestures (tap, drag, pinch-zoom, pan) never scroll the host page. -->
-  <div #canvasHost class="tme-canvas" data-testid="tme-canvas" aria-label="Map canvas"></div>
+    <!-- D53/§6.2: touch-action: none lives in the SCSS on this host so canvas
+         gestures (tap, drag, pinch-zoom, pan) never scroll the host page. -->
+    <div #canvasHost class="tme-canvas" data-testid="tme-canvas" aria-label="Map canvas"></div>
 
-  <!-- R1: the header renders the snapshot's core strings verbatim — location,
-       the PIN's layer name (not the active viewer layer), and the snapshot's
-       cost unit. Degrades to empty strings when no snapshot exists (C32). -->
-  <header class="tme-header" data-testid="tme-header">
-    <span data-testid="tme-location">{{ graph.snapshot()?.location ?? '' }}</span>
-    <span class="tme-sep" aria-hidden="true">·</span>
-    <span data-testid="tme-snapshot-layer">{{ graph.snapshot()?.layer ?? '' }}</span>
-    <span class="tme-sep" aria-hidden="true">·</span>
-    <span data-testid="tme-unit">{{ graph.snapshot()?.unit ?? '' }}</span>
-  </header>
+    <!-- R1: the header renders the snapshot's core strings verbatim — location,
+         the PIN's layer name (not the active viewer layer), and the snapshot's
+         cost unit. Degrades to empty strings when no snapshot exists (C32). -->
+    <header class="tme-header" data-testid="tme-header">
+      <span data-testid="tme-location">{{ graph.snapshot()?.location ?? '' }}</span>
+      <span class="tme-sep" aria-hidden="true">·</span>
+      <span data-testid="tme-snapshot-layer">{{ graph.snapshot()?.layer ?? '' }}</span>
+      <span class="tme-sep" aria-hidden="true">·</span>
+      <span data-testid="tme-unit">{{ graph.snapshot()?.unit ?? '' }}</span>
+    </header>
 
-  <!-- F01/F02 (M1 scope): layer switcher only — the breadcrumb is F02's full
-       scope in Phase 3. One button per layer, >= 44px tap target (F52). -->
-  <nav class="tme-layers" aria-label="Map layers">
-    @for (layer of graph.layerNames(); track layer.id) {
-      <button
-        type="button"
-        class="tme-layer-button"
-        [class.tme-active]="layer.id === graph.activeLayer()"
-        [attr.data-testid]="'tme-layer-' + layer.id"
-        (click)="selectLayer(layer.id)"
-      >
-        {{ layer.name }}
+    <!-- F01/F02 (M1 scope): layer switcher only — the breadcrumb is F02's full
+         scope in Phase 3. One button per layer, >= 44px tap target (F52). -->
+    <nav class="tme-layers" aria-label="Map layers">
+      @for (layer of graph.layerNames(); track layer.id) {
+        <button
+          type="button"
+          class="tme-layer-button"
+          [class.tme-active]="layer.id === graph.activeLayer()"
+          [attr.data-testid]="'tme-layer-' + layer.id"
+          (click)="selectLayer(layer.id)"
+        >
+          {{ layer.name }}
+        </button>
+      }
+    </nav>
+
+    <!-- B-103 selection chip (D2/D53/F52): template-bound to the selection
+         signal — visible only while a node is selected. The whole chip is ONE
+         >= 44px tap target that dismisses the selection (the x is the visual
+         dismiss affordance), so touch alone needs no hover (F52/D53);
+         touch-action: manipulation in SCSS kills double-tap zoom on the chrome
+         (§6.2). -->
+    @if (graph.selection(); as sel) {
+      <button type="button" class="tme-chip" data-testid="tme-selection-chip" (click)="dismissSelection()">
+        <span data-testid="tme-selection-label">{{ sel.label }}</span>
+        <span class="tme-chip-dismiss" aria-hidden="true">×</span>
       </button>
     }
-  </nav>
+  </div>
 
-  <!-- B-103 selection chip (D2/D53/F52): template-bound to the selectedNode
-       signal — visible only while a node is selected. The whole chip is ONE
-       >= 44px tap target that dismisses the selection (the x is the visual
-       dismiss affordance), so touch alone needs no hover (F52/D53);
-       touch-action: manipulation in SCSS kills double-tap zoom on the chrome
-       (§6.2). -->
-  @if (graph.selectedNode(); as label) {
-    <button type="button" class="tme-chip" data-testid="tme-selection-chip" (click)="dismissSelection()">
-      <span data-testid="tme-selection-label">{{ label }}</span>
-      <span class="tme-chip-dismiss" aria-hidden="true">×</span>
-    </button>
+  <!-- B-105 (ruling 5): the route sidebar — beside the stage on wide
+       viewports, stacked below it on narrow ones (the SCSS owns which). -->
+  <tme-route-panel class="tme-panel" />
+
+  <!-- B-106 (rulings 1/3): the arc panel — beside the route panel on wide
+       viewports, under it on narrow ones; rendered only while an edge is
+       selected (an edge tap cleared the node selection, so the chip/route
+       target are already gone — the two panels never coexist on one
+       selection). -->
+  @if (graph.edgeSelection()) {
+    <tme-arc-panel class="tme-arc-panel" />
   }
 </figure>

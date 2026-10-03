@@ -212,6 +212,7 @@ describe('§6.2 — zero-distance nodes route at cost 0, not ∞ (§6.2, C14 row
       ok: true,
       total: 0,
       legs: [{ arcId: 'e-ab', from: 'a', to: 'b', mode: 'walk', cost: 0 }],
+      unit: 'km', // D72 — no authoredMinutes anywhere ⇒ the canonical fallback priced this run
     });
     expect(JSON.stringify(r)).not.toContain('Infinity'); // C17
   });

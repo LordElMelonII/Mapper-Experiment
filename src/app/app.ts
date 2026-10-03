@@ -17,6 +17,8 @@ interface TmeE2EHook {
   nodeRenderedBoundingBox(id: string): { x: number; y: number; w: number; h: number } | null;
   zoom(): number;
   pan(): { x: number; y: number };
+  /** B-107: one cross-layer badge's text by arc id, or null (C3/C10 pin). */
+  badgeText(arcId: string): string | null;
 }
 
 @Component({
@@ -76,6 +78,7 @@ export class App {
       nodeRenderedBoundingBox: (id: string) => this.graphService.testNodeRenderedBoundingBox(id),
       zoom: () => this.graphService.testZoom(),
       pan: () => this.graphService.testPan(),
+      badgeText: (arcId: string) => this.graphService.testBadgeText(arcId),
     };
   }
 }

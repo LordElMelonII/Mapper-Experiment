@@ -1,0 +1,70 @@
+<!-- PKG B-105 — the M2 route sidebar (C2, C15, C17, C18, C19, D19, D60(a),
+     D72, F32/F52, FX2). R1: every number, unit and reason below originates in
+     the core (facade snapshot / findRoute); the template only renders. -->
+<section class="tme-route" data-testid="tme-route-panel" aria-label="Route">
+  <h2 class="tme-title">Route</h2>
+
+  @if (graph.selection(); as sel) {
+    <!-- Target line: the pin's snapshot label → the tapped node's authored
+         label (core/authored strings, verbatim). -->
+    <p class="tme-target" data-testid="tme-target">{{ graph.snapshot()?.location ?? '' }} → {{ sel.label }}</p>
+
+    @if (graph.pinSelected()) {
+      <!-- Ruling 6: the selection IS the pin — a current-location state, no
+           route query, no numbers. -->
+      <p class="tme-state" data-testid="tme-current-location">Current location: {{ sel.label }}</p>
+    } @else if (graph.route(); as route) {
+      @if (route.ok) {
+        <!-- C18: legs are the unit of UI display — one row per leg, in order:
+             from-label → to-label · mode · cost (the cost NUMBER only; C15/D72
+             puts the unit on the total line, once). -->
+        <ol class="tme-legs" data-testid="tme-legs">
+          @for (leg of route.legs; track leg.arcId) {
+            <li data-testid="tme-leg">{{ graph.labelOf(leg.from) }} → {{ graph.labelOf(leg.to) }} · {{ leg.mode }} · {{ leg.cost }}</li>
+          }
+        </ol>
+        <p class="tme-total" data-testid="tme-total">{{ route.total }} {{ route.unit }}</p>
+      } @else {
+        <!-- C17/F24: unreachable ⇒ the core's human-readable reason, verbatim;
+             never a number, never ∞. -->
+        <p class="tme-state" data-testid="tme-unreachable">{{ route.reason }}</p>
+      }
+    }
+  } @else {
+    <p class="tme-state" data-testid="tme-hint">Tap a node on the map to route there from the pin.</p>
+  }
+
+  <!-- Ruling 3 (F32/D19): the travel-mode preference — three tappable modes,
+       no 'auto'. The active button mirrors the service signal; a tap goes
+       through the facade (R2) and the route computed re-prices (D60(a)). -->
+  <div class="tme-modes" role="group" aria-label="Travel mode preference">
+    @for (mode of modes; track mode.id) {
+      <button
+        type="button"
+        class="tme-mode"
+        [class.tme-active]="graph.travelMode() === mode.id"
+        [attr.aria-pressed]="graph.travelMode() === mode.id"
+        [attr.data-testid]="'tme-mode-' + mode.id"
+        (click)="setMode(mode.id)"
+      >
+        {{ mode.name }}
+      </button>
+    }
+  </div>
+
+  <!-- C2/C19 — the M1 deferral, discharged: every pin-incident blocked arc
+       with its authored/overlay reason, verbatim (never hidden, never a
+       number). D65(b): blocked arcs always list, currency-neutral. -->
+  @if (blockedHere().length > 0) {
+    <section class="tme-blocked" data-testid="tme-blocked" aria-label="Blocked here">
+      <h3 class="tme-blocked-title">Blocked here</h3>
+      @for (blocked of blockedHere(); track blocked.label) {
+        <p class="tme-blocked-item" data-testid="tme-blocked-item">
+          <span data-testid="tme-blocked-label">{{ blocked.label }}</span>
+          <span class="tme-blocked-sep" aria-hidden="true">—</span>
+          <span data-testid="tme-blocked-reason">{{ blocked.blockedReason }}</span>
+        </p>
+      }
+    </section>
+  }
+</section>

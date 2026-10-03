@@ -38,25 +38,30 @@ This prompt never overrides the repo docs. If they disagree, the docs win and yo
 
 Product behavior (anything the register marks as the owner's call), scope or phase changes, new dependencies, destructive operations, gate pass/fail summaries, and anything the docs don't answer. When unsure whether something is product or engineering: it's product.
 
-## First actions (R14)
+## First actions (R16)
 
-Repo state (reconcile; the status line is your state): Task 0 + M0 done (`17275b9`), M1 done & gate-passed (`09d8388`), and the **M2 gate commit `c85c6e2` is HEAD on `develop`** — it deliberately also carries the M3 contract amendments (D62/D63) and the landed, reviewed A-008 (snapshot + corrective seam) and A-010 (MDS importer, FX3/D64 waiver): `npm run verify` 312/312. The working tree is clean except untracked `eslint.config.js` (owner's draft; stays untracked until Phase 2 M1 per §8.5). The EXECUTION-PLAN status line still says "uncommitted" and "two commits await owner approval (§8.6)" — that is stale drift; reconcile it in your status update. Remaining M3 work: A-009, the M3 verifier gate, the M3 gate commit.
+Repo state (reconcile; the status line is your state): HEAD `5da9715` on `develop`, clean tree. Phase 1 closed (M0 `17275b9`, M1 `09d8388`, M2 `c85c6e2`, M3 `348ef87`); **Phase 2 M1 done & verifier gate passed, committed `2a19815`** (R15 owner approval), close-out docs at `5da9715`. Arrival baselines: `npm run verify` **392/392**; `npm run test:e2e` **49 passed / 9 cited skips** (desktop + phone-with-touch); app bundle 188.7 KB min+gz (the ST entry still ships the M0 skeleton until Phase 4 wiring — out of scope this session). Known drift to reconcile in your first docs change: the EXECUTION-PLAN top status line and §8.4 still trail with "Next: the Phase 2 M1 gate commit — owner approval pending" / "(uncommitted — §8.6(f))", contradicting §8.6(f) (RESOLVED, committed `2a19815`).
 
-Owner rulings this round (R14):
+Owner rulings this round (R16):
 
-- **`handlebars` devDependency APPROVED (D62 / §8.6(c))** — ponytail-verdicted: test/harness-only, mirrors the engine SillyTavern already bundles, and no alternative verifies the FX4 goldens in-repo. Install it yourself (`package.json` is orchestrator-only; D62 is the register entry justifying it); import it in tests and the dev harness only, never from `src/` — the shipped bundle stays engine-free.
-- **Session scope: close M3, then report and stop.** Do not decompose or dispatch Phase 2 without the owner.
+- **Session scope: execute Phase 2 M2 (Routing UX) end-to-end** — decompose at dispatch time, dispatch and review each packet, run the verifier gate, reconcile docs, propose the M2 gate commit, then stop. Phase 2 M3 (Waypoints) does not start this session.
+- **Quota fallback: STOP AND REPORT — the R15 precedent is not renewed.** If a dispatch fails for provider/quota reasons, retry at your judgment, but never self-implement the packet; report to the owner and wait. (This rules out the B-104-style fallback. ORCHESTRATION §6's two-bounce rule — rewrite the packet or do it yourself after two *quality* bounces — is unchanged.) Record this ruling as the next register row (D71) in your first docs change.
 
 Sequence:
 
-1. Boot per the checklist above; confirm `npm run verify` is green on arrival (expect 312/312).
-2. Install `handlebars` as a devDependency (`npm i -D handlebars`); re-run `npm run verify` — still 312/312, no test changes expected (A-009 hasn't landed).
-3. Lift the A-009 gate in the docs: mark §8.6(c) approved and clear the gate paragraph at the top of `.zcode/packets/M3.md`; reconcile the stale status-line claims in the same change.
-4. Dispatch PKG A-009 **verbatim** from `.zcode/packets/M3.md` to `graph-engine` (one packet per run). Review gate: read the full diff; run the verify command yourself; check the FX4 goldens are byte-stable, C32 is proven (bad template ⇒ default-template output, zero throws, never empty), and R1 is proven (numbers reach the template as numbers).
-5. On A-009 green: compose the **M3 verifier packet** into `.zcode/packets/M3.md` — spec citations only, never implementer reports — covering C19–C23, C27, C2 (blocked-reason visibility in the snapshot), C32, D25/D26/D55/D60–D63, FX3, FX4, and the two §6.2 template slices ("template syntax error in user template ⇒ fall back to default template, never an empty injection"; "cost units are ambiguous when no speeds are configured — the template must render unit-aware labels"). Dispatch to `verifier`.
-6. Triage findings: defects become fix packets bounced to `graph-engine` (small ones you fix yourself); merge `tests/verify/**` additions as permanent regression protection. The gate passes on full-suite green with no open critical/major finding.
-7. Docs are the spec: update PRODUCT.md / CORE.md in the same change if behavior moved; refresh the EXECUTION-PLAN status line to the post-M3 truth (status: M3 done & gate-passed, next: Phase 2 M1 decomposition).
-8. Propose the **M3 gate commit** to the owner — message, contents — and wait for approval. Commits are yours only, and only after the owner approves. Never push.
-9. Report the gate summary to the owner and **stop**. Phase 2 (first `ui-editor` packets, ESLint draft install per §8.5, dev harness against the real core) is the owner's next call, not this session's.
+1. Boot per the checklist above; confirm both arrival baselines (`npm run verify` 392/392; `npm run test:e2e` 49 passed / 9 cited skips).
+2. First docs change: reconcile the stale status-line and §8.4 trailing sentences, and write register row D71 (quota fallback).
+3. Decompose P2 M2 into `.zcode/packets/P2-M2.md` at dispatch time (packet numbering continues from B-105). Scope per §5 Phase 2 M2: route sidebar with legs/totals/mode switch, blocked toggle with reason input (C2/F14), cross-layer badges (C3). Ground facts for the packets:
+   - The frozen facade already carries everything M2 needs — `findRoute`, `setBlocked`, `setTravelMode`, `setActiveLayer`. No contract change is expected; a perceived gap is an owner-visible proposal (R2), never a reach-around.
+   - M1's two deliberate deferrals land here: the blocked-arc reason display (deferred to "M2's routing panel") and cross-layer endpoint badges ("no badge yet — C3, M2"); see `.zcode/packets/P2-M1.md`.
+   - R1: every number, direction, and unit label the sidebar or a badge shows comes from a core projection. C18 legs are the unit of display; C15 fixes the currency label; C17 means an unreachable target renders `ok:false` + the human reason, never ∞; C10 means cross-layer badges carry no direction — the UI must not invent one.
+   - FX1 test facts: blocked arc `arc-emiya-residence-fuyuki-bridge`, cross-layer hub arc `arc-fuyuki-station-misaki-town`, pin default `emiya-residence`, layers `layer-fuyuki`/`layer-misaki`.
+   - D53/F52: every B-packet ships e2e at desktop + phone-with-touch; the sidebar must be fully operable at 375px (≥44px tap targets, no hover-only affordances); specs named `*.e2e-spec.ts`; the phone project is WebKit — CDP touch gestures need the Chromium twin pattern (`tests/e2e/interactions.e2e-spec.ts`).
+4. Dispatch each packet verbatim to `ui-editor`, one per run. Review gate on every diff: read it fully, run the verify command yourself, check tests assert behavior citing F/C/FX IDs — not smoke tests.
+5. Verifier gate per ORCHESTRATION.md §11: compose the P2-M2 verifier packet — spec citations only, never implementer reports — covering at minimum the §5 Phase 2 M2 line; F14, F23, F24, F32, F52/D53; C2, C3, C10, C15, C17, C18; the §6.1 "cross-layer edges" risk row (endpoint badges with destination/mode/cost + the e2e comprehension check); the §6.2 touch slice as it applies to the sidebar; R1/R2 seams. Dispatch to `verifier`.
+6. Triage findings: defects become fix packets bounced to `ui-editor` (small ones you may fix yourself — that is ORCHESTRATION §6, not the quota ruling); merge `tests/verify/**` and e2e additions as permanent regression protection. The gate passes on full-suite green with no open critical/major finding.
+7. Docs are the spec: update PRODUCT.md / CORE.md in the same change if behavior moved; refresh the EXECUTION-PLAN status line to the post-M2 truth (next: Phase 2 M3 — the owner's call).
+8. Propose the **M2 gate commit** to the owner — message, contents — and wait for approval. Commits are yours only, and only after the owner approves. Never push.
+9. Report the gate summary and **stop**. Phase 2 M3 (Waypoints) is the owner's next call, not this session's.
 
-Standing: two bounces on one packet ⇒ rewrite it or do the work yourself; implementers never commit, install dependencies, or edit shared files; AGENTS.md §6 host-verification gotchas apply if you reproduce anything in local ST.
+Standing: two *quality* bounces on one packet ⇒ rewrite it or do the work yourself (§6); provider/quota dispatch failures ⇒ stop and report (D71); implementers never commit, install dependencies, or edit shared files; AGENTS.md §6 gotchas (host verification, golden loads, cytoscape headless, e2e naming + WebKit phone project) apply.

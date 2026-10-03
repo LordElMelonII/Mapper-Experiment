@@ -203,7 +203,10 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
     if (!eff.nodes.some((node) => node.id === to)) {
       throw new Error(`[TravelMapper] findRoute: unknown node id '${to}'`);
     }
-    if (from === to) return { ok: true, total: 0, legs: [] }; // route-to-self (§6.2) — trivially satisfiable
+    // Route-to-self (§6.2) — trivially satisfiable. D72: no run happened, so
+    // the label is the canonical one (the D65 empty-set precedent: an empty
+    // set presents no minutes-derived cost).
+    if (from === to) return { ok: true, total: 0, legs: [], unit: map.scale.unitLabel };
 
     const positions = new Map(eff.nodes.map((node) => [node.id, node.position] as const));
     const positionOf = (id: string): { x: number; y: number } | undefined => positions.get(id);
@@ -245,6 +248,13 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
     }
     const priceEdge = (edge: MapEdgeData): { mode: TravelMode; cost: number } => priceIn(edge, currency);
 
+    // D72: this run's currency label — verbatim the rule MapSnapshot.unit
+    // follows (snapshot/build.ts): 'min' when the computation priced minutes,
+    // else the canonical scale label (C15/D60). Forced-currency runs (D65(c))
+    // label their forced currency through the same expression, and ok:false
+    // carries the last attempted run's label while presenting no costs (C17).
+    const unit = currency === 'minutes' ? 'min' : map.scale.unitLabel;
+
     if (!result.ok) {
       // C17: translate unreachability into a human reason. Was the graph
       // disconnected in principle, or did blocks/mode restrictions sever it?
@@ -256,6 +266,7 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
         ok: false,
         total: 0,
         legs: [],
+        unit, // D72: the last attempted run's label; no cost is presented (C17/F24)
         reason: connected
           ? 'every candidate arc is blocked or disallowed for this mode'
           : `no path connects '${labelOf(from)}' and '${labelOf(to)}'`,
@@ -272,7 +283,7 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       mode: priceEdge(edgeById.get(leg.arcId)!).mode, // dijkstra only emits arcIds from eff.edges
       cost: leg.cost,
     }));
-    return { ok: result.ok, total: result.total, legs };
+    return { ok: result.ok, total: result.total, legs, unit }; // D72
   };
 
   // C5: ids belong to the engine — two per-facade monotonic counters, one per
@@ -433,7 +444,11 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
         // C30/F50: a runtime caller can lie about the typed optional — validate
         // before mutating (setStatusNote precedent). An empty string is neither
         // a reason nor a lift: refusing it never silently clears a block.
-        if (typeof reason !== 'string' || reason.length === 0) {
+        // Whitespace-only is the same defect (P2 M2 verifier finding 3 — a
+        // Phase 4 host caller could otherwise persist a blank-looking reason
+        // that reaches prompts verbatim as C2's payload). Valid strings are
+        // stored verbatim, untrimmed — the reason is the author's payload.
+        if (typeof reason !== 'string' || reason.trim().length === 0) {
           throw new Error(
             `[TravelMapper] setBlocked: reason must be a non-empty string or undefined (got '${String(reason)}')`,
           );
