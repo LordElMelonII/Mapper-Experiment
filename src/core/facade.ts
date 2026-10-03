@@ -16,9 +16,10 @@
 // (A-009) adds renderTemplate + getPromptBlock over the injected engine
 // (D62) with the C32 default-template fallback. D65 (A-011) refines the
 // snapshot seam: ONE honest currency per snapshot (all-rule routes currency,
-// forced-currency destination runs) and blocked arcs that always list.
-// Commands still unimplemented throw their exact TODO markers — never fake
-// data (Task 0 rule).
+// forced-currency destination runs) and blocked arcs that always list. P2 M1
+// (B-101) adds setActiveLayer — facade-held viewer state (F01/D69), not map
+// data and untouched by the snapshot. Commands still unimplemented throw
+// their exact TODO markers — never fake data (Task 0 rule).
 
 import type {
   ChatMapOverlay,
@@ -130,6 +131,7 @@ export interface FacadeState {
   overlay: ChatMapOverlay | null;
   effective: EffectiveGraph | null;
   stale: boolean;
+  activeLayer: string | null; // P2 M1 (F01/D69): viewer state — null until a map loads; reset by every loadMap
   compile?: TemplateCompiler; // D62: injected engine — absent until the host/tests provide one
 }
 
@@ -158,6 +160,7 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
     overlay: null,
     effective: null,
     stale: false,
+    activeLayer: null, // F01/D69: viewer state — null until the first loadMap
     // D62: the template engine is injected (R5) — Handlebars-shaped. Absent
     // until the host (SillyTavern.libs) or the test/harness devDependency
     // provides one; renderTemplate/getPromptBlock refuse field-precisely.
@@ -319,6 +322,10 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       const validatedOverlay = validateOverlay(overlay, validatedMap, { tolerateIneligiblePin: true });
       state.map = validatedMap; // C24: the library object itself, never a copy
       state.overlay = validatedOverlay;
+      // P2 M1 (F01/D69): deterministic first paint — every fresh load resets
+      // the active layer to THIS map's first layer; a stale layer id from a
+      // previous map is never inherited (C24). Validators guarantee ≥ 1 layer.
+      state.activeLayer = validatedMap.layers[0].id;
       state.stale = true; // C8: the next materialize()/query rebuilds
     },
 
@@ -685,7 +692,22 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
 
     // --- Viewer state (Phase 2) ---------------------------------------------------
 
-    setActiveLayer: () => { throw todo('Phase 2', 'setActiveLayer'); },
+    // P2 M1 (B-101): which layer the viewer shows — facade-held VIEWER state
+    // (F01/D69), never map data and never read by the snapshot (the snapshot's
+    // layer derives from the pin's node layer, snapshot/build.ts). Membership
+    // is checked against state.map.layers directly, so no ensureFresh is
+    // needed here (C8's stale flag is still the mutation contract).
+    setActiveLayer: (layerId) => {
+      const { map } = state;
+      if (map === null) throw new Error('[TravelMapper] setActiveLayer: no map loaded');
+      // C30/F50: validate BEFORE mutating — a runtime caller can lie about the
+      // typed string, and any id not in the live map's layers is refused.
+      if (!map.layers.some((l) => l.id === layerId)) {
+        throw new Error(`[TravelMapper] setActiveLayer: unknown layer id '${layerId}'`);
+      }
+      state.activeLayer = layerId;
+      state.stale = true; // C8 — the flag is the mutation contract even though no query reads it yet
+    },
   };
 
   states.set(facade, state);

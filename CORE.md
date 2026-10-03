@@ -127,7 +127,7 @@ Presence         setCurrentLocation · setStatusNote · setTravelMode · setCorr
 Overlay edits    setBlocked · addUserNodeAt · removeUserNode · promoteUserNode
 Editor commands  upsertNode · upsertEdge · removeNode · removeEdge · calibrateScale · saveMap
 Queries          findRoute · getSnapshot · renderTemplate · getPromptBlock
-Viewer state     setActiveLayer
+Viewer state     setActiveLayer (facade-held viewer state; validated against the loaded map, reset to its first layer on every loadMap — D69; the snapshot's `layer` stays pin-derived, unaffected)
 ```
 
 Anything the frontend or host needs beyond this list is a core design gap, not a license to reach around the facade.

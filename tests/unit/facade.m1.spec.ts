@@ -1,8 +1,9 @@
-// Behavior tests for the M1 facade commands (A-002).
+// Behavior tests for the M1 facade commands (A-002) + the P2 M1 viewer-state
+// command (B-101).
 // C8 materialization & stale flag · C24 live references · C27 orphan policy
 // (keep, never snap) · C30 reject-before-mutate · C1 leaf-to-leaf pin ·
 // C31 migration refusal · D17/D19 presence round-trip · D38 silent pin ·
-// D56 fork deferral.
+// D56 fork deferral · F01/D69 active-layer viewer state.
 import { describe, expect, it } from 'vitest';
 import { createFacade, facadeStateOf } from '../../src/core/facade';
 import { MapValidationError } from '../../src/core/model/validate';
@@ -52,6 +53,15 @@ const brokenOverlay = (): ChatMapOverlay => {
   const o = JSON.parse(JSON.stringify(tinyOverlay()));
   o.travelMode = 'teleport';
   return o;
+};
+
+// The tiny map with a second layer added (F01) — gives setActiveLayer
+// something to switch TO. An empty layer is legal: validators require nodes
+// to reference known layers, never the reverse.
+const twoLayerMap = (): WorldMapData => {
+  const m = JSON.parse(JSON.stringify(tinyMap()));
+  m.layers.push({ id: 'layer-2', name: 'Second Layer' });
+  return m;
 };
 
 // --- loadMap (C30, C8, C24) -----------------------------------------------------
@@ -254,5 +264,55 @@ describe('fork stubs', () => {
     const f = createFacade();
     expect(() => f.forkMap()).toThrow('TODO(Phase 3 M4): forkMap');
     expect(() => f.saveForkToLibrary()).toThrow('TODO(Phase 3 M4): saveForkToLibrary');
+  });
+});
+
+// --- setActiveLayer (P2 M1, F01/D69) ----------------------------------------------------
+// Facade-held VIEWER state on FacadeState — not map data, not in the frozen
+// ChatMapOverlay, never read by the snapshot (whose layer derives from the
+// pin's node layer).
+
+describe('setActiveLayer (Phase 2 M1)', () => {
+  it("throws '[TravelMapper] setActiveLayer: no map loaded' when nothing is loaded", () => {
+    const f = createFacade();
+    expect(() => f.setActiveLayer('layer-1')).toThrow('[TravelMapper] setActiveLayer: no map loaded');
+    expect(facadeStateOf(f).activeLayer).toBeNull(); // nothing was set
+  });
+
+  it('loadMap resets the active layer to the first layer of THAT map (F01, D69)', () => {
+    const f = createFacade();
+    expect(facadeStateOf(f).activeLayer).toBeNull(); // null until the first load
+    f.loadMap(tinyMap(), tinyOverlay());
+    expect(facadeStateOf(f).activeLayer).toBe('layer-1'); // deterministic first paint (D69)
+  });
+
+  it('a valid layer id sets it and marks stale (C8)', () => {
+    const f = createFacade();
+    f.loadMap(twoLayerMap(), tinyOverlay());
+    f.materialize();
+    expect(facadeStateOf(f).stale).toBe(false); // clean baseline — the next assertion is meaningful
+
+    f.setActiveLayer('layer-2');
+    expect(facadeStateOf(f).activeLayer).toBe('layer-2');
+    expect(facadeStateOf(f).stale).toBe(true); // mutations only set the flag (C8) even with no query reading it yet
+  });
+
+  it("refuses an unknown layer id with the exact message, before any mutation (C30, F50)", () => {
+    const f = createFacade();
+    f.loadMap(twoLayerMap(), tinyOverlay());
+    expect(() => f.setActiveLayer('layer-ghost')).toThrow(
+      "[TravelMapper] setActiveLayer: unknown layer id 'layer-ghost'",
+    );
+    expect(facadeStateOf(f).activeLayer).toBe('layer-1'); // untouched by the refused call
+  });
+
+  it('reloading a different map resets the active layer to ITS first layer (C24, F01)', () => {
+    const f = createFacade();
+    f.loadMap(twoLayerMap(), tinyOverlay());
+    f.setActiveLayer('layer-2');
+    expect(facadeStateOf(f).activeLayer).toBe('layer-2');
+
+    f.loadMap(tinyMap(), tinyOverlay()); // a different map whose only layer is 'layer-1'
+    expect(facadeStateOf(f).activeLayer).toBe('layer-1'); // never inherits across loads (C24)
   });
 });

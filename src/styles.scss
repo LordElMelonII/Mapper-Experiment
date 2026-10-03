@@ -1,1 +1,8 @@
-/* You can add global styles to this file, and also import other style files */
+/* D7: minimal global — a layout reset for the dev harness only. All panel
+   chrome is component-scoped; the graph stylesheet is data (GRAPH_STYLESHEET
+   in src/app/graph/graph.service.ts), never CSS here. */
+html,
+body {
+  margin: 0;
+  height: 100%;
+}

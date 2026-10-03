@@ -1,0 +1,11 @@
+// PKG B-102 — harness shell: viewer fills the viewport, no page scroll.
+:host {
+  display: block;
+  height: 100dvh;
+  background: #14171c;
+}
+
+.tme-harness {
+  width: 100%;
+  height: 100%;
+}

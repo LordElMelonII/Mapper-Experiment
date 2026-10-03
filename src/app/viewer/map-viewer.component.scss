@@ -1,0 +1,124 @@
+// PKG B-102 — component-scoped chrome only (D7: zero global leakage; the
+// graph's visual language is GRAPH_STYLESHEET data in graph.service.ts).
+:host {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.tme-viewer {
+  position: relative;
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden; // never horizontal scroll at phone width (D53)
+  background: #14171c;
+}
+
+.tme-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain; // fitted + centered; aspect mismatch letterboxes (F03/§6.2)
+  object-position: center;
+  pointer-events: none; // the graph is always the interface on top (F03/D29)
+  user-select: none;
+}
+
+.tme-canvas {
+  position: absolute;
+  inset: 0;
+
+  // D53/§6.2: cytoscape does NOT set this — the host element must carry it so
+  // unified pointer/touch gestures scroll nothing but the map itself.
+  touch-action: none;
+}
+
+.tme-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  padding: 0.5rem 0.75rem;
+  pointer-events: none; // the header never blocks canvas gestures (D53)
+  color: #e6ebf2;
+  font:
+    600 0.875rem/1.4 system-ui,
+    -apple-system,
+    sans-serif;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.tme-sep {
+  opacity: 0.55;
+}
+
+.tme-layers {
+  position: absolute;
+  left: 0.75rem;
+  bottom: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  max-width: calc(100% - 1.5rem);
+}
+
+.tme-layer-button {
+  min-width: 44px; // F52: >= 44px tap targets, touch-only parity
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  // §6.2 (B-103): the canvas host owns touch-action none; the non-canvas
+  // interactive chrome uses manipulation so double-taps never zoom it.
+  touch-action: manipulation;
+}
+
+.tme-layer-button.tme-active {
+  border-color: #ffd166;
+  color: #ffd166;
+}
+
+// B-103: selection chip — signal-bound (visible only while a node is
+// selected), top-right so it never collides with the bottom-left layer
+// switcher at phone width (D53). Top offset clears the header even when its
+// items wrap to two lines at phone width. One button = one >= 44px tap target
+// that dismisses the selection (F52).
+.tme-chip {
+  position: absolute;
+  top: 3.75rem;
+  right: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: calc(100% - 1.5rem); // never force horizontal scroll (D53)
+  min-height: 44px; // F52: >= 44px tap target
+  padding: 0 0.875rem;
+  border: 1px solid #ffd166;
+  border-radius: 999px;
+  background: rgba(20, 23, 28, 0.9);
+  color: #ffd166;
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+.tme-chip-dismiss {
+  font-size: 1rem;
+  opacity: 0.8;
+}

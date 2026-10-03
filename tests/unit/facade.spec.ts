@@ -36,7 +36,6 @@ const UNIMPLEMENTED: readonly (readonly [keyof MapFacade, string])[] = [
   ['removeEdge', 'Phase 3'],
   ['calibrateScale', 'Phase 3'],
   ['saveMap', 'Phase 3'],
-  ['setActiveLayer', 'Phase 2'],
 ];
 
 // The seven commands A-002 implemented — gone from the TODO list above.
@@ -56,6 +55,10 @@ const M3_SNAPSHOT_COMMANDS = ['setCorrective', 'getSnapshot'] as const;
 
 // The two commands A-009 implemented — gone from the TODO list above.
 const M3_RENDER_COMMANDS = ['renderTemplate', 'getPromptBlock'] as const;
+
+// The one viewer-state command the Phase 2 M1 packet implemented — gone from
+// the TODO list above.
+const P2_M1_COMMANDS = ['setActiveLayer'] as const;
 
 describe('facade stub (Task 0)', () => {
   it('exposes exactly the CORE.md §9 command surface', () => {
@@ -107,6 +110,14 @@ describe('facade stub (Task 0)', () => {
   it('the two M3 render commands no longer throw a TODO (A-009)', () => {
     const facade = createFacade();
     for (const command of M3_RENDER_COMMANDS) {
+      const fn = facade[command] as () => unknown;
+      expect(() => fn(), command).not.toThrow(/^TODO\(/);
+    }
+  });
+
+  it('the viewer-state command no longer throws a TODO (P2 M1)', () => {
+    const facade = createFacade();
+    for (const command of P2_M1_COMMANDS) {
       const fn = facade[command] as () => unknown;
       expect(() => fn(), command).not.toThrow(/^TODO\(/);
     }

@@ -25,10 +25,11 @@ ID scheme: **D** = decisions (why) · **F** = features (what) · **C** = engine 
 
 | Command | Purpose |
 |---|---|
-| `npm run verify` | typecheck (app+spec) + `scripts/lint-boundaries.mjs` + vitest — the per-packet acceptance command (iterate cheaply with `npm run test:unit` — vitest alone) |
+| `npm run verify` | typecheck (app+spec) + `scripts/lint-boundaries.mjs` + ESLint (D66) + vitest — the per-packet acceptance command (iterate cheaply with `npm run test:unit` — vitest alone) |
 | `npm run build:extension` | full bundle → `dist/extension/` (single ESM, enforces the 1.5 MB min+gz budget, copies manifest) |
 | `npx ng build -c extension` | Angular build only (no merge pass) |
 | `npx ng serve` | dev harness (Agent B owns; shared server, reuse the port) |
+| `npm run test:e2e` | Playwright e2e — desktop + phone-with-touch projects (D68/D53); specs are `tests/e2e/**/*.e2e-spec.ts` so vitest never collects them |
 
 Deploy target: `SillyTavern/public/scripts/extensions/third-party/travel-map-explorer/` (server: `http://localhost:8000` — SSL disabled in the local ST config).
 
@@ -44,7 +45,7 @@ Deploy target: `SillyTavern/public/scripts/extensions/third-party/travel-map-exp
 
 ## 4. Repo status & phase discipline
 
-- **Status (R14):** Task 0 + M0 done and committed (`17275b9`); contract freeze in force (`src/core/api.ts` + the CORE.md §9 facade, extended additively by D62/D63). **M1 done & gate-passed** (committed `09d8388`; ruling D58). **M2 done & verifier gate passed** (committed `c85c6e2`, which also carries A-008 and A-010): rulings D59–D61; verifier findings resolved in-tree; adversarial suites merged into `tests/verify/**`. **M3 done & verifier gate passed (uncommitted):** A-009 (template renderer + FX4 goldens, `handlebars` devDependency per D62 — tests/harness only) and the D65 fix (snapshot currency integrity + blocked-arc visibility); verifier findings (1 critical + 1 major) resolved in-tree under ruling D65; verifier suites merged; `npm run verify` 375/375. Next: the M3 gate commit (owner approval pending), then Phase 2 M1 decomposition — the owner's call. The EXECUTION-PLAN status line is the state of record when this line drifts. **R10 (D53): mobile & desktop parity is a v1 requirement** — every UI/host packet from Phase 2 on must satisfy it and ship phone-viewport e2e; Phase 1 core work is unaffected.
+- **Status (R15):** Task 0 + M0 done and committed (`17275b9`); contract freeze in force (`src/core/api.ts` + the CORE.md §9 facade, extended additively by D62/D63). **M1 done & gate-passed** (committed `09d8388`; ruling D58). **M2 done & verifier gate passed** (committed `c85c6e2`): rulings D59–D61; adversarial suites merged into `tests/verify/**`. **M3 done & verifier gate passed, committed `348ef87` (owner-approved at R15)**: register D65. **Phase 2 M1 (Canvas & layers) done & verifier gate passed at R15 (uncommitted — gate commit pending owner approval):** register D66–D70 (ESLint wired into `npm run verify`; `cytoscape` runtime; `@playwright/test` via `npm run test:e2e` with desktop+phone projects — vitest never collects `tests/e2e/**`; FX1 harness demo; app→data boundary lint-enforced both ways); packets in `.zcode/packets/P2-M1.md`; `npm run verify` 392/392 and `npm run test:e2e` 49 passed / 9 cited skips at both viewports. The EXECUTION-PLAN status line is the state of record when this line drifts. **R10 (D53): mobile & desktop parity is a v1 requirement** — every UI/host packet from Phase 2 on must satisfy it and ship phone-viewport e2e.
 - **Parallel work starts only after the contract freeze:** `src/core/api.ts` types + the CORE.md §9 facade. Agents code against the frozen contract, never against each other's working trees.
 - Current milestone, phase gates, and acceptance criteria live in EXECUTION-PLAN §5. Check them before starting any task.
 
@@ -72,6 +73,8 @@ Cross-cutting or unclear ownership goes to the Lead (whoever holds the plan). Wh
 - Console discipline: consistent `[TravelMapper]` prefix, no spam in production paths.
 - **Host-verification gotchas (learned at the M0 gate):** local ST serves plain HTTP on `http://localhost:8000` (owner disabled SSL — no cert handling needed in browser checks). `APP_READY` fires late on a cold cache: wait ~10s before DOM assertions or you get false negatives. Fresh builds must be re-copied to the deploy target before reloading.
 - **Test-authoring gotcha:** golden files load via vite `?raw` imports (`/// <reference types="vite/client" />`) — the spec tsconfig ships no `@types/node`, so `node:fs` will not typecheck in specs; goldens live in `tests/golden/`.
+- **Cytoscape gotcha:** a browser-context headless `cy` needs `headless: true` (+ `styleEnabled: true`) — omitting it builds the canvas renderer against a null container and crashes; verified against installed 3.34.3 (D67/D3).
+- **E2e gotchas (Phase 2+):** the Playwright phone project is **WebKit** (iPhone 13) — CDP touch gestures (pinch, touch-drag) need an in-test Chromium twin with the same emulation (see `tests/e2e/interactions.e2e-spec.ts`); name specs `*.e2e-spec.ts`, never `*.spec.ts`, or vitest collects them (D68).
 
 ## 7. Tooling, skills & MCP
 

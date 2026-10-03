@@ -10,7 +10,8 @@
 // hand-authored: C5 governs runtime engine-assigned ids, not authored data.
 // FX2 preconditions authored here: arc-emiya-residence-fuyuki-station (walk 50)
 // and arc-fuyuki-station-misaki-town (train 300); the route assertion is M2's.
-// R5: only tests may import this file — src/core never imports data/.
+// R5: src/core never imports data/ (lint-enforced). Tests and the dev harness
+// may import it — display-only, D70 (the fixture stays frozen, deep-freeze on).
 
 import type { WorldMapData } from '../../src/core/api';
 
