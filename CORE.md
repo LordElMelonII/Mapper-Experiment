@@ -1,7 +1,7 @@
 # CORE.md — Engine Conventions & the Business-Logic Boundary
 
 **Status:** R12 · Normative for the core engine (`src/core`) and the service facade
-**Companions:** `PRODUCT.md` (feature catalogue) · `EXECUTION-PLAN.md` (architecture & decisions D10–D59)
+**Companions:** `PRODUCT.md` (feature catalogue) · `EXECUTION-PLAN.md` (architecture & decisions D10–D64)
 **Rule of this document:** defines *how the engine computes and what it owns*, so the numbers are trustworthy and the logic stays independent of any UI, framework, or host. Convention IDs (C-numbers) are cited by tests and code comments; they deliberately continue the C1–C3 numbering first used in EXECUTION-PLAN.md.
 
 ---
@@ -33,7 +33,7 @@ All queries (routing, snapshot, template rendering) run against the **effective 
 
 ## 3. Graph & structure conventions
 
-- **C1 — Leaf-to-leaf.** Arcs terminate on leaf nodes only. Containers (districts, cities) organize and label; they never connect and never hold the pin. (D58: pin eligibility is *kind*-based — only `location`, `hub`, `waypoint`, and currently childless — while arc endpoints are *parent*-based per §6.2's "compound parents".)
+- **C1 — Leaf-to-leaf.** Arcs terminate on leaf nodes only. Containers (districts, cities) organize and label; they never connect and never hold the pin. (D58: pin eligibility is *kind*-based — only `location`, `hub`, `waypoint`, and currently childless — and arc-endpoint eligibility follows the same childless-leaf rule: an edge into a compound parent is invalid data that the validator rejects, §6.2. "Parent-based" in D58 means *being a parent disqualifies a node as an endpoint*, not that parents are endpoints.)
 - **C2 — Blocked ≠ hidden.** A blocked arc is excluded from routing (infinite cost) but remains in the snapshot with its reason, so the LLM knows *why* a route is unavailable.
 - **C3 — Cross-layer arcs are ordinary arcs** whose endpoints happen to live on different layers. No special routing semantics; the frontend renders them as badges at their endpoints.
 - **C4 — The graph is the author's truth.** The core never invents connections: no implicit adjacency, no obstacle inference, no "these two are close so connect them". Chokepoints (bridges, mountain passes) are nodes the author creates (D43).
@@ -58,7 +58,7 @@ All queries (routing, snapshot, template rendering) run against the **effective 
   4. authored distance → converted via the mode's speed (when speeds are defined)
   5. geometric distance × scale × terrain multiplier → converted via speed when defined
   6. no speeds defined anywhere → cost is denominated in canonical units; routing optimizes by distance and every label says so
-- **C15 — Routing currency.** Minutes whenever time is derivable; otherwise canonical units. One currency per route computation — costs are never mixed within a route.
+- **C15 — Routing currency.** Minutes whenever time is derivable; otherwise canonical units. One currency per route computation — costs are never mixed within a route. (Enforced at the `findRoute` seam per D60: minutes-first, whole-computation canonical fallback, cross-currency modes unroutable in a run.)
 
 ---
 
@@ -75,7 +75,7 @@ All queries (routing, snapshot, template rendering) run against the **effective 
 - **C19 — Neighborhood.** The snapshot's route section lists exactly the arcs incident to the pin within its layer, plus cross-layer arcs at the pin. There is no same-district sibling awareness (D36).
 - **C20 — Destinations.** Shortest paths from the pin to a curated destination set (hubs by default), capped (12 entries), with truncation marked.
 - **C21 — Text matching.** Matching free text to nodes uses word-boundary, case-insensitive matching over names ∪ aliases. A failed match produces a nearest-suggestions corrective string (D26). The pure matching function lives in the core; only its orchestration (subscribing to events, showing popups) lives in the host layer.
-- **C22 — Snapshot is data; the template is words.** The snapshot is a plain serializable object. Rendering to the prompt block goes through the user's template with a fixed variable contract: `location`, `region`, `layer`, `statusNote`, `routes[]`, `destinations[]`, `unit`, `corrective`. The renderer is core (pure string work); the template *content* is user data.
+- **C22 — Snapshot is data; the template is words.** The snapshot is a plain serializable object. Rendering to the prompt block goes through the user's template with a fixed variable contract: `location`, `region`, `layer`, `statusNote`, `routes[]`, `destinations[]`, `truncated` (C20's cap dropped entries — D63), `unit`, `corrective`. The renderer is core (context assembly, C23 exclusion, C32 fallback); the template *content* is user data; the template **engine** is an injected Handlebars-shaped capability per D62/R5 (host: SillyTavern.libs; tests/harness: devDependency — never bundled).
 - **C23 — No machine names.** Unnamed user nodes are excluded from every prompt-facing structure. `waypoint_3` must never reach an LLM.
 
 ---
@@ -84,7 +84,7 @@ All queries (routing, snapshot, template rendering) run against the **effective 
 
 - **C24 — Live references.** A chat's map is the library object itself; edits propagate on next materialization, and affected chats are notified ("map updated") (D33).
 - **C25 — Forks.** Forking copies library → a chat-attached private map and switches the chat's reference to it. Forks never re-sync. Saving a fork back to the library is an explicit, non-default action (D41).
-- **C26 — Promotion.** Promoting a user node moves it overlay → library under one id. Atomic: on failure the overlay is untouched.
+- **C26 — Promotion.** Promoting a user node moves it overlay → library under one id. Atomic: on failure the overlay is untouched. Incident user edges graduate per D61: library-bound edges move into the map; edges to still-overlay waypoints stay chat-scoped in the overlay until their last overlay endpoint promotes.
 - **C27 — Orphan policy.** If materialization finds the pin's node deleted: keep the pin, mark it invalid, degrade the snapshot to a warning, pause injection until re-pinned. Never silently snap to a neighbor (D39).
 - **C28 — Stickiness.** No message-level rollback of the pin (D12).
 - **C29 — Explicit saves.** Nothing mutates the library until a save command runs (D47).
@@ -123,7 +123,7 @@ All queries (routing, snapshot, template rendering) run against the **effective 
 
 ```
 Map lifecycle    loadMap · materialize · forkMap · saveForkToLibrary · validateImport · migrateData
-Presence         setCurrentLocation · setStatusNote · setTravelMode
+Presence         setCurrentLocation · setStatusNote · setTravelMode · setCorrective (D63)
 Overlay edits    setBlocked · addUserNodeAt · removeUserNode · promoteUserNode
 Editor commands  upsertNode · upsertEdge · removeNode · removeEdge · calibrateScale · saveMap
 Queries          findRoute · getSnapshot · renderTemplate · getPromptBlock
@@ -138,6 +138,6 @@ Anything the frontend or host needs beyond this list is a core design gap, not a
 
 - **FX1 — Fuyuki/Misaki two-layer fixture.** Derived from `Notes for locations.md`: 13 locations, districts, a cross-layer station arc, one blocked-bridge sample. Canonical unit: time (minutes), matching the legacy table.
 - **FX2 — Emiya → Misaki.** Expected route: Emiya Residence → Fuyuki Station → Misaki Town (walk 50 min, then train 5h). The owner's stated acceptance case; wording normalized to the FX1 dataset per D54 — the Fuyuki material is a demo, not canon.
-- **FX3 — Legacy regression.** Derived values within ±20% of the original lookup table across its pairs. Enforced at M3 against MDS-importer-seeded maps (D55); the hand-authored FX1 fixture is held to plausible geography plus FX2, not to FX3.
+- **FX3 — Legacy regression.** Derived values within ±20% of the original lookup table across its pairs — enforced on the metric-satisfiable pairs; the 22 pairs the table itself violates are waived under a self-enforcing exemption list (D64; the minimal proof: B–H = 15 vs |305−275| = 30 breaks the reverse triangle inequality, so no embedding can realize the exact table). Enforced at M3 against MDS-importer-seeded maps (D55); the hand-authored FX1 fixture is held to plausible geography plus FX2, not to FX3. Authored minutes are preserved exactly on every imported edge.
 - **FX4 — Template snapshots.** Default XML template plus one markdown variant, golden-file tested.
 - **FX5 — Precedence matrix.** Every row of C14 exercised by a unit test, including blocked, disallowed-mode, authored-time, authored-distance, terrain, and no-speeds cases.

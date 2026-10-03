@@ -69,10 +69,17 @@ export interface ChatMapOverlay {
   actorId?: string;                    // reserved (D13)
   travelMode: TravelMode;
   statusNote?: string;                 // "on the road to X, ~2 km out" (D17)
+  corrective?: string;                 // D26/D63: engine-built nearest-suggestions line; sticky until the next scan replaces or clears it
   userNodes: MapNodeData[];            // waypoints — persist, promotable (D21)
   userEdges: MapEdgeData[];
   blocked: Record<string, string>;     // edgeId → reason (D20)
 }
+
+// D62: the template engine is an INJECTED capability (R5 — the core imports
+// nothing outward). Handlebars-shaped: the host passes SillyTavern's bundled
+// `Handlebars.compile`; tests and the dev harness pass the npm devDependency;
+// the shipped bundle never embeds an engine.
+export type TemplateCompiler = (tpl: string) => (ctx: Record<string, unknown>) => string;
 
 // Route shape (C18): { ok, total, legs[] }; each leg carries arc id, from, to,
 // mode, cost, and an optional reason (blocked/detour). C17: ok:false carries a
@@ -116,7 +123,8 @@ export interface MapSnapshot {
   layer: string;
   statusNote?: string;
   routes: SnapshotRoute[];
-  destinations: SnapshotDestination[]; // C20: capped (12), truncation marked
-  unit: string;                        // canonical unit label (C14 row 6 / C15)
-  corrective?: string;                 // D26 line
+  destinations: SnapshotDestination[]; // C20: capped (12)
+  destinationsTruncated: boolean;      // C20/D63: the cap dropped entries — the template's `truncated` variable
+  unit: string;                        // cost-currency label: 'min' when minutes, else the canonical unitLabel (C15/D60, §6.2)
+  corrective?: string;                 // D26 line (overlay.corrective, D63)
 }
