@@ -38,6 +38,25 @@ This prompt never overrides the repo docs. If they disagree, the docs win and yo
 
 Product behavior (anything the register marks as the owner's call), scope or phase changes, new dependencies, destructive operations, gate pass/fail summaries, and anything the docs don't answer. When unsure whether something is product or engineering: it's product.
 
-## First actions
+## First actions (R14)
 
-The repo's expected state is whatever the EXECUTION-PLAN status line names — reconcile, then do what it says next. Orientation as of R12 (if this paragraph disagrees with the status line, the status line wins): Task 0, M0, and M1 are done, gate-passed, and committed (`09d8388` on `develop`; rulings D58/D59) — do not redo them or C-001. The working tree intentionally carries the R12 close-out edits uncommitted — status-line/charter refreshes, the README e2e and `styles.scss` corrections, `tsconfig.json` strictness (`strictNullChecks`, `strictTemplates`), EXECUTION-PLAN §8.5 (ESLint deferral, owner-approved), and the untracked owner draft `eslint.config.js` (stays untracked until Phase 2 M1). They are expected, not drift: `npm run verify` is green on them (125/125, pre-flighted). Propose them to the owner as a `docs:` commit in your boot report, then dispatch A-005. M2 is decomposed in `.zcode/packets/M2.md`: dispatch A-005 → A-006 → A-007 sequentially to `graph-engine` with a review gate between each, then close the M2 phase gate with the `verifier` (scope per the packet store) and propose the gate commit to the owner. When M2 closes, decompose M3 (snapshot & templates, corrective line, MDS importer) into `.zcode/packets/M3.md` and update the status line in the same change.
+Repo state (reconcile; the status line is your state): Task 0 + M0 done (`17275b9`), M1 done & gate-passed (`09d8388`), and the **M2 gate commit `c85c6e2` is HEAD on `develop`** — it deliberately also carries the M3 contract amendments (D62/D63) and the landed, reviewed A-008 (snapshot + corrective seam) and A-010 (MDS importer, FX3/D64 waiver): `npm run verify` 312/312. The working tree is clean except untracked `eslint.config.js` (owner's draft; stays untracked until Phase 2 M1 per §8.5). The EXECUTION-PLAN status line still says "uncommitted" and "two commits await owner approval (§8.6)" — that is stale drift; reconcile it in your status update. Remaining M3 work: A-009, the M3 verifier gate, the M3 gate commit.
+
+Owner rulings this round (R14):
+
+- **`handlebars` devDependency APPROVED (D62 / §8.6(c))** — ponytail-verdicted: test/harness-only, mirrors the engine SillyTavern already bundles, and no alternative verifies the FX4 goldens in-repo. Install it yourself (`package.json` is orchestrator-only; D62 is the register entry justifying it); import it in tests and the dev harness only, never from `src/` — the shipped bundle stays engine-free.
+- **Session scope: close M3, then report and stop.** Do not decompose or dispatch Phase 2 without the owner.
+
+Sequence:
+
+1. Boot per the checklist above; confirm `npm run verify` is green on arrival (expect 312/312).
+2. Install `handlebars` as a devDependency (`npm i -D handlebars`); re-run `npm run verify` — still 312/312, no test changes expected (A-009 hasn't landed).
+3. Lift the A-009 gate in the docs: mark §8.6(c) approved and clear the gate paragraph at the top of `.zcode/packets/M3.md`; reconcile the stale status-line claims in the same change.
+4. Dispatch PKG A-009 **verbatim** from `.zcode/packets/M3.md` to `graph-engine` (one packet per run). Review gate: read the full diff; run the verify command yourself; check the FX4 goldens are byte-stable, C32 is proven (bad template ⇒ default-template output, zero throws, never empty), and R1 is proven (numbers reach the template as numbers).
+5. On A-009 green: compose the **M3 verifier packet** into `.zcode/packets/M3.md` — spec citations only, never implementer reports — covering C19–C23, C27, C2 (blocked-reason visibility in the snapshot), C32, D25/D26/D55/D60–D63, FX3, FX4, and the two §6.2 template slices ("template syntax error in user template ⇒ fall back to default template, never an empty injection"; "cost units are ambiguous when no speeds are configured — the template must render unit-aware labels"). Dispatch to `verifier`.
+6. Triage findings: defects become fix packets bounced to `graph-engine` (small ones you fix yourself); merge `tests/verify/**` additions as permanent regression protection. The gate passes on full-suite green with no open critical/major finding.
+7. Docs are the spec: update PRODUCT.md / CORE.md in the same change if behavior moved; refresh the EXECUTION-PLAN status line to the post-M3 truth (status: M3 done & gate-passed, next: Phase 2 M1 decomposition).
+8. Propose the **M3 gate commit** to the owner — message, contents — and wait for approval. Commits are yours only, and only after the owner approves. Never push.
+9. Report the gate summary to the owner and **stop**. Phase 2 (first `ui-editor` packets, ESLint draft install per §8.5, dev harness against the real core) is the owner's next call, not this session's.
+
+Standing: two bounces on one packet ⇒ rewrite it or do the work yourself; implementers never commit, install dependencies, or edit shared files; AGENTS.md §6 host-verification gotchas apply if you reproduce anything in local ST.

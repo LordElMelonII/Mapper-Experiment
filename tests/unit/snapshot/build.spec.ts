@@ -1,11 +1,12 @@
 // buildSnapshot unit tests (PKG A-008): the C19 neighborhood exactness (incl.
 // cross-layer inclusion and the D36 sibling exclusion), the C23 exclusions,
 // the C2 blocked-reason passthrough, the C27 degradation shapes, the C10
-// direction rules, the D60 routes currency, and the C20/D25 destinations
+// direction rules, the D65 routes currency, and the C20/D25 destinations
 // (first-leg via/mode, ok:false dropped, cap 12 + destinationsTruncated).
-// priceEdge/routeTo are injected — the facade recipe (block-stripped
-// priceEdgeIn at one currency, null for cross-currency arcs) is replicated
-// here so the blocked-arc and currency rulings are pinned at builder level.
+// priceEdge/routeTo are injected — the facade recipe (D65: block-stripped
+// honest pricing at ONE currency, null only for a LIVE arc unpriceable there,
+// blocked arcs never null) is replicated here so the blocked-arc and currency
+// rulings are pinned at builder level.
 import { describe, expect, it } from 'vitest';
 import { buildSnapshot, DESTINATIONS_CAP } from '../../../src/core/snapshot/build';
 import { buildEffectiveGraph } from '../../../src/core/model/effective';
@@ -32,24 +33,35 @@ const overlayFor = (map: WorldMapData, pin: string | null, extra: Partial<ChatMa
 
 const neverRoute = (): RouteResult => ({ ok: false, total: 0, legs: [] });
 
-// The facade's getSnapshot recipe (facade.ts): price at ONE currency with the
-// block stripped (C2 — blocked arcs stay listed with their would-be cost and
-// the ∞ sentinel never surfaces, C17), null for an arc unpriceable in that
-// currency (D60 cross-currency exclusion).
+// The facade's getSnapshot recipe (facade.ts, D65): price at ONE currency with
+// the block stripped (C2 — the ∞ sentinel never surfaces, C17); honest on a
+// minutes-canonical map (D65(a) — authored minutes are canonical minutes when
+// unitKind is 'time' and the label is 'min'); null ONLY for a LIVE arc that
+// cannot honestly price in that currency (D65(a)); a BLOCKED arc never returns
+// null — best-effort price, else cost 0 with its cheapest allowed mode
+// (D65(b) — the reason carries the meaning).
 const facadeStylePriceEdge =
   (map: WorldMapData, currency: CostCurrency) =>
   (edge: MapEdgeData): { mode: TravelMode; cost: number } | null => {
     const positions = new Map(map.nodes.map((n) => [n.id, n.position] as const));
     const positionOf = (id: string): { x: number; y: number } | undefined => positions.get(id);
-    const priced = priceEdgeIn(
-      { ...edge, blocked: undefined },
-      currency,
-      ['walk', 'car', 'train'] as const,
-      'walk',
-      map.scale,
-      positionOf,
-    );
-    return Number.isFinite(priced.cost) ? priced : null;
+    const modes: readonly TravelMode[] = ['walk', 'car', 'train'];
+    const price = (inCurrency: CostCurrency): { mode: TravelMode; cost: number } =>
+      priceEdgeIn({ ...edge, blocked: undefined }, inCurrency, modes, 'walk', map.scale, positionOf);
+    let priced = price(currency);
+    if (
+      !Number.isFinite(priced.cost) &&
+      currency === 'canonical' &&
+      map.scale.unitKind === 'time' &&
+      map.scale.unitLabel === 'min'
+    ) {
+      priced = price('minutes'); // D65(a) honesty: the canonical unit IS minutes on such a map
+    }
+    if (Number.isFinite(priced.cost)) return priced;
+    if (edge.blocked !== undefined) {
+      return { mode: modes.filter((m) => edge.modes[m]?.allowed === true)[0] ?? 'walk', cost: 0 }; // D65(b)
+    }
+    return null; // D65(a): a live arc that cannot honestly price drops
   };
 
 const build = (
@@ -220,13 +232,17 @@ const currencyMap = (): WorldMapData => ({
   ],
 });
 
-describe('buildSnapshot — D60 routes currency (minutes-first, one currency per list)', () => {
-  it('a mixed list keeps the minutes currency: the canonical-only arc is NOT a prompt-facing route', () => {
+describe('buildSnapshot — D65 routes currency (all-rule, one honest currency per list)', () => {
+  it('a live arc that cannot price minutes flips the list canonical and STAYS listed; the authoredMinutes-only arc drops as unpriceable (D65(a))', () => {
     const m = currencyMap();
     const overlay = overlayFor(m, 'pin');
-    const snap = build(m, overlay, facadeStylePriceEdge(m, 'minutes')); // the facade's minutes-first pick
-    expect(snap.routes.map((r) => r.label)).toEqual(['Minutes Neighbor']); // canonical neighbor excluded (D60)
-    expect(snap.unit).toBe('min');
+    const snap = build(m, overlay, facadeStylePriceEdge(m, 'canonical')); // D65 all-rule: a geometric arc cannot price minutes ⇒ canonical
+    expect(snap.routes).toEqual([
+      { label: 'Km One', direction: 'S', cost: 10, mode: 'walk' }, // canonical-only arc stays listed (D65(a) completeness)
+      { label: 'Km Two', direction: 'S', cost: 25, mode: 'walk' },
+    ]);
+    expect(snap.routes.map((r) => r.label)).not.toContain('Minutes Neighbor'); // authoredMinutes-only on a distance-kind map ⇒ unpriceable ⇒ drops (D65(a))
+    expect(snap.unit).toBe('km');
   });
 
   it('a canonical-only list prices and labels canonically (C15: one currency, unit-aware label)', () => {

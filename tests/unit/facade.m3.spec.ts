@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { createFacade, facadeStateOf } from '../../src/core/facade';
 import { fuyukiMap } from '../../data/worlds/fuyuki';
+import { euclid } from '../../src/core/geometry/measure';
 import type { ChatMapOverlay, MapNodeData, WorldMapData } from '../../src/core/api';
 
 const fuyuki = (): WorldMapData => JSON.parse(JSON.stringify(fuyukiMap)) as WorldMapData;
@@ -201,10 +202,10 @@ describe('getSnapshot — degradation on FX1-derived state (C27, C23/D58)', () =
   });
 });
 
-// --- D60 currency on a mixed FX1 variant -------------------------------------------
+// --- D65 currency on a mixed FX1 variant -------------------------------------------
 
-describe('getSnapshot — mixed-currency FX1 variant (D60)', () => {
-  it("stripping one incident arc's authoredMinutes removes THAT arc from routes[]; the minutes arcs stay (D60)", () => {
+describe('getSnapshot — mixed-currency FX1 variant (D65)', () => {
+  it("stripping one incident arc's authoredMinutes flips the list canonical; the stripped arc STAYS priced geometrically and the destinations re-price in the snapshot's currency (D65(a)/D65(c))", () => {
     const map = fuyuki();
     const arc = map.edges.find((e) => e.id === 'arc-emiya-residence-shopping-district')!;
     const walk = arc.modes.walk;
@@ -214,16 +215,36 @@ describe('getSnapshot — mixed-currency FX1 variant (D60)', () => {
     f.loadMap(map, fuyukiOverlay(map));
     f.materialize();
     const snap = f.getSnapshot();
-    const labels = snap.routes.map((r) => r.label);
-    expect(labels).not.toContain('Shopping District'); // unpriceable in the list's minutes currency (D60)
-    expect(labels).toEqual([
+    // D65(a): the all-rule flips the list canonical (the stripped arc cannot
+    // price minutes); FX1 is time-kind with the 'min' label (D45), so the
+    // canonical list carries authored minutes honestly — every incident arc
+    // stays listed, the stripped one now priced geometrically (C14 row 5).
+    const shopping = snap.routes[0]!;
+    expect(shopping.label).toBe('Shopping District');
+    const node = (id: string): { x: number; y: number } => {
+      const found = map.nodes.find((n) => n.id === id)?.position;
+      if (found === undefined) throw new Error('fixture drift: missing position');
+      return found;
+    };
+    expect(shopping.cost).toBeCloseTo(euclid(node('emiya-residence'), node('shopping-district')) * map.scale.unitPerPx, 9);
+    expect(shopping.mode).toBe('walk');
+    expect(snap.routes.map((r) => r.label)).toEqual([
+      'Shopping District',
       'Homurahara Academy',
       'Matou Residence',
       'Ryuudou Temple',
       'Outskirts',
       'Fuyuki Station',
-      'Fuyuki Bridge',
+      'Fuyuki Bridge', // still blocked WITH its reason (C2/D65(b))
     ]);
-    expect(snap.unit).toBe('min'); // the list keeps the minutes currency (minutes-first, D60)
+    expect(snap.routes.find((r) => r.label === 'Fuyuki Bridge')?.blockedReason).toBe('Bridge closed by local authorities');
+    expect(snap.unit).toBe('min'); // FX1's canonical unitLabel — time-kind (D45); ONE unit per snapshot (D65)
+    // D65(c): destinations re-price in the (canonical) snapshot currency —
+    // the same honest minutes, no cross-currency drops.
+    expect(snap.destinations).toEqual([
+      { label: 'Fuyuki Station', via: 'Fuyuki Station', mode: 'walk', cost: 50 },
+      { label: 'Misaki Town', via: 'Fuyuki Station', mode: 'walk', cost: 350 },
+    ]);
+    expect(snap.destinationsTruncated).toBe(false);
   });
 });

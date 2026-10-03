@@ -1,0 +1,16 @@
+<travel_context>
+  <location>Emiya Residence</location>
+  <region>Miyama</region>
+  <layer>Fuyuki City</layer>
+  <status>on the road to Big Bridge, ~2 km out</status>
+  <routes unit="min">
+    <route label="Shopping District" direction="SE" cost="12" mode="walk"/>
+    <route label="Fuyuki Bridge" direction="E" cost="25" mode="walk" blocked="Bridge closed by local authorities"/>
+    <route label="Misaki Town" cost="300" mode="train"/>
+  </routes>
+  <destinations unit="min" truncated="true">
+    <destination label="Fuyuki Station" via="Fuyuki Station" cost="50" mode="walk"/>
+    <destination label="Misaki Town" via="Fuyuki Station" cost="350" mode="walk"/>
+  </destinations>
+  <corrective>Unknown place 'stasion' — did you mean Fuyuki Station?</corrective>
+</travel_context>

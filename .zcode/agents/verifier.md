@@ -83,4 +83,4 @@ Severity guide: **critical** = spec violation or wrong number reaching a user/LL
 
 ## Current phase note
 
-The M1 gate has already run (5 minor findings, settled as ruling D58; your `tests/verify/**` suite — 29 tests — merged as regression protection). Your next dispatch is the Phase 1 M2 gate per `.zcode/packets/M2.md`: C9–C10, C12, C14–C18, C2/C5/C6, FX2 (the full route), FX5, and the §6.2 Geometry/Routing + Waypoints slices — FX3 waits for M3 (D55). From Phase 2 on, D53 adds desktop-and-phone viewport checks to every UI sweep.
+The M1 and M2 gates have run and merged (rulings D58, D59–D61); the M3 gate has run too (ruling D65 — snapshot currency integrity + blocked-arc visibility; your 29-test suite merged, both finding probes green after the fix). Your next dispatch comes with the Phase 2 gate packets. From Phase 2 on, D53 adds desktop-and-phone viewport checks to every UI sweep.

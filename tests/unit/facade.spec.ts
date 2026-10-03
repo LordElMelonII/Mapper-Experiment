@@ -2,7 +2,8 @@
 // exactly the CORE.md §9 command list (R2). A-002 implemented the seven M1
 // commands; A-006 implemented findRoute + setBlocked (M2); A-007 implemented
 // the waypoint commands (M2); A-008 implemented setCorrective + getSnapshot
-// (M3); every remaining stub still throws its exact TODO marker — no fake
+// (M3); A-009 implemented renderTemplate + getPromptBlock (M3); every
+// remaining stub still throws its exact TODO marker — no fake
 // data. The surface test below stays verbatim from Task 0.
 import { describe, expect, it } from 'vitest';
 import { createFacade } from '../../src/core/facade';
@@ -35,8 +36,6 @@ const UNIMPLEMENTED: readonly (readonly [keyof MapFacade, string])[] = [
   ['removeEdge', 'Phase 3'],
   ['calibrateScale', 'Phase 3'],
   ['saveMap', 'Phase 3'],
-  ['renderTemplate', 'M3'],
-  ['getPromptBlock', 'M3'],
   ['setActiveLayer', 'Phase 2'],
 ];
 
@@ -54,6 +53,9 @@ const M2_WAYPOINT_COMMANDS = ['addUserNodeAt', 'removeUserNode', 'promoteUserNod
 
 // The two commands A-008 implemented — gone from the TODO list above.
 const M3_SNAPSHOT_COMMANDS = ['setCorrective', 'getSnapshot'] as const;
+
+// The two commands A-009 implemented — gone from the TODO list above.
+const M3_RENDER_COMMANDS = ['renderTemplate', 'getPromptBlock'] as const;
 
 describe('facade stub (Task 0)', () => {
   it('exposes exactly the CORE.md §9 command surface', () => {
@@ -97,6 +99,14 @@ describe('facade stub (Task 0)', () => {
   it('the two M3 snapshot commands no longer throw a TODO (A-008)', () => {
     const facade = createFacade();
     for (const command of M3_SNAPSHOT_COMMANDS) {
+      const fn = facade[command] as () => unknown;
+      expect(() => fn(), command).not.toThrow(/^TODO\(/);
+    }
+  });
+
+  it('the two M3 render commands no longer throw a TODO (A-009)', () => {
+    const facade = createFacade();
+    for (const command of M3_RENDER_COMMANDS) {
       const fn = facade[command] as () => unknown;
       expect(() => fn(), command).not.toThrow(/^TODO\(/);
     }

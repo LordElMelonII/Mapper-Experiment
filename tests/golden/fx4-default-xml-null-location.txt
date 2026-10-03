@@ -1,0 +1,6 @@
+<travel_context status="unknown">
+  The party's current position is unknown — the pinned location is missing or no longer valid on this map.
+  Do not report distances or directions until the travelers say where they are.
+  <status>somewhere on the road</status>
+  <corrective>Unknown place — did you mean Fuyuki Station?</corrective>
+</travel_context>

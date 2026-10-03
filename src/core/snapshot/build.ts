@@ -46,27 +46,37 @@ function isUnnamedUserNode(node: MapNodeData | undefined): boolean {
 }
 
 /**
- * D60 routes currency, minutes-first (C15): minutes when ANY neighborhood arc
- * can price in minutes — an arc prices in minutes when some allowed mode is
- * minutes-priced per D60 — else canonical units. Kept in lockstep with the
- * facade's getSnapshot priceEdge closure: same predicate (minutesPriced), same
- * rule, same arc selection (the frozen buildSnapshot signature carries no
- * currency argument, so the unit label is derived here from the same inputs).
+ * D65(a) routes currency: minutes only when at least one LIVE prompt-listable
+ * incident arc exists and every one prices in minutes — completeness beats the
+ * minutes preference (C19's "exactly the arcs incident to the pin") — else
+ * canonical units (including the empty-live-set case, which presents no
+ * minutes-derived cost; the C27 degraded path defaults the same way). Blocked
+ * arcs are exempt (D65(b): they always list — best-effort cost or cost 0 — so
+ * they price in either currency and never constrain the choice). Kept in
+ * lockstep with the facade's getSnapshot decision: same minutesPriced
+ * predicate, same exemptions, same arc selection (the frozen buildSnapshot
+ * signature carries no currency argument, so the unit label is derived here
+ * from the same inputs the facade decided over).
  */
 function routesCurrency(map: WorldMapData, arcs: MapEdgeData[]): 'minutes' | 'canonical' {
-  const anyMinutes = arcs.some((edge) =>
-    TRAVEL_MODES.some((m) => edge.modes[m]?.allowed === true && minutesPriced(edge, m, map.scale)),
-  );
-  return anyMinutes ? 'minutes' : 'canonical';
+  const liveArcs = arcs.filter((edge) => edge.blocked === undefined);
+  const allMinutes =
+    liveArcs.length > 0 &&
+    liveArcs.every((edge) =>
+      TRAVEL_MODES.some((m) => edge.modes[m]?.allowed === true && minutesPriced(edge, m, map.scale)),
+    );
+  return allMinutes ? 'minutes' : 'canonical';
 }
 
 /**
  * Build the snapshot (C19–C23, C27, D25/D26, D60/D63).
  *
- * `priceEdge` prices one arc in the routes' single currency and returns null
- * for a cross-currency arc — an arc whose cost cannot be stated in the list's
- * currency is not a prompt-facing route (D60). `routeTo` runs the facade's
- * findRoute machinery from the pin (C20/D25 destinations).
+ * `priceEdge` prices one arc in the routes' single currency: null marks a LIVE
+ * arc that cannot honestly price there, and it drops (D65(a)); a BLOCKED arc
+ * always prices — best-effort in the list's currency, or cost 0 with its
+ * cheapest allowed mode when unpriceable (D65(b), C2 wins) — and never returns
+ * null. `routeTo` runs the facade's findRoute machinery from the pin, forced
+ * into the snapshot's one currency (C20/D25 destinations, D65(c)).
  */
 export function buildSnapshot(
   map: WorldMapData,
@@ -122,7 +132,7 @@ export function buildSnapshot(
   const routes: SnapshotRoute[] = [];
   for (const edge of neighborhood) {
     const priced = priceEdge(edge);
-    if (priced === null) continue; // D60: unpriceable in the list's currency ⇒ not a prompt-facing route
+    if (priced === null) continue; // D65(a): a live arc that cannot honestly price in the list's currency drops
     const other = otherOf(edge)!; // the filter above kept only arcs with a known other endpoint
     // C10: cross-layer arcs report without a direction; an in-layer arc needs
     // both endpoints positioned to have one (§6.2 degenerate rule).

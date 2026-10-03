@@ -1,0 +1,20 @@
+**Travel status**
+
+- **Location:** Emiya Residence (Miyama district)
+- **Map layer:** Fuyuki City
+- **Status:** on the road to Big Bridge, ~2 km out
+
+**Nearby routes** (min):
+
+- Shopping District (SE): 12 (walk)
+- Fuyuki Bridge (E): 25 (walk) — **BLOCKED**: Bridge closed by local authorities
+- Misaki Town: 300 (train)
+
+**Known destinations** (min):
+
+- Fuyuki Station via Fuyuki Station: 50 (walk)
+- Misaki Town via Fuyuki Station: 350 (walk)
+
+_(destination list truncated — entries omitted)_
+
+> **Note:** Unknown place 'stasion' — did you mean Fuyuki Station?

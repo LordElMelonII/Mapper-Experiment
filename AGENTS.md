@@ -25,7 +25,7 @@ ID scheme: **D** = decisions (why) · **F** = features (what) · **C** = engine 
 
 | Command | Purpose |
 |---|---|
-| `npm run verify` | typecheck (app+spec) + `scripts/lint-boundaries.mjs` + vitest — the per-packet acceptance command |
+| `npm run verify` | typecheck (app+spec) + `scripts/lint-boundaries.mjs` + vitest — the per-packet acceptance command (iterate cheaply with `npm run test:unit` — vitest alone) |
 | `npm run build:extension` | full bundle → `dist/extension/` (single ESM, enforces the 1.5 MB min+gz budget, copies manifest) |
 | `npx ng build -c extension` | Angular build only (no merge pass) |
 | `npx ng serve` | dev harness (Agent B owns; shared server, reuse the port) |
@@ -35,7 +35,7 @@ Deploy target: `SillyTavern/public/scripts/extensions/third-party/travel-map-exp
 ## 3. Non-negotiables (violations are defects, not style)
 
 1. **User authority** (D10): nothing moves the pin, blocks a generation (D30/F47), or auto-applies without the user.
-2. **Core purity** (R5): `src/core` imports no framework, renderer, or host API — enforced by lint.
+2. **Core purity** (R5): `src/core` imports no framework, renderer, or host API — enforced by lint. The `handlebars` devDependency (D62) is tests/dev-harness only: never import a template engine from `src/` — the shipped bundle stays engine-free.
 3. **Facade-only mutation** (R2): frontend and host change state exclusively through the facade list in CORE.md §9. A missing capability is a proposal to extend the facade, never a reason to reach around it.
 4. **No UI math** (R1): every number displayed to a user or written into a prompt originates in the core.
 5. **No machine names in prompts** (C23).
@@ -44,7 +44,7 @@ Deploy target: `SillyTavern/public/scripts/extensions/third-party/travel-map-exp
 
 ## 4. Repo status & phase discipline
 
-- **Status (R13):** Task 0 + M0 done and committed (`17275b9`); contract freeze in force (`src/core/api.ts` + the CORE.md §9 facade, extended additively by D62/D63). **M1 done & gate-passed** (committed `09d8388`; ruling D58). **M2 done & verifier gate passed:** A-005 geometry/C14 cost precedence, A-006 Dijkstra + `findRoute`/`setBlocked` (FX2 verbatim), A-007 waypoints; rulings D59–D61; verifier findings resolved in-tree; M2 adversarial suites merged into `tests/verify/**`. **M3 in flight:** A-008 (snapshot + corrective seam) and A-010 (MDS importer; FX3 per the D64 waiver) landed and reviewed; A-009 (template renderer) awaits owner sign-off of the `handlebars` devDependency (D62), then the M3 verifier gate. The EXECUTION-PLAN status line is the state of record when this line drifts. **R10 (D53): mobile & desktop parity is a v1 requirement** — every UI/host packet from Phase 2 on must satisfy it and ship phone-viewport e2e; Phase 1 core work is unaffected.
+- **Status (R14):** Task 0 + M0 done and committed (`17275b9`); contract freeze in force (`src/core/api.ts` + the CORE.md §9 facade, extended additively by D62/D63). **M1 done & gate-passed** (committed `09d8388`; ruling D58). **M2 done & verifier gate passed** (committed `c85c6e2`, which also carries A-008 and A-010): rulings D59–D61; verifier findings resolved in-tree; adversarial suites merged into `tests/verify/**`. **M3 done & verifier gate passed (uncommitted):** A-009 (template renderer + FX4 goldens, `handlebars` devDependency per D62 — tests/harness only) and the D65 fix (snapshot currency integrity + blocked-arc visibility); verifier findings (1 critical + 1 major) resolved in-tree under ruling D65; verifier suites merged; `npm run verify` 375/375. Next: the M3 gate commit (owner approval pending), then Phase 2 M1 decomposition — the owner's call. The EXECUTION-PLAN status line is the state of record when this line drifts. **R10 (D53): mobile & desktop parity is a v1 requirement** — every UI/host packet from Phase 2 on must satisfy it and ship phone-viewport e2e; Phase 1 core work is unaffected.
 - **Parallel work starts only after the contract freeze:** `src/core/api.ts` types + the CORE.md §9 facade. Agents code against the frozen contract, never against each other's working trees.
 - Current milestone, phase gates, and acceptance criteria live in EXECUTION-PLAN §5. Check them before starting any task.
 
@@ -71,6 +71,7 @@ Cross-cutting or unclear ownership goes to the Lead (whoever holds the plan). Wh
 - **Degrade, never throw** on generation-time paths (C32).
 - Console discipline: consistent `[TravelMapper]` prefix, no spam in production paths.
 - **Host-verification gotchas (learned at the M0 gate):** local ST serves plain HTTP on `http://localhost:8000` (owner disabled SSL — no cert handling needed in browser checks). `APP_READY` fires late on a cold cache: wait ~10s before DOM assertions or you get false negatives. Fresh builds must be re-copied to the deploy target before reloading.
+- **Test-authoring gotcha:** golden files load via vite `?raw` imports (`/// <reference types="vite/client" />`) — the spec tsconfig ships no `@types/node`, so `node:fs` will not typecheck in specs; goldens live in `tests/golden/`.
 
 ## 7. Tooling, skills & MCP
 

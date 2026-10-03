@@ -12,7 +12,11 @@
 // commands; M2 (A-006) adds findRoute + setBlocked; M2 (A-007) adds the
 // waypoint commands addUserNodeAt / removeUserNode / promoteUserNode; M3
 // (A-008) adds setCorrective + getSnapshot over the shared D60 pricer
-// (routing/price.ts) and the pure snapshot builder (snapshot/build.ts).
+// (routing/price.ts) and the pure snapshot builder (snapshot/build.ts); M3
+// (A-009) adds renderTemplate + getPromptBlock over the injected engine
+// (D62) with the C32 default-template fallback. D65 (A-011) refines the
+// snapshot seam: ONE honest currency per snapshot (all-rule routes currency,
+// forced-currency destination runs) and blocked arcs that always list.
 // Commands still unimplemented throw their exact TODO markers — never fake
 // data (Task 0 rule).
 
@@ -36,6 +40,7 @@ import { shortestPath } from './routing/dijkstra';
 import { minutesPriced, priceEdgeIn } from './routing/price';
 import type { CostCurrency } from './routing/price';
 import { buildSnapshot } from './snapshot/build';
+import { DEFAULT_TEMPLATE, snapshotContext } from './templates/default';
 
 /** CORE.md §9 — the facade command surface. */
 export interface MapFacade {
@@ -82,8 +87,35 @@ const TRAVEL_MODES: readonly TravelMode[] = ['walk', 'car', 'train'];
 // C23: the unnamed-user predicate — the tap-placed label addUserNodeAt assigns
 // is USER STATE, not a name. Kept local: it mirrors snapshot/build.ts's private
 // twin (promotion flips origin to 'authored', clearing both). getSnapshot needs
-// it for the C19 arc list that feeds the D60 currency decision.
+// it for the C19 arc list that feeds the D65 currency decision.
 const isUnnamedUser = (node: MapNodeData): boolean => node.origin === 'user' && node.label === 'Waypoint';
+
+/**
+ * D65(a) snapshot-seam pricing — the honest-currency read of priceEdgeIn. On a
+ * map whose canonical unit IS minutes (unitKind 'time' with the 'min' label —
+ * FX1's D45 shape), an authored-minutes arc prices honestly in the canonical
+ * list, so a canonical run accepts minutes-priced modes too: the minutes pass
+ * runs first (keeping D60's preference rule intact for authored arcs) and
+ * geometric-only arcs fall through to the canonical pass. Every other
+ * currency/map shape is priceEdgeIn verbatim. Routing itself keeps D60's
+ * strict currency filter (the interleaved-currency verifier pin), so this
+ * helper is the SNAPSHOT seam only: getSnapshot's priceEdge closure and the
+ * forced destination runs (D65(c)) — never findRoute's own runs.
+ */
+function priceForSnapshot(
+  edge: MapEdgeData,
+  currency: CostCurrency,
+  candidates: readonly TravelMode[],
+  preferred: TravelMode,
+  scale: WorldMapData['scale'],
+  positionOf: (id: string) => { x: number; y: number } | undefined,
+): { mode: TravelMode; cost: number } {
+  if (currency === 'canonical' && scale.unitKind === 'time' && scale.unitLabel === 'min') {
+    const asMinutes = priceEdgeIn(edge, 'minutes', candidates, preferred, scale, positionOf);
+    if (Number.isFinite(asMinutes.cost)) return asMinutes;
+  }
+  return priceEdgeIn(edge, currency, candidates, preferred, scale, positionOf);
+}
 
 /**
  * C7: a runtime-placed node connects to the k nearest leaf nodes on its layer
@@ -151,7 +183,11 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
   // runs (A-008) both call it, so routing and snapshot share a single D60
   // pricer (routing/price.ts; §6.2: no parallel math). Ensures freshness and
   // validates endpoints itself (C30), so every caller gets the same seams.
-  const computeRoute = (from: string, to: string, mode?: TravelMode): RouteResult => {
+  // D65(c): the snapshot's hub computation passes `forcedCurrency` (an
+  // INTERNAL parameter — the MapFacade interface and findRoute's call are
+  // untouched) to run EXACTLY the snapshot's currency; findRoute keeps D60's
+  // minutes-first/canonical-fallback shape verbatim.
+  const computeRoute = (from: string, to: string, mode?: TravelMode, forcedCurrency?: CostCurrency): RouteResult => {
     ensureFresh(); // C8 — queries never observe a stale graph
     const { map, overlay, effective } = state;
     if (map === null || overlay === null) throw new Error('[TravelMapper] no map loaded');
@@ -177,25 +213,34 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
     // — every computation runs minutes-first and falls back to canonical units
     // only when no minutes-priced route exists; a mode priced in the other
     // currency is unroutable in a run (counting as "disallowed" for it).
+    // D65(c): a FORCED run prices through the snapshot seam's honest read
+    // (priceForSnapshot) so destination costs share the snapshot's ONE honest
+    // currency; findRoute's own runs keep the strict D60 filter verbatim.
     const nodeIds = eff.nodes.map((node) => node.id);
     const candidates: readonly TravelMode[] = mode !== undefined ? [mode] : TRAVEL_MODES;
     const preferred = mode !== undefined ? mode : overlay.travelMode;
+    const priceIn = (edge: MapEdgeData, currency: CostCurrency): { mode: TravelMode; cost: number } =>
+      forcedCurrency !== undefined
+        ? priceForSnapshot(edge, currency, candidates, preferred, map.scale, positionOf)
+        : priceEdgeIn(edge, currency, candidates, preferred, map.scale, positionOf);
     const run = (currency: CostCurrency) =>
-      shortestPath(
-        nodeIds,
-        eff.edges,
-        (edge) => priceEdgeIn(edge, currency, candidates, preferred, map.scale, positionOf).cost,
-        from,
-        to,
-      );
-    let currency: CostCurrency = 'minutes';
-    let result = run(currency);
-    if (!result.ok) {
-      currency = 'canonical'; // C15/D60: no minutes route ⇒ the whole computation re-runs in canonical units
+      shortestPath(nodeIds, eff.edges, (edge) => priceIn(edge, currency).cost, from, to);
+    let currency: CostCurrency;
+    let result: ReturnType<typeof run>;
+    if (forcedCurrency !== undefined) {
+      // D65(c): forced — exactly this currency; no fallback run, ok:false stays
+      // ok:false (the hub drops like a cross-currency route arc).
+      currency = forcedCurrency;
       result = run(currency);
+    } else {
+      currency = 'minutes';
+      result = run(currency);
+      if (!result.ok) {
+        currency = 'canonical'; // C15/D60: no minutes route ⇒ the whole computation re-runs in canonical units
+        result = run(currency);
+      }
     }
-    const priceEdge = (edge: MapEdgeData): { mode: TravelMode; cost: number } =>
-      priceEdgeIn(edge, currency, candidates, preferred, map.scale, positionOf);
+    const priceEdge = (edge: MapEdgeData): { mode: TravelMode; cost: number } => priceIn(edge, currency);
 
     if (!result.ok) {
       // C17: translate unreachability into a human reason. Was the graph
@@ -233,6 +278,29 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
   // (§6.2) and authored data that already uses the scheme can never collide.
   let nextNodeId = 1;
   let nextEdgeId = 1;
+
+  // A-009: the ONE render path for both §9 template commands (no parallel
+  // math, §6.2). Builds the current snapshot through getSnapshot (§9 query
+  // prelude: C8 freshness + the no-map throw), assembles the C22 context,
+  // then compiles+runs through the injected engine (D62/R5 — the core never
+  // owns a template library). C32/§6.2: a template error — syntax at compile
+  // or at runtime (a missing helper) — must never abort or empty an injection,
+  // so it falls back to the DEFAULT template over the SAME context and logs
+  // nothing (the toast is host business, Phase 4). No caching, no
+  // partials/helpers registration (Ponytail): plain compile + context.
+  const renderViaEngine = (tpl: string): string => {
+    const snapshot = facade.getSnapshot(); // the §9 query — never sets stale (C8)
+    const engine = state.compile;
+    if (engine === undefined) {
+      throw new Error('[TravelMapper] no template engine injected (D62)');
+    }
+    const context = snapshotContext(snapshot);
+    try {
+      return engine(tpl)(context);
+    } catch {
+      return engine(DEFAULT_TEMPLATE)(context);
+    }
+  };
 
   const facade: MapFacade = {
     // --- Map lifecycle -------------------------------------------------------
@@ -557,29 +625,63 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
               return other !== undefined && !isUnnamedUser(other);
             });
 
-      // D60 routes currency — minutes-first over the C19 arc list, via the
-      // SAME minutesPriced helper routing uses (C15/D60).
-      const anyMinutes = neighborhood.some((edge) =>
-        TRAVEL_MODES.some((m) => edge.modes[m]?.allowed === true && minutesPriced(edge, m, map.scale)),
-      );
-      const currency: CostCurrency = anyMinutes ? 'minutes' : 'canonical';
+      // D65(a) routes currency — minutes iff at least one LIVE prompt-listable
+      // incident arc exists and every one prices in minutes; otherwise
+      // canonical units (completeness beats the minutes preference — C19's
+      // "exactly the arcs incident to the pin"). Blocked arcs are exempt
+      // (D65(b): they always list — best-effort cost or cost 0 — so they price
+      // in either currency and never constrain the choice). An empty live set
+      // presents no minutes-derived cost, so it stays canonical — the same
+      // unit-label default as the C27 degraded path. Same minutesPriced helper
+      // routing uses (C15/D60); kept in lockstep with build.ts's
+      // routesCurrency: same predicate, same exemptions, same arc selection.
+      const liveArcs = neighborhood.filter((edge) => edge.blocked === undefined);
+      const allMinutes =
+        liveArcs.length > 0 &&
+        liveArcs.every((edge) =>
+          TRAVEL_MODES.some((m) => edge.modes[m]?.allowed === true && minutesPriced(edge, m, map.scale)),
+        );
+      const currency: CostCurrency = allMinutes ? 'minutes' : 'canonical';
 
-      // C2/C17: prompt pricing strips the BLOCK, never the reason — a blocked
-      // arc stays listed with its would-be cost + blockedReason, and the ∞
-      // sentinel never reaches the snapshot. Null ⇒ the arc is unpriceable in
-      // the list's currency (cross-currency, D60) ⇒ not a prompt-facing route.
+      // C2/C17/D65: prompt pricing strips the BLOCK, never the reason. A live
+      // arc that cannot honestly price in the list's currency returns null ⇒
+      // dropped (D65(a)); a BLOCKED arc is never dropped (D65(b) — C2 wins
+      // over D60's exclusion): it prices best-effort, and when unpriceable
+      // there it lists with cost 0 and its cheapest allowed mode — the reason,
+      // not the cost, is the prompt payload. The ∞ sentinel never reaches the
+      // snapshot.
       const priceEdge = (edge: MapEdgeData): { mode: TravelMode; cost: number } | null => {
-        const priced = priceEdgeIn({ ...edge, blocked: undefined }, currency, candidates, preferred, map.scale, positionOf);
-        return Number.isFinite(priced.cost) ? priced : null;
+        const priced = priceForSnapshot(
+          { ...edge, blocked: undefined },
+          currency,
+          candidates,
+          preferred,
+          map.scale,
+          positionOf,
+        );
+        if (Number.isFinite(priced.cost)) return priced;
+        if (edge.blocked === undefined) return null; // D65(a): a live arc that cannot honestly price drops
+        const allowed = TRAVEL_MODES.filter((m) => edge.modes[m]?.allowed === true);
+        return { mode: allowed[0] ?? preferred, cost: 0 }; // D65(b): cost 0 + cheapest allowed mode
       };
 
-      // C20/D25: destinations route through the facade's ONE route computation.
-      const routeTo = (nodeId: string): RouteResult => computeRoute(pinId!, nodeId);
+      // C20/D25: destinations route through the facade's ONE route computation,
+      // FORCED into the snapshot's currency (D65(c) — no per-run canonical
+      // fallback inside this snapshot; a hub without an in-currency route
+      // drops like a cross-currency route arc).
+      const routeTo = (nodeId: string): RouteResult => computeRoute(pinId!, nodeId, undefined, currency);
 
       return buildSnapshot(map, overlay, eff, priceEdge, routeTo);
     },
-    renderTemplate: () => { throw todo('M3', 'renderTemplate'); },
-    getPromptBlock: () => { throw todo('M3', 'getPromptBlock'); },
+    // A-009: render a USER template over the current snapshot (C22). The
+    // template content is user data host-stored (D23); the words may be
+    // anything — XML, markdown, brackets, bare text (D24/F33).
+    renderTemplate: (tpl) => renderViaEngine(tpl),
+
+    // A-009: the prompt block — the DEFAULT template over the current
+    // snapshot (D23: user templates are host-stored; the host passes them to
+    // renderTemplate). Same engine/C32 rules via the one render path (F34).
+    getPromptBlock: () => renderViaEngine(DEFAULT_TEMPLATE),
 
     // --- Viewer state (Phase 2) ---------------------------------------------------
 
