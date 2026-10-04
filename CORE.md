@@ -125,7 +125,7 @@ All queries (routing, snapshot, template rendering) run against the **effective 
 Map lifecycle    loadMap · materialize · forkMap · saveForkToLibrary · validateImport · migrateData
 Presence         setCurrentLocation · setStatusNote · setTravelMode · setCorrective (D63)
 Overlay edits    setBlocked · addUserNodeAt · removeUserNode · promoteUserNode
-Editor commands  upsertNode · upsertEdge · removeNode · removeEdge · calibrateScale · saveMap
+Editor commands  upsertNode · upsertEdge · removeNode · removeEdge · calibrateScale · saveMap · hasUnsavedChanges (D75 — the F45 dirty flag's core-side read; the editor-command semantics are register row D75)
 Queries          findRoute · getSnapshot · renderTemplate · getPromptBlock
 Viewer state     setActiveLayer (facade-held viewer state; validated against the loaded map, reset to its first layer on every loadMap — D69; the snapshot's `layer` stays pin-derived, unaffected)
 ```

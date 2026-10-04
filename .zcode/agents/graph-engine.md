@@ -2,8 +2,8 @@
 name: "graph-engine"
 description: "Agent A — Graph Engine implementer. Executes task packets in src/core (data model, geometry, cost precedence, routing, snapshot & template rendering) plus world fixtures and unit tests."
 color: cyan
-model: "account:zai-start-plan/GLM-5.3-Flash"
-thoughtLevel: high
+model: "account:zai-individual-coding-plan/GLM-5.3-Flash"
+thoughtLevel: max
 injectAgentsMd: true
 ---
 

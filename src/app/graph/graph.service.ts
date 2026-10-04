@@ -25,7 +25,50 @@
 // away, so touch swallows badge taps for z ≲ 0.28 — every culled phone view
 // showed the exempt badge text (11·z ≈ 2–3 px, illegible dust) as a dead
 // affordance; the cross-layer surface now returns exactly when it is both
-// readable and tappable). The ONE cytoscape instance (D3): created headless
+// readable and tappable). B-116 (editor mode, §5 Phase 3 M1/D75): an
+// `editorMode` signal + enter/exit; in editor mode the background/compound-box
+// tap places an authored node through facade.upsertNode (id: '' — C5/D75,
+// 'New place' label, kind 'location', active layer, event.position verbatim)
+// identified by the projected-node-id delta and selected via the existing
+// tme-selected signal path; a node `free` (dragend) persists the new position
+// through upsertNode full-replace with the node's KNOWN id; grabbable is OFF
+// in view mode (cy.autoungrabify — the M1 view-local drag is retired); the
+// F45 save bar reads `unsavedChanges` (facade.hasUnsavedChanges recomputed on
+// the editorRevision signal — no timers) and saveMap() runs the facade's
+// explicit save. Editor commands mark only the facade's `dirty` flag —
+// routing and the snapshot still serve the SAVED graph until saveMap
+// (F45/D75), so place/move bump neither graphRevision nor the snapshot.
+// B-117 (the F40 property panel, §5 Phase 3 M1): the panel's mutation paths
+// join the editor block — `upsertNode` (whole-draft full-replace commit,
+// C30 refusals normalized to a field-precise NodeEditRefusal the panel
+// renders) and `removeNode` (direct delete, F46 delete-and-redo; the
+// removeUserNode selection-clear precedent) — both F45-safe (dirty only:
+// rebuild + editorRevision, never graphRevision/snapshot), plus the panel's
+// live-reference reads `nodeDataById` / `containerNodesOnLayer` (R4
+// lookups, never copies) and the `testNodeData` read-only e2e seam.
+// B-118 (quick-connect, §5 Phase 3 M1/D42/F16): a connect mode entered from
+// the property panel — the panel is open exactly when a library node is
+// selected in editor mode, quick-connect's exact precondition. Leaf taps
+// toggle a PICK SET (the core's `isPinEligible` over the merged node set is
+// the ONE pickable rule — D58/C1/§6.2: same active layer, containers and
+// parents never, the source never picks itself), highlighted by a DISTINCT
+// `tme-connect-pick` class (F46 ruling: picks are not selections — no
+// selection is written while connecting). Done commits ONE
+// `facade.upsertEdge` per picked target (D42 defaults: all three modes
+// allowed, everything else geometry-priced — C14 row 5; parallel arcs stay
+// possible per C4, no dedup), a C30 refusal surfaces field-precise with the
+// uncommitted picks intact; Cancel discards. Mode exit rides selection
+// change / editor exit / panel close. F45/D75: the arcs mark only `dirty` —
+// they RENDER (the projection reads the live map) but routing serves the
+// SAVED graph until saveMap.
+// B-119 (Q29 panel regime, §8 item 3's settled reading): the property
+// panel's standing-panel state — `panelFloating`/`panelPosition` (FRONTEND
+// viewer state, in-memory only: the facade carries no command for it and
+// must not gain one this milestone — §9 puts preferences with the host in
+// Phase 4) with the maximized-default reset on editor entry. All clamp /
+// drag DOM math lives in the panel component (the consumer); the service
+// holds the two signals and nothing else.
+// The ONE cytoscape instance (D3): created headless
 // in the constructor, `mount()`/`unmount()` on demand — computation works with
 // the UI closed. Zoneless (D2): the service writes signals; the ONLY canvas
 // events bound are discrete gestures (`tap` → selection signals, `free` →
@@ -50,12 +93,15 @@ import { Injectable, OnDestroy, computed, effect, signal } from '@angular/core';
 import type {
   ChatMapOverlay,
   MapEdgeData,
+  MapNodeData,
   MapSnapshot,
+  NodeKind,
   RouteResult,
   TravelMode,
   WorldMapData,
 } from '../../core/api';
 import type { MapFacade } from '../../core/facade';
+import { MapValidationError, isPinEligible } from '../../core/model/validate';
 import { buildCrossLayerBadges, buildLayerElements, crossLayerAnchors } from './layer-elements';
 
 /** Switcher label: the id the facade validates + the C23 human name. */
@@ -156,6 +202,20 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
     style: {
       'border-width': 3,
       'border-color': '#ffd166',
+    },
+  },
+  {
+    // B-118 (D42/F16, F46 boundary ruling): the quick-connect PICK SET's
+    // DISTINCT visual — a dashed teal accent, deliberately NOT `tme-selected`:
+    // connect targets are picked as arc endpoints, never selected for editing,
+    // and the pick class must never be confusable with the selection accent.
+    // Projected by the same signal-driven effect as tme-selected (R3) and
+    // re-projected inside every rebuild batch (B-112).
+    selector: 'node.tme-connect-pick',
+    style: {
+      'border-width': 3,
+      'border-color': '#4db6ac',
+      'border-style': 'dashed',
     },
   },
   {
@@ -301,6 +361,70 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
 const FIT_PADDING = 40;
 
 /**
+ * B-117 (api.ts `parent` contract, §5 Phase 3 M1): the CONTAINER kinds —
+ * every kind that may hold compound children. The property panel's parent
+ * picker offers exactly these (same layer), and never 'waypoint' (D21: the
+ * runtime overlay origin is neither an editor kind nor a parent — F40's
+ * six authored kinds are world/region/city/district/location/hub).
+ */
+const CONTAINER_KINDS: ReadonlySet<NodeKind> = new Set<NodeKind>([
+  'world',
+  'region',
+  'city',
+  'district',
+]);
+
+/**
+ * B-117: one field-precise C30 refusal issue, the app's copy of the core's
+ * ValidationIssue (path + message rendered verbatim by the property panel —
+ * user-visibly, never console-only).
+ */
+export interface NodeEditIssue {
+  readonly path: string;
+  readonly message: string;
+}
+
+/** B-117: a refused editor command — the collected field-precise report (C30). */
+export interface NodeEditRefusal {
+  readonly issues: readonly NodeEditIssue[];
+}
+
+/**
+ * B-118 (D42 contract, verbatim): the modes of every quick-connect arc —
+ * ALL modes allowed, no authored distance/time, no terrain, not blocked.
+ * Geometry prices the arc via C14 row 5 (F19 geometry-first); the author
+ * refines in M2's arc editing (F41 — this packet creates ONLY default arcs).
+ */
+const CONNECT_EDGE_MODES: MapEdgeData['modes'] = {
+  walk: { allowed: true },
+  car: { allowed: true },
+  train: { allowed: true },
+};
+
+/**
+ * B-118 (C23 plain words): the connect banner's tap feedback. One generic
+ * line for every unpickable tap — a container, a node with children, a
+ * foreign-layer node (data guard; the projection only shows the active
+ * layer), or a cross-layer badge — and one for the source itself.
+ */
+const CONNECT_BAD_TARGET = 'Only a location, hub or waypoint on this layer can be picked.';
+const CONNECT_SELF_TARGET = "The starting place can't connect to itself.";
+
+/**
+ * B-117: normalize any facade throw into the panel's refusal shape (C30
+ * field-precise issues for a MapValidationError; the message alone for any
+ * other refusal — degrade, never throw, on this UI path, C32 spirit).
+ */
+function nodeEditRefusal(error: unknown): NodeEditRefusal {
+  if (error instanceof MapValidationError) {
+    return { issues: error.issues.map((issue) => ({ path: issue.path, message: issue.message })) };
+  }
+  return {
+    issues: [{ path: '', message: error instanceof Error ? error.message : String(error) }],
+  };
+}
+
+/**
  * B-113 (§5 M4 label culling, §6.1 dense sub-graph perf row): labels hide
  * when the current zoom falls below the CURRENT fit zoom × this factor.
  * The threshold is fit-RELATIVE, not absolute, because one absolute floor
@@ -345,6 +469,124 @@ export class GraphService implements OnDestroy {
    * high-frequency `zoom` event reads it and must never touch Angular state).
    */
   private cullZoom = NEVER_CULL_ZOOM;
+
+  /**
+   * B-116 (C5/D75): the node ids of the LAST projection — rebuilt by
+   * rebuildElements from the very element definitions it installs. The
+   * place-command's id discovery reads the delta between this set and the
+   * post-command projection: the single command can only have created one
+   * node, so the delta IS the created node (the UI never invents ids — C5).
+   * A plain field: read only by discrete tap handlers (D2).
+   */
+  private projectedNodeIds = new Set<string>();
+
+  /**
+   * B-116 (§5 Phase 3 M1/D75): editor mode — the authoring state. In editor
+   * mode the empty-canvas tap places an authored node (facade.upsertNode) and
+   * leaves become grabbable so dragging persists positions; in view mode
+   * nodes are not draggable (grabbable off — the M1 view-local drag is
+   * retired; the map's coordinates are the author's business, D10/C4).
+   */
+  readonly editorMode = signal(false);
+
+  /**
+   * B-118 (D42/F16): quick-connect mode — on while the author picks arc
+   * targets for the node selected when the mode was entered. Entered ONLY
+   * from the property panel (the panel is open exactly when connect mode is
+   * legal: editor mode + a library-node selection); exited by Done (commit),
+   * Cancel/Escape (discard), or any state change that would orphan the mode —
+   * editor exit, a selection change/dismissal, a map reload — via the
+   * constructor's guard effect below.
+   */
+  readonly connectMode = signal(false);
+
+  /**
+   * B-118: the connect source — the node id the mode was entered with (the
+   * selection at entry; the D42 `source` of every created arc). Frozen at
+   * entry: while connecting, taps never write the selection (F46 boundary),
+   * so a mismatch between this and the live selection can only mean the mode
+   * was orphaned — the guard effect exits.
+   */
+  readonly connectSourceId = signal<string | null>(null);
+
+  /**
+   * B-118: the pick set — target node ids in pick order (Set iteration is
+   * insertion order). One tap = one toggle (the packet's toggle-on/off rule;
+   * Set membership IS the double-pick prevention). Never written by taps on
+   * unpickable nodes — those surface `connectFeedback` instead.
+   */
+  readonly connectPicks = signal<ReadonlySet<string>>(new Set());
+
+  /**
+   * B-118 (C23): why the last tap picked nothing — a container, a node with
+   * children, a foreign-layer node or a badge (generic line) or the source
+   * itself. Cleared by a successful toggle, Done and every mode exit.
+   */
+  readonly connectFeedback = signal<string | null>(null);
+
+  /**
+   * B-118: a C30 refusal of the Done commit loop (e.g. an edge the validator
+   * refuses), normalized through the B-117 NodeEditRefusal pattern — rendered
+   * field-precise by the banner, with the UNCOMMITTED picks intact so the
+   * author can drop the offending target and retry. null after any clean
+   * commit/cancel.
+   */
+  readonly connectRefusal = signal<NodeEditRefusal | null>(null);
+
+  // --- Panel regime (PKG B-119, Q29 / §8 item 3 — the property panel) ------
+
+  /**
+   * B-119: whether the F40 property panel FLOATS over the stage (Q29's
+   * standing-panel regime) instead of sitting maximized in its docked
+   * region. FRONTEND viewer state, in-memory only — the facade carries no
+   * command for it and must not gain one this milestone (§9: the host owns
+   * preferences, Phase 4's persistence; never map data, so no facade/R2/R4
+   * surface). The panel component is the consumer: it writes this signal on
+   * its Maximize/Restore toggle (R3, the selection.set precedent), and
+   * enterEditor resets it — the editor maximizes by default (§8 item 3).
+   */
+  readonly panelFloating = signal(false);
+
+  /**
+   * B-119: the floating panel's remembered position — VIEWPORT px, rendered
+   * by the panel as `translate(x, y)` on its `position: fixed` host.
+   * Written ONCE per drag end by the panel component (never during the drag
+   * — D2: pointermove applies the live position as a direct style transform
+   * with zero signal writes) and clamped by the component to the stage
+   * bounds below/left of the top-right chrome stack (F52/D53: the chrome
+   * stays reachable in every state). Remembered across panel close/reopen
+   * AND editor toggles; only `panelFloating` resets on editor entry.
+   */
+  readonly panelPosition = signal<{ x: number; y: number } | null>(null);
+
+  /**
+   * B-116 (F45/D75): bumped by every editor command (place, move), by
+   * saveMap, and by loadMap — the ONLY recompute triggers of `unsavedChanges`
+   * (no timers, D2: the facade's dirty flag is core state, not a signal, so
+   * the computed polls it on this revision counter, the graphRevision
+   * precedent).
+   */
+  private readonly editorRevision = signal(0);
+
+  /**
+   * B-116 (F45/D75): the unsaved-changes indicator's state — the core's
+   * hasUnsavedChanges() answer (nothing outside the core tracks dirtiness,
+   * D75/R1), recomputed only on the editorRevision signal. Until saveMap()
+   * runs, routing and the snapshot still serve the SAVED graph — that is the
+   * product behavior (F45), not staleness to be hidden.
+   */
+  readonly unsavedChanges = computed<boolean>(() => {
+    void this.editorRevision(); // dependency: place/move/save/load re-read (F45)
+    return this.facade?.hasUnsavedChanges() ?? false;
+  });
+
+  /**
+   * B-116: the user-visible save refusal — the facade's C30 final-gate error
+   * message (an invalid live map refuses saveMap, dirty stays true, the map
+   * is untouched). Rendered by the save bar; cleared on the next successful
+   * save. null when nothing failed.
+   */
+  readonly saveError = signal<string | null>(null);
 
   /**
    * B-113 (ruling 2): which side of the threshold the view is currently on —
@@ -426,6 +668,10 @@ export class GraphService implements OnDestroy {
    * blockArc/liftBlock re-runs findRoute (the facade's ensureFresh rebuild
    * picks the overlay change up first), so the C17 unreachable reason lands
    * in the sidebar the moment the only road closes.
+   * B-116 (F45/D75): a selection the SAVED graph does not know yet (an
+   * unsaved editor node) is no route until saveMap makes it live — the query
+   * refuses (C30) and the computed degrades to null, never a crash (C32
+   * spirit).
    */
   readonly route = computed<RouteResult | null>(() => {
     void this.travelMode(); // dependency: a preference switch re-prices the default run
@@ -435,7 +681,20 @@ export class GraphService implements OnDestroy {
     if (sel === null || this.facade === null || pinId === null || pinId === sel.id) {
       return null;
     }
-    return this.facade.findRoute(pinId, sel.id);
+    // B-116 gate fix (C32 spirit, F45/D75): the query can REFUSE — since D75
+    // the UI can legitimately hold a selection the CORE does not know yet
+    // (an unsaved editor node: upsertNode marks only `dirty`, the effective
+    // graph is rebuilt on SAVE, so routing serves the SAVED map until then —
+    // the product behavior, F45). findRoute answers that refusal by throwing
+    // its C30 unknown-id error; the sidebar degrades to its no-route state
+    // (the panel's @else branch) instead of crashing out of the computed.
+    // The refusal ends at saveMap: the graphRevision bump there re-runs this
+    // against the now-live graph.
+    try {
+      return this.facade.findRoute(pinId, sel.id);
+    } catch {
+      return null;
+    }
   });
 
   /**
@@ -467,6 +726,14 @@ export class GraphService implements OnDestroy {
   });
 
   constructor() {
+    // B-116: view mode (the default) has nodes NOT grabbable — dragging is an
+    // editor-mode affordance (the M1 view-local drag is retired; §5 M1 puts
+    // move under the editor, D10/C4). `autoungrabify` is CORE state (persists
+    // across rebuilds; false restores the per-element `grabbable` field, so
+    // compound parents and badges stay pinned even in editor mode). Verified
+    // against @types/cytoscape 3.21.9 index.d.ts:995-1003.
+    this.cy.autoungrabify(true);
+
     // D53: canvas input binds through cytoscape's UNIFIED pointer/touch events
     // — 'tap' etc. of UserInputDeviceEventNameExt in the installed
     // @types/cytoscape 3.21.9 (index.d.ts: tapstart/tapdrag/tapend/taphold
@@ -486,6 +753,17 @@ export class GraphService implements OnDestroy {
       // the sanctioned path. The selector guarantees a node target
       // (EventObject.target is typed any).
       const node = event.target as NodeSingular;
+      // B-118: connect mode owns every node tap — a pickable leaf toggles the
+      // pick set; a container, a parent, a badge or the source itself is
+      // ignored with banner feedback (C1/§6.2: never an arc into a compound
+      // parent — the validator would refuse it). NO selection is written
+      // while connecting (F46 ruling: picks are arc endpoints, not
+      // selections), so the badge/isParent/selection branches below are
+      // unreachable until the mode exits.
+      if (this.connectMode()) {
+        this.handleConnectTap(node);
+        return;
+      }
       // B-108 (finding 1.1): the badge pseudo-node IS the cross-layer arc's
       // only canvas surface (C3; F14/C2 have no same-layer carve-out) — a
       // badge tap selects the ARC with exactly an edge tap's semantics:
@@ -508,14 +786,19 @@ export class GraphService implements OnDestroy {
       // its children — the selector matched the parent) is a PLACEMENT tap, not
       // a selection: `node.isParent()` (@types/cytoscape 3.21.9 index.d.ts:3624
       // — the runtime's own compound check, not a kind-string heuristic) routes
-      // to the same placeWaypointAt(event.position) path as the background tap.
-      // addUserNodeAt places TOP-LEVEL (validate.ts rejects `parent` on user
-      // nodes), so the waypoint lands in this layer unparented, and the event's
-      // model position is used verbatim (no coordinate math, R1). This retires
-      // the M2 hazard where a district tap selected a node that can never be an
-      // edge endpoint (C1) and dead-ended the route panel.
+      // to the placement path — the event's model position is used verbatim
+      // (no coordinate math, R1). B-116: the placement target depends on the
+      // mode — in EDITOR mode the empty-canvas tap places an AUTHORED node
+      // through upsertNode (this packet's editor place); in view mode it
+      // places a chat waypoint through addUserNodeAt (F10/C7/D21 — addUserNodeAt
+      // places TOP-LEVEL (validate.ts rejects `parent` on user nodes), so the
+      // node lands in this layer unparented).
       if (node.isParent()) {
-        this.placeWaypointAt(event.position);
+        if (this.editorMode()) {
+          this.placeNodeAt(event.position);
+        } else {
+          this.placeWaypointAt(event.position);
+        }
         return;
       }
       // B-105 (ruling 1): selection carries the id (stable, unique) + the
@@ -526,6 +809,9 @@ export class GraphService implements OnDestroy {
       this.selection.set({ id: node.id(), label: String(node.data('label') ?? '') });
     });
     this.cy.on('tap', 'edge', (event) => {
+      // B-118: while connecting an arc tap is neither a pick nor a selection —
+      // it must not hand the panel from the connect banner to the arc panel.
+      if (this.connectMode()) return;
       // B-106 (ruling 1/2): an edge tap selects the arc — the selector
       // guarantees an edge target (EventObjectEdge.target: EdgeSingular in
       // the installed @types/cytoscape 3.21.9). Same discrete path (D2); the
@@ -537,31 +823,53 @@ export class GraphService implements OnDestroy {
     });
     this.cy.on('tap', (event) => {
       // Element taps bubble to the core, so only a cy-targeted tap is a
-      // background tap. B-109 (ruling 1, F10): that gesture PLACES a waypoint
-      // at the event's model position (InputEventObject.position — the library
-      // converts rendered→model coordinates, so the app performs no coordinate
-      // math, R1) AND clears both selections (the M2 panel-dismiss ergonomics
-      // survive — one gesture, two effects, no hidden modes). Stray placements
-      // are recoverable: waypoints are removable (B-110).
+      // background tap. B-109 (ruling 1, F10): in VIEW mode that gesture
+      // PLACES a waypoint at the event's model position (InputEventObject
+      // .position — the library converts rendered→model coordinates, so the
+      // app performs no coordinate math, R1) AND clears both selections (the
+      // M2 panel-dismiss ergonomics survive — one gesture, two effects, no
+      // hidden modes). Stray placements are recoverable: waypoints are
+      // removable (B-110). B-116: in EDITOR mode the same gesture places an
+      // AUTHORED node through upsertNode and SELECTS it (the C5/D75 id-delta
+      // path — the editor's "place node" gesture; the placement handler owns
+      // the selection writes).
       if (event.target === this.cy) {
+        // B-118: while connecting a background tap neither places a node nor
+        // dismisses the selection — both would orphan the mode mid-pick (the
+        // placement would select a NEW node; the dismissal would close the
+        // panel). The banner's Done/Cancel own the exit.
+        if (this.connectMode()) return;
+        if (this.editorMode()) {
+          this.placeNodeAt(event.position);
+          return;
+        }
         this.placeWaypointAt(event.position);
         this.selection.set(null);
         this.edgeSelection.set(null);
       }
     });
-    this.cy.on('free', 'node', () => {
-      // Nodes stay grabbable with ZERO code of ours: autolock and
-      // autoungrabify both default to false in the installed declarations
-      // (@types/cytoscape 3.21.9, Core options — "The default value is
-      // false"), so cytoscape's native drag is left untouched.
+    this.cy.on('free', 'node', (event) => {
+      // Nodes stay grabbable per their element definitions with ZERO code of
+      // ours; the CORE-WIDE grabbable switch is autoungrabify, owned by the
+      // editor mode (B-116: view mode sets it true — nodes not draggable —
+      // and enterEditor restores the per-element field). `free` fires on drag
+      // release (@types/cytoscape 3.21.9 index.d.ts:5347) and writes no
+      // signal (D2: high-frequency drag events never touch Angular state —
+      // this is a DISCRETE release event; the writes it triggers below are
+      // signal writes through the sanctioned paths).
       //
-      // M1 ruling (R2/R4): drag persistence is a MUTATION, and the frozen §9
-      // surface has no move command — so the drag is view-local: positions
-      // live only in cytoscape (which IS the projection — no shadow copy) and
-      // are lost on layer switch. `free` fires on drag release; it writes no
-      // signal (D2: high-frequency events never touch Angular state).
-      // Phase 3: upsertNode persists node positions.
-      console.debug('[TravelMapper] node moved (view-local; Phase 3 upsertNode persists)');
+      // B-116 (D75/F45, replacing the M1 view-local seam): dragging a node is
+      // an EDITOR affordance whose release PERSISTS the new position —
+      // upsertNode full-replace with the node's KNOWN id and
+      // `e.target.position()` verbatim (model coordinates; R1: a position is
+      // authored data being recorded, not a computed number). persistNode
+      // Position guards degrade silently (C32 spirit): not in editor mode,
+      // not a library node (overlay waypoints have no editor command in this
+      // packet — their drag stays view-local), or a grab-release without a
+      // move.
+      if (!this.editorMode()) return;
+      const node = event.target as NodeSingular;
+      this.persistNodePosition(node.id(), node.position());
     });
     this.cy.on('zoom', () => {
       // B-113 (§5 M4 label culling, §6.1 dense row): `zoom` is a Core
@@ -594,6 +902,22 @@ export class GraphService implements OnDestroy {
       this.edgeSelection();
       this.applySelectionClasses();
     });
+
+    // B-118: connect mode's exit guard (R3 — the mode is a projection of the
+    // state it presumes, never independent). Every read is a discrete-write
+    // signal, so the effect runs per discrete event only (D2): editor exit,
+    // a selection change (chip dismiss, removeNode's clear, loadMap's reset)
+    // or a map reload that would orphan the mode exits it cleanly — the
+    // banner's precondition (the property panel open on the SOURCE) never
+    // silently lapses. exitConnectMode writes signals this effect reads, so
+    // it re-runs once more and finds the guard false — a stable single pass.
+    effect(() => {
+      if (!this.connectMode()) return;
+      const selId = this.selection()?.id ?? null;
+      if (!this.editorMode() || selId === null || selId !== this.connectSourceId()) {
+        this.exitConnectMode();
+      }
+    });
   }
 
   ngOnDestroy(): void {
@@ -617,6 +941,11 @@ export class GraphService implements OnDestroy {
     this.travelMode.set(overlay.travelMode);
     this.selection.set(null);
     this.edgeSelection.set(null);
+    // B-116 (D75): a fresh load carries no unsaved editor edits (the facade
+    // clears its dirty flag in loadMap) — recompute the F45 bar and drop any
+    // stale save refusal from the previous session.
+    this.editorRevision.update((n) => n + 1);
+    this.saveError.set(null);
     // Validators guarantee >= 1 layer; degrade to no-layer rather than throw.
     const firstLayer = map.layers[0]?.id ?? null;
     if (firstLayer !== null) {
@@ -773,6 +1102,369 @@ export class GraphService implements OnDestroy {
     this.facade?.promoteUserNode(id, label);
     this.afterGraphMutation();
     if (this.selection()?.id === id) this.selection.set({ id, label });
+  }
+
+  // --- Editor mode (PKG B-116, §5 Phase 3 M1 — D75/F45/C5/R1/R2) --------------
+
+  /**
+   * Enter editor mode: the empty-canvas tap places authored nodes and leaf
+   * nodes become grabbable (drag persists — see the `free` handler). The
+   * toggle is the template's only write path for this state (R3).
+   * B-119 (Q29/§8 item 3): editor entry also MAXIMIZES the property panel —
+   * the floating flag resets so a re-entry always opens the docked region
+   * form. The remembered position survives (panelPosition untouched): the
+   * next Restore floats it back where the author left it.
+   */
+  enterEditor(): void {
+    this.editorMode.set(true);
+    this.panelFloating.set(false); // B-119: the editor maximizes by default
+    this.cy.autoungrabify(false); // restores the per-element `grabbable` field
+  }
+
+  /**
+   * Exit editor mode: nodes are no longer draggable (grabbable off — the M1
+   * view-local drag is retired) and the canvas tap returns to waypoint
+   * placement (B-109). Unsaved edits survive the toggle (F45: they live in
+   * the core's dirty flag until saveMap, not in the editor mode).
+   */
+  exitEditor(): void {
+    this.editorMode.set(false);
+    this.cy.autoungrabify(true);
+  }
+
+  /**
+   * B-116 (§5 M1/D75/C5): place an AUTHORED node in the active layer at the
+   * given model position — the tap event's `position` verbatim (verified:
+   * InputEventObject.position, @types/cytoscape 3.21.9 index.d.ts:5227 — the
+   * library converts rendered→model, so there is no coordinate math to
+   * perform here, R1). R2: the ONLY mutation is the facade command upsertNode
+   * with `id: ''` (the engine assigns `node-<n>` over the shared counter,
+   * bumped until free in the merged id set — D75/C5) and the C23 default
+   * label 'New place' (plain words; rename lands with the property panel,
+   * B-117). Kind 'location', active layer, origin 'authored'.
+   *
+   * C5/D75 id discovery: the UI never invents ids — the created node is the
+   * delta between the pre-command projection's node-id set
+   * (projectedNodeIds) and the post-command one; a single command can create
+   * exactly one node, so the delta IS it. The node is then SELECTED through
+   * the existing tme-selected signal path (R3: the accent, the chip and the
+   * route target follow the signal; the mutual exclusion clears any edge
+   * selection, B-106).
+   *
+   * F45/D75: the command marks only the facade's `dirty` flag — routing and
+   * the snapshot still serve the SAVED graph, so NO graphRevision bump and NO
+   * snapshot refresh here (do not force a rebuild; C8's rebuild trigger is
+   * edit save). The editorRevision bump recomputes the save bar.
+   */
+  placeNodeAt(position: { x: number; y: number }): void {
+    const facade = this.facade;
+    const layerId = this.activeLayer();
+    if (facade === null || layerId === null) return; // degrade before loadMap (C32 spirit)
+    const beforeIds = this.projectedNodeIds;
+    facade.upsertNode({
+      id: '',
+      label: 'New place',
+      kind: 'location',
+      layer: layerId,
+      // The event's model position, values verbatim (no coordinate math, R1)
+      // — copied so the stored node never aliases the transient event object.
+      position: { x: position.x, y: position.y },
+      origin: 'authored',
+    });
+    // The projection rebuild re-reads the live references (R4) inside ONE
+    // cy.batch (B-112) and refreshes projectedNodeIds (also mounted-fit).
+    this.rebuildElements();
+    // The single-command delta: the post-command projection's ids minus the
+    // pre-command ones. Absent (projection blocked by a null layer/map)
+    // degrades to no selection — the node still exists (C32 spirit).
+    let createdId: string | null = null;
+    for (const id of this.projectedNodeIds) {
+      if (!beforeIds.has(id)) {
+        createdId = id;
+        break;
+      }
+    }
+    this.edgeSelection.set(null); // B-106 mutual exclusion: a node selection replaces an edge selection
+    if (createdId !== null) this.selection.set({ id: createdId, label: 'New place' });
+    this.editorRevision.update((n) => n + 1); // F45: the first edit shows the unsaved indicator
+  }
+
+  /**
+   * B-116 (D75): persist one node's NEW position — the `free` (dragend)
+   * handler's write path. R2: the ONLY mutation is the facade command
+   * upsertNode full-replace (PUT, not PATCH — the node's KNOWN id with every
+   * authored field kept and the new position verbatim; `...authored` reads
+   * the live reference, R4 — a lookup, never a copy). Guards degrade
+   * silently (C32 spirit):
+   *   - not a LIBRARY node (upsertNode REPLACE is the library plane, D75;
+   *     overlay waypoints have no editor command in this packet — their drag
+   *     stays view-local), and projection pseudo-nodes are excluded too;
+   *   - the authored position already equals the released one — a
+   *     grab-and-release without a move is not an edit and must not flag the
+   *     map dirty.
+   * F45/D75: dirty only — the saved graph still serves routing/the snapshot
+   * (no graphRevision bump, no snapshot refresh); the editorRevision bump
+   * recomputes the save bar.
+   */
+  private persistNodePosition(id: string, position: { x: number; y: number }): void {
+    const facade = this.facade;
+    if (facade === null) return;
+    const authored: MapNodeData | undefined = this.map()?.nodes.find((nd) => nd.id === id);
+    if (authored === undefined) return;
+    if (
+      authored.position !== undefined &&
+      authored.position.x === position.x &&
+      authored.position.y === position.y
+    ) {
+      return; // a grab without a move: nothing to persist, nothing to flag
+    }
+    // The two numbers are copied VERBATIM (no coordinate math, R1) because
+    // the installed runtime's `position()` getter returns the node's LIVE
+    // internal `_private.position` object (cytoscape.umd.js:9010-9016,
+    // define.data's no-arg branch — NOT a copy): storing it would alias
+    // cytoscape's internal state into the authored map, defeating D75's
+    // REPLACE semantics (a fresh object swaps in; the old one must stay
+    // byte-identical for the C8 effective graph).
+    facade.upsertNode({ ...authored, position: { x: position.x, y: position.y } });
+    this.rebuildElements(); // B-112: one cy.batch — the projection re-reads the fresh object (D75 REPLACE)
+    this.editorRevision.update((n) => n + 1);
+  }
+
+  /**
+   * B-117 (R4): live lookup of one AUTHORED node by id — the loaded map's
+   * nodes ONLY (the library plane): facade.upsertNode REPLACE and
+   * facade.removeNode are the library plane (D75), and overlay waypoints
+   * have no editor command (the B-116 persistNodePosition precedent), so a
+   * waypoint id answers null and the property panel never opens for one.
+   * A lookup, never a copy (R4) — callers must not write into the result
+   * (C29/R2: the panel drafts a LOCAL copy of the fields it edits).
+   */
+  nodeDataById(id: string): MapNodeData | null {
+    return this.map()?.nodes.find((node) => node.id === id) ?? null;
+  }
+
+  /**
+   * B-117 (api.ts `parent` contract): the CONTAINER-kind nodes (see
+   * CONTAINER_KINDS) of one layer as id + authored label — the property
+   * panel's parent picker list. A live filtered read (R4), not a copy of
+   * node objects.
+   */
+  containerNodesOnLayer(layerId: string): readonly { id: string; label: string }[] {
+    return (this.map()?.nodes ?? [])
+      .filter((node) => CONTAINER_KINDS.has(node.kind) && node.layer === layerId)
+      .map((node) => ({ id: node.id, label: node.label }));
+  }
+
+  /**
+   * B-117 (F40/D75/R2): commit a whole node draft — the property panel's
+   * ONLY rename/re-kind/re-parent/alias/describe path. R2: the ONLY
+   * mutation is the facade command upsertNode (full-replace PUT with the
+   * node's known id; a field the draft leaves undefined clears). A C30
+   * refusal comes back as the collected field-precise NodeEditRefusal and
+   * NOTHING is touched (reject-before-mutate — the panel keeps its draft
+   * open and renders the issues). A successful commit marks only `dirty`
+   * (F45: routing/snapshot still serve the SAVED graph until saveMap), so
+   * the post-sequence is the B-116 editor one: rebuildElements (the
+   * projection re-reads the fresh object) + the editorRevision bump (the
+   * save bar lights) — no graphRevision, no snapshot refresh. The selection
+   * is re-pointed when it IS the committed node (the promoteWaypoint
+   * precedent): same id, fresh authored label, so the chip and route target
+   * follow the rename with zero drift (R3).
+   */
+  upsertNode(node: MapNodeData): NodeEditRefusal | null {
+    const facade = this.facade;
+    if (facade === null) return { issues: [{ path: '', message: 'No map is loaded.' }] };
+    try {
+      facade.upsertNode(node);
+    } catch (error) {
+      return nodeEditRefusal(error);
+    }
+    this.rebuildElements();
+    this.editorRevision.update((n) => n + 1);
+    const sel = this.selection();
+    if (sel !== null && sel.id === node.id && sel.label !== node.label) {
+      this.selection.set({ id: sel.id, label: node.label });
+    }
+    return null;
+  }
+
+  /**
+   * B-117 (F46/D75/R2): delete the authored node — DIRECT, no confirm
+   * dialog: delete-and-redo IS the F46 workflow. R2: the ONLY mutation is
+   * the facade command removeNode; a C30 refusal (e.g. a compound parent
+   * whose children would dangle) comes back field-precise with nothing
+   * touched; on success the facade cascades incident edges in BOTH planes
+   * (D75). Then the B-116 editor post-sequence (rebuild + editorRevision;
+   * F45: no graphRevision/snapshot — the SAVED graph still serves routing
+   * until saveMap), and the removeUserNode precedent: the selection is
+   * CLEARED when the removed node WAS the selection, so the chip and the
+   * property panel close with it.
+   */
+  removeNode(id: string): NodeEditRefusal | null {
+    const facade = this.facade;
+    if (facade === null) return { issues: [{ path: '', message: 'No map is loaded.' }] };
+    try {
+      facade.removeNode(id);
+    } catch (error) {
+      return nodeEditRefusal(error);
+    }
+    this.rebuildElements();
+    this.editorRevision.update((n) => n + 1);
+    if (this.selection()?.id === id) this.selection.set(null);
+    return null;
+  }
+
+  // --- Quick-connect (PKG B-118, §5 Phase 3 M1 — D42/F16/C1/§6.2/F46/F45) -----
+
+  /**
+   * B-118: enter connect mode for the CURRENT selection (the property panel's
+   * Connect button is the only entry, and the panel is open exactly when this
+   * precondition holds: editor mode + a library-node selection). The source
+   * is frozen at entry; the pick set, feedback and refusal all start clean.
+   * No draft can be left half-committed: the panel commits (or is refused on)
+   * its draft BEFORE calling this — the B-117 commit-at-navigation rule.
+   */
+  enterConnectMode(): void {
+    const sel = this.selection();
+    if (!this.editorMode() || sel === null) return;
+    this.connectSourceId.set(sel.id);
+    this.connectPicks.set(new Set());
+    this.connectFeedback.set(null);
+    this.connectRefusal.set(null);
+    this.connectMode.set(true);
+  }
+
+  /**
+   * B-118: exit cleanly, discarding any uncommitted picks — the Done and
+   * Cancel paths both end here (Done after its commit loop), as does the
+   * constructor's guard effect on any orphaning state change. The pick
+   * signal's clear re-projects the classes off the pick signal (R3), so the
+   * `tme-connect-pick` accents drop with the mode with no separate cy write.
+   */
+  exitConnectMode(): void {
+    if (!this.connectMode()) return;
+    this.connectMode.set(false);
+    this.connectSourceId.set(null);
+    this.connectPicks.set(new Set());
+    this.connectFeedback.set(null);
+    this.connectRefusal.set(null);
+  }
+
+  /** B-118: Cancel — discard the whole set, commit nothing (the Done twin). */
+  cancelConnect(): void {
+    this.exitConnectMode();
+  }
+
+  /**
+   * B-118 (D42/F16): Done — commit ONE `facade.upsertEdge` per picked target
+   * (one command per arc, C4: the engine never invents or removes
+   * connections and no dedup happens here — a pre-existing parallel arc
+   * simply gains a sibling), each with the D42 defaults (CONNECT_EDGE_MODES:
+   * all modes allowed; geometry prices it, C14 row 5). Ids are the engine's
+   * (`id: ''` — C5/D75); the UI never invents one. A C30 refusal (the
+   * validator's clone-validate-apply gate) surfaces field-precise through
+   * `connectRefusal` with the UNCOMMITTED picks intact and the mode still on
+   * — committed arcs stay committed (each command is atomic), so the author
+   * drops the offending target and retries; a blind retry can never
+   * double-commit a target, because committed targets leave the pick set.
+   * After a clean loop (or an empty set): the mode exits. F45/D75: the
+   * commands mark only `dirty` — the arcs RENDER (one rebuildElements per
+   * Done, one cy.batch — B-112) but routing serves the SAVED graph until
+   * saveMap; the editorRevision bump lights the save dock.
+   */
+  doneConnect(): void {
+    if (!this.connectMode()) return;
+    const facade = this.facade;
+    const source = this.connectSourceId();
+    if (facade === null || source === null) {
+      this.exitConnectMode(); // degrade: no core to commit into (C32 spirit)
+      return;
+    }
+    const remaining = new Set(this.connectPicks());
+    let refusal: NodeEditRefusal | null = null;
+    for (const target of remaining) {
+      try {
+        facade.upsertEdge({ id: '', source, target, modes: CONNECT_EDGE_MODES });
+        remaining.delete(target);
+      } catch (error) {
+        refusal = nodeEditRefusal(error);
+        break; // committed arcs stay; the rest of the set stays picked
+      }
+    }
+    const committed = this.connectPicks().size - remaining.size;
+    if (committed > 0) {
+      this.connectPicks.set(remaining); // uncommitted picks intact; committed ones are arcs now
+      this.rebuildElements(); // the projection re-reads the live map (one cy.batch, B-112)
+      this.editorRevision.update((n) => n + 1); // F45: the dock lights on the first arc
+    }
+    if (refusal !== null) {
+      this.connectRefusal.set(refusal); // user-visible (never console-only); mode stays on
+      return;
+    }
+    this.exitConnectMode();
+  }
+
+  /**
+   * B-118 (C1/§6.2/D58): route a connect-mode node tap — the ONE pickable
+   * rule is the core's `isPinEligible` over the MERGED node set (library +
+   * overlay waypoints): kind ∈ {location, hub, waypoint} AND no children
+   * reference it. A container, a parent, a foreign-layer node or a badge
+   * pseudo-node is ignored with banner feedback — never an arc (the
+   * validator refuses edges into compound parents, §6.2), never a selection
+   * (F46). The source never picks itself. A pickable tap TOGGLES the set
+   * (one tap = one toggle; Set membership is the double-pick prevention)
+   * and clears any stale feedback.
+   */
+  private handleConnectTap(node: NodeSingular): void {
+    const id = node.id();
+    if (id === this.connectSourceId()) {
+      this.connectFeedback.set(CONNECT_SELF_TARGET);
+      return;
+    }
+    const map = this.map();
+    const layerId = this.activeLayer();
+    if (map === null || layerId === null) return; // degrade before loadMap (C32 spirit)
+    const overlay = this.overlay;
+    const merged = overlay === null ? map.nodes : [...map.nodes, ...overlay.userNodes];
+    const authored = merged.find((nd) => nd.id === id);
+    if (authored === undefined || authored.layer !== layerId || !isPinEligible(id, merged)) {
+      this.connectFeedback.set(CONNECT_BAD_TARGET);
+      return;
+    }
+    this.connectFeedback.set(null);
+    this.connectPicks.update((picks) => {
+      const next = new Set(picks);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  /**
+   * B-116 (F45/C29/D75): the save bar's Save — the facade's explicit save,
+   * the only command that takes unsaved editor edits live (C8's edit save
+   * sets `stale`). The C30 final gate can REFUSE (an invalid live map): the
+   * error surfaces user-visibly through the saveError signal (never
+   * console-only), `dirty` stays true and the map is untouched. On success
+   * the saved edits are LIVE: the revision bumps re-run the sidebar's route
+   * (graphRevision — the edits changed the effective graph now) and the
+   * header re-reads the snapshot (which the next getSnapshot rebuilds from
+   * the saved map). No rebuildElements: the canvas projection already shows
+   * the edited references — the editor surface is the author's truth.
+   */
+  saveMap(): void {
+    const facade = this.facade;
+    if (facade === null) return;
+    try {
+      facade.saveMap();
+    } catch (error) {
+      this.saveError.set(error instanceof Error ? error.message : String(error));
+      return;
+    }
+    this.saveError.set(null);
+    this.editorRevision.update((n) => n + 1); // F45: the indicator clears
+    this.graphRevision.update((n) => n + 1); // the saved graph went live — re-route live (B-106 precedent)
+    this.refreshSnapshot();
   }
 
   /** B-106 (ruling 4): the shared post-mutation sequence — bump, re-project, re-snapshot. */
@@ -942,6 +1634,93 @@ export class GraphService implements OnDestroy {
   }
 
   /**
+   * B-116: MODEL position of one node, or null when absent — `node.position()`
+   * (@types/cytoscape 3.21.9 index.d.ts:1795), a pure read used by e2e to
+   * prove a view-mode drag moves NOTHING (a pan changes the rendered
+   * position, never the model one) and that an editor drag's persisted
+   * authored position survives mode toggles. Read-only (R2/R4 hold).
+   */
+  testNodeModelPosition(id: string): { x: number; y: number } | null {
+    const node = this.cy.getElementById(id);
+    if (node.length === 0) return null;
+    const pos = node.position();
+    return { x: pos.x, y: pos.y };
+  }
+
+  /**
+   * B-117: the AUTHORED fields of one LIBRARY node (the editor plane) for
+   * e2e — label/kind/parent/aliases/description, a plain copy for the wire.
+   * Read-only, no mutation path (R2/R4 hold). Overlay waypoints and unknown
+   * ids answer null (no editor command — the B-116 precedent).
+   */
+  testNodeData(id: string): {
+    label: string;
+    kind: string;
+    parent: string | null;
+    aliases: string[];
+    description: string | null;
+  } | null {
+    const node = this.map()?.nodes.find((nd) => nd.id === id);
+    if (node === undefined) return null;
+    return {
+      label: node.label,
+      kind: node.kind,
+      parent: node.parent ?? null,
+      aliases: node.aliases ? [...node.aliases] : [],
+      description: node.description ?? null,
+    };
+  }
+
+  /** B-118: whether connect mode is currently on — the banner's state seam. */
+  testConnectMode(): boolean {
+    return this.connectMode();
+  }
+
+  /**
+   * B-118: the current quick-connect pick set in pick order (Set iteration
+   * is insertion order). Read-only (R2/R4 hold).
+   */
+  testPickedNodeIds(): string[] {
+    return [...this.connectPicks()];
+  }
+
+  /**
+   * B-118: the AUTHORED fields of one LIBRARY edge for e2e — the D42-default
+   * assertions (source/target/all-modes-allowed) off the live map reference
+   * (quick-connect arcs land in `map.edges` via upsertEdge). A plain copy
+   * for the wire; read-only, no mutation path (R2/R4 hold). Overlay edges and
+   * unknown ids answer null.
+   */
+  testEdgeData(id: string): {
+    id: string;
+    source: string;
+    target: string;
+    modes: string[];
+  } | null {
+    const edge = this.map()?.edges.find((candidate) => candidate.id === id);
+    if (edge === undefined) return null;
+    return {
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      modes: (Object.keys(edge.modes) as TravelMode[]).filter(
+        (mode) => edge.modes[mode]?.allowed === true,
+      ),
+    };
+  }
+
+  /**
+   * B-118: the live route's leg arc ids (R1: the core's own route, carried
+   * verbatim — the F45 discriminator's seam: before saveMap a route to an
+   * unsaved node is null, after save it prices and its legs name the created
+   * arcs), or null when no route is computed. Read-only (R2/R4 hold).
+   */
+  testRouteLegArcIds(): string[] | null {
+    const route = this.route();
+    return route === null ? null : route.legs.map((leg) => leg.arcId);
+  }
+
+  /**
    * B-104: rendered bounding box (screen px; x/y at the top-left corner,
    * derived from the declared x1/y1 + w/h shape) of one node — compound
    * parents included — or null when unmounted or absent. Pure read; proves
@@ -990,6 +1769,15 @@ export class GraphService implements OnDestroy {
     // badge IS the arc's whole canvas surface: its tap opens the arc panel
     // (B-108 finding 1), its text carries block state and cost (finding 1.2).
     const badges = buildCrossLayerBadges(map, this.overlay, layerId, this.badgeRoutes(map, layerId));
+    // B-116 (C5/D75): record the node ids of the projection being installed —
+    // the pre-command set the place-command's id delta reads (placeNodeAt).
+    // Derived from the same pure builders' output, so it can never drift from
+    // what cy actually holds.
+    this.projectedNodeIds = new Set(
+      [...elements, ...badges]
+        .filter((el) => el.group === 'nodes')
+        .map((el) => String(el.data.id)),
+    );
     this.cy.batch(() => {
       this.cy.elements().remove();
       this.cy.add([...elements, ...badges]);
@@ -1050,18 +1838,25 @@ export class GraphService implements OnDestroy {
    * The RAW selection-accent class operations — deliberately UN-batched
    * (PKG B-112 ruling 1): the CALLER owns the cy.batch, so a rebuild costs
    * one render pass, not two (§6.1 dense sub-graph perf). tme-selected on
-   * the selected node, tme-edge-selected on the selected edge — read off the
-   * signals at call time. One function for both call sites (the effect via
+   * the selected node, tme-edge-selected on the selected edge, and (B-118)
+   * tme-connect-pick on the quick-connect pick set — read off the signals at
+   * call time (the picks read also makes the constructor's class effect
+   * re-run per pick toggle). One function for all call sites (the effect via
    * applySelectionClasses, the element swap inside rebuildElements' batch),
-   * so the two paths can never diverge.
+   * so the paths can never diverge.
    */
   private projectSelectionClasses(): void {
     const sel = this.selection();
     const edgeSel = this.edgeSelection();
+    const picks = this.connectPicks(); // B-118: signal read = effect dependency
     this.cy.nodes().removeClass('tme-selected');
     if (sel !== null) this.cy.getElementById(sel.id).addClass('tme-selected');
     this.cy.edges().removeClass('tme-edge-selected');
     if (edgeSel !== null) this.cy.getElementById(edgeSel.id).addClass('tme-edge-selected');
+    // B-118 (F46): the pick set's DISTINCT accent — never tme-selected; a
+    // pick is an arc endpoint, not an editing selection.
+    this.cy.nodes().removeClass('tme-connect-pick');
+    for (const id of picks) this.cy.getElementById(id).addClass('tme-connect-pick');
   }
 
   private refreshSnapshot(): void {

@@ -18,8 +18,17 @@
 // snapshot seam: ONE honest currency per snapshot (all-rule routes currency,
 // forced-currency destination runs) and blocked arcs that always list. P2 M1
 // (B-101) adds setActiveLayer — facade-held viewer state (F01/D69), not map
-// data and untouched by the snapshot. Commands still unimplemented throw
-// their exact TODO markers — never fake data (Task 0 rule).
+// data and untouched by the snapshot. P3 M1 (A-013) adds the editor commands —
+// upsertNode/upsertEdge/removeNode/removeEdge + saveMap/hasUnsavedChanges
+// (D75): C30 clone-validate-apply, C5 engine ids on create, F45 explicit-save
+// dirty/stale semantics. A-014 (gate fix, D75 amendment) adds the SAVED
+// id-plane universes (savedNodeIds/savedEdgeIds — populated at loadMap,
+// refreshed at saveMap) and gates the RUNTIME commands on them, so while
+// dirty no presence/overlay command binds unsaved library state: the pin and
+// setBlocked's add path refuse field-precisely (C30) and the C7 kNN scans
+// saved candidates only — validateOverlay must never find a chat key that
+// references data the SAVED map lacks (F50). Commands still unimplemented
+// throw their exact TODO markers — never fake data (Task 0 rule).
 
 import type {
   ChatMapOverlay,
@@ -69,6 +78,7 @@ export interface MapFacade {
   removeEdge(id: string): void;
   calibrateScale(arcId: string, authoredDistance: number): void;
   saveMap(): void;
+  hasUnsavedChanges(): boolean; // D75/F45: additive §9 extension — the unsaved-changes indicator's state lives in the core
   // Queries
   findRoute(from: string, to: string, mode?: TravelMode): RouteResult;
   getSnapshot(): MapSnapshot;
@@ -132,7 +142,15 @@ export interface FacadeState {
   overlay: ChatMapOverlay | null;
   effective: EffectiveGraph | null;
   stale: boolean;
+  dirty: boolean; // D75/F45: unsaved editor edits — set by the editor commands, cleared by saveMap/loadMap; never triggers a rebuild (that is `stale`'s job, C8)
   activeLayer: string | null; // P2 M1 (F01/D69): viewer state — null until a map loads; reset by every loadMap
+  // A-014 (D75 amendment): the SAVED plane's id sets — the universes the
+  // RUNTIME commands derive their library-side membership from while the map
+  // is dirty. Populated from the validated map at loadMap, refreshed at
+  // saveMap (after validation passes, before dirty clears); the editor
+  // commands never touch them (only saveMap/loadMap move the saved plane).
+  savedNodeIds: Set<string>;
+  savedEdgeIds: Set<string>;
   compile?: TemplateCompiler; // D62: injected engine — absent until the host/tests provide one
 }
 
@@ -161,7 +179,10 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
     overlay: null,
     effective: null,
     stale: false,
+    dirty: false, // D75/F45
     activeLayer: null, // F01/D69: viewer state — null until the first loadMap
+    savedNodeIds: new Set<string>(), // A-014: empty until a loadMap/saveMap populates them
+    savedEdgeIds: new Set<string>(),
     // D62: the template engine is injected (R5) — Handlebars-shaped. Absent
     // until the host (SillyTavern.libs) or the test/harness devDependency
     // provides one; renderTemplate/getPromptBlock refuse field-precisely.
@@ -340,6 +361,12 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       // the active layer to THIS map's first layer; a stale layer id from a
       // previous map is never inherited (C24). Validators guarantee ≥ 1 layer.
       state.activeLayer = validatedMap.layers[0].id;
+      // A-014: the saved id-plane is rebuilt from the VALIDATED map — the
+      // universe every runtime command's membership gate reads until the next
+      // loadMap/saveMap.
+      state.savedNodeIds = new Set(validatedMap.nodes.map((nd) => nd.id));
+      state.savedEdgeIds = new Set(validatedMap.edges.map((e) => e.id));
+      state.dirty = false; // D75: a fresh load carries no unsaved editor edits
       state.stale = true; // C8: the next materialize()/query rebuilds
     },
 
@@ -367,6 +394,17 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       const { map, overlay } = state;
       if (map === null || overlay === null) throw new Error('[TravelMapper] no map loaded');
       if (id !== null) {
+        // A-014 (D75 amendment): the saved-plane gate — a RUNTIME command never
+        // binds unsaved library state. The id must live in savedNodeIds ∪
+        // overlay userNodes, else an unsaved editor node could take the pin
+        // (and through it routing + the snapshot) while findRoute refuses the
+        // same id. C30 field-precise; object-level eligibility below stays
+        // live-read on the merged node set (the amendment).
+        if (!state.savedNodeIds.has(id) && !overlay.userNodes.some((nd) => nd.id === id)) {
+          throw new Error(
+            `[TravelMapper] setCurrentLocation: unknown node id '${id}' (unsaved — save the map first)`,
+          );
+        }
         // C1/F27 pin rule per D58 — ONE shared predicate with the validator and
         // the materializer, checked against the effective view (a check-only
         // build; storage mutations never rebuild here, C8).
@@ -437,13 +475,20 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
     // --- Overlay edits (M2) ----------------------------------------------------
 
     setBlocked: (edgeId, reason) => {
-      ensureFresh(); // C8 — the membership check below reads the current effective graph
+      ensureFresh(); // C8 — keeps the no-map invariant below uniform with the other §9 commands
       const { overlay, effective } = state;
       if (overlay === null || effective === null) throw new Error('[TravelMapper] no map loaded');
-      if (!effective.edges.some((edge) => edge.id === edgeId)) {
-        throw new Error(`[TravelMapper] setBlocked: unknown edge id '${edgeId}'`);
-      }
       if (reason !== undefined) {
+        // A-014 (D75 amendment): the ADD path writes an overlay key, so it may
+        // only reference an edge the SAVED plane knows (savedEdgeIds ∪
+        // overlay user edges) — a key absent from the saved library would make
+        // validateOverlay refuse the WHOLE overlay at the next load (F50).
+        // An unsaved editor arc is refused exactly like an unknown one (C30
+        // field-precise); the LIFT path below never binds and stays
+        // unconditional.
+        if (!state.savedEdgeIds.has(edgeId) && !overlay.userEdges.some((e) => e.id === edgeId)) {
+          throw new Error(`[TravelMapper] setBlocked: unknown edge id '${edgeId}' (unsaved — save the map first)`);
+        }
         // C30/F50: a runtime caller can lie about the typed optional — validate
         // before mutating (setStatusNote precedent). An empty string is neither
         // a reason nor a lift: refusing it never silently clears a block.
@@ -458,9 +503,12 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
         }
         overlay.blocked[edgeId] = reason; // D20: chat-scoped block — adds or restates only
       } else {
-        // Lift: delete the overlay entry. C2/A-002 — the overlay can only add a
-        // block, never lift one, so a library-level block survives this delete
-        // (a silent no-op there); the next rebuild re-merges the union.
+        // Lift: an UNCONDITIONAL delete of the overlay entry (A-014 — the lift
+        // path never binds state, so the saved-plane gate does not apply; a
+        // no-op on an unknown/stale key is harmless). C2/A-002 — the overlay
+        // can only add a block, never lift one, so a library-level block
+        // survives this delete (a silent no-op there); the next rebuild
+        // re-merges the union.
         delete overlay.blocked[edgeId];
       }
       state.stale = true; // C8 — the next query's ensureFresh picks the change up
@@ -499,14 +547,21 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       const node: MapNodeData = { id, label: 'Waypoint', kind: 'waypoint', layer, position, origin: 'user' };
       overlay.userNodes.push(node); // C24: the overlay is the stored chat-state reference
 
-      // C7: the k nearest leaves of the MERGED node set on this layer —
-      // library nodes and previously placed waypoints alike. The ONE D58
-      // predicate is the leaf rule (kind ∈ {location, hub, waypoint} AND
-      // childless — containers and parents never connect, C1); the new node
-      // excludes itself; unpositioned candidates are unmeasurable and skipped
-      // (§6.2). Fewer than k leaves ⇒ connect to what exists; zero ⇒ the node
-      // stays orphaned — legal and harmless (C7).
-      const merged = [...map.nodes, ...overlay.userNodes];
+      // C7: the k nearest leaves on this layer — A-014 (D75 amendment): the
+      // candidate pool is the SAVED plane's library nodes (savedNodeIds — a
+      // chat edge must never bind an unsaved editor node: it would enter
+      // routing live while the id is absent from the saved map, and
+      // validateOverlay would refuse the WHOLE overlay at the next load, F50)
+      // ∪ previously placed waypoints. The ONE D58 predicate is the leaf rule
+      // (kind ∈ {location, hub, waypoint} AND childless — containers and
+      // parents never connect, C1); the new node excludes itself;
+      // unpositioned candidates are unmeasurable and skipped (§6.2). Fewer
+      // than k leaves ⇒ connect to what exists; zero ⇒ the node stays
+      // orphaned — legal and harmless (C7).
+      const merged = [
+        ...map.nodes.filter((nd) => state.savedNodeIds.has(nd.id)),
+        ...overlay.userNodes,
+      ];
       const nearest = merged
         .filter((nd) => nd.id !== id && nd.layer === layer && nd.position !== undefined && isPinEligible(nd.id, merged))
         .map((nd) => ({ node: nd, d: euclid(position, nd.position!) }))
@@ -606,17 +661,172 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       map.edges.push(...moving);
       overlay.userNodes = overlay.userNodes.filter((nd) => nd.id !== id);
       overlay.userEdges = overlay.userEdges.filter((e) => !moving.includes(e));
+      // D75 promotion clause (C26): the graduated ids are library truth the moment the atomic move lands — the universes admit them now (the next saveMap re-validates them like any other saved id).
+      state.savedNodeIds.add(id);
+      for (const e of moving) state.savedEdgeIds.add(e.id);
       state.stale = true; // C8
     },
 
-    // --- Editor commands (Phase 3) ---------------------------------------------
+    // --- Editor commands (Phase 3, PKG A-013) -----------------------------------
+    //
+    // Shared semantics (D75): every command mutates the loaded map object IN
+    // PLACE (C24 — `state.map` is never reassigned; the frontend holds the
+    // same live reference) but marks only the facade-held `dirty` flag, never
+    // `stale` — unsaved edits never enter routing or the snapshot (F45:
+    // nothing goes live until saved; C8's rebuild trigger is *edit save*,
+    // i.e. saveMap below). Reject-before-mutate (C30): the edit is applied to
+    // a structuredClone of the map and validated FIRST; on success the
+    // identical edit is applied to the live map and `dirty` flips — a refused
+    // command leaves the map byte-identical and dirty untouched. The
+    // MapValidationError propagates as the collected field-precise report.
 
-    upsertNode: () => { throw todo('Phase 3', 'upsertNode'); },
-    upsertEdge: () => { throw todo('Phase 3', 'upsertEdge'); },
-    removeNode: () => { throw todo('Phase 3', 'removeNode'); },
-    removeEdge: () => { throw todo('Phase 3', 'removeEdge'); },
-    calibrateScale: () => { throw todo('Phase 3', 'calibrateScale'); },
-    saveMap: () => { throw todo('Phase 3', 'saveMap'); },
+    upsertNode: (node) => {
+      const { map, overlay } = state;
+      if (map === null || overlay === null) throw new Error('[TravelMapper] no map loaded');
+      if (node.id === '') {
+        // CREATE (C5): the engine assigns 'node-<n>' over the shared counter,
+        // bumped until free in the MERGED id set — authored maps may already
+        // contain scheme-shaped ids and the overlay's waypoints must never collide.
+        const nodeIds = new Set([...map.nodes, ...overlay.userNodes].map((nd) => nd.id));
+        let n = nextNodeId;
+        while (nodeIds.has(`node-${n}`)) n += 1;
+        const id = `node-${n}`;
+        // A FRESH object — never alias the caller's (the UI binds form
+        // drafts); optional array fields are copied too.
+        const fresh: MapNodeData = { ...node, id };
+        if (node.aliases !== undefined) fresh.aliases = [...node.aliases];
+        const clone = structuredClone(map);
+        clone.nodes.push(fresh);
+        validateWorldMap(clone); // C30 — MapValidationError propagates; nothing touched
+        nextNodeId = n + 1;
+        map.nodes.push(fresh);
+        state.dirty = true;
+        return;
+      }
+      const index = map.nodes.findIndex((nd) => nd.id === node.id);
+      if (index === -1) {
+        throw new Error(`[TravelMapper] upsertNode: unknown node id '${node.id}' — pass '' to create (C5/D75)`);
+      }
+      // REPLACE (D75): full-replace semantics — PUT, not PATCH. The element is
+      // swapped for a FRESH object built exactly like CREATE (never the
+      // caller's; optional array fields copied); a field the caller passes as
+      // undefined clears. The OLD object is left byte-identical: the C8
+      // effective graph holds it by reference and must keep serving the SAVED
+      // value until saveMap flips `stale` (F45/D75 — uniform for every edit
+      // kind). C24 protects the map object's and the arrays' identities — both
+      // survive an element splice; ELEMENT identity is deliberately not
+      // preserved.
+      const fresh: MapNodeData = { ...node, id: node.id };
+      if (node.aliases !== undefined) fresh.aliases = [...node.aliases];
+      const clone = structuredClone(map);
+      clone.nodes[index] = fresh;
+      validateWorldMap(clone); // C30
+      map.nodes[index] = fresh;
+      state.dirty = true;
+    },
+
+    upsertEdge: (edge) => {
+      const { map, overlay } = state;
+      if (map === null || overlay === null) throw new Error('[TravelMapper] no map loaded');
+      if (edge.id === '') {
+        // CREATE (C5): 'arc-<n>' over the shared counter, bumped until free in
+        // the merged edge id set (library ∪ overlay user edges).
+        const edgeIds = new Set([...map.edges, ...overlay.userEdges].map((e) => e.id));
+        let n = nextEdgeId;
+        while (edgeIds.has(`arc-${n}`)) n += 1;
+        const id = `arc-${n}`;
+        const fresh: MapEdgeData = { ...edge, id };
+        // C1/§6.2 (leaf-to-leaf, no compound-parent endpoints, no dangling
+        // refs) rides validateWorldMap — no ad-hoc checks beyond it.
+        const clone = structuredClone(map);
+        clone.edges.push(fresh);
+        validateWorldMap(clone); // C30
+        nextEdgeId = n + 1;
+        map.edges.push(fresh);
+        state.dirty = true;
+        return;
+      }
+      const index = map.edges.findIndex((e) => e.id === edge.id);
+      if (index === -1) {
+        throw new Error(`[TravelMapper] upsertEdge: unknown edge id '${edge.id}' — pass '' to create (C5/D75)`);
+      }
+      // REPLACE: the same splice seam as upsertNode (F45/D75) — a FRESH object
+      // swaps in by index; the old one stays byte-identical so the effective
+      // graph keeps serving the SAVED value until saveMap.
+      const fresh: MapEdgeData = { ...edge, id: edge.id };
+      const clone = structuredClone(map); // C30: clone-validate-apply
+      clone.edges[index] = fresh;
+      validateWorldMap(clone);
+      map.edges[index] = fresh;
+      state.dirty = true;
+    },
+
+    removeNode: (id) => {
+      const { map, overlay } = state;
+      if (map === null || overlay === null) throw new Error('[TravelMapper] no map loaded');
+      if (!map.nodes.some((nd) => nd.id === id)) {
+        throw new Error(`[TravelMapper] removeNode: unknown node id '${id}'`);
+      }
+      // C30: the candidate map without the node and its incident library
+      // edges must validate FIRST — e.g. removing a compound parent whose
+      // children would dangle is refused field-precisely, map untouched.
+      const clone = structuredClone(map);
+      clone.nodes = clone.nodes.filter((nd) => nd.id !== id);
+      clone.edges = clone.edges.filter((e) => e.source !== id && e.target !== id);
+      validateWorldMap(clone);
+      // Apply the identical edit to the live map, cascading incident edges in
+      // BOTH planes (D75 — no dangling endpoint can exist; the removeUserNode
+      // precedent mirrored). A chat block on a dying edge is meaningless and
+      // dies with it (F50 — a surviving entry would fail validateOverlay at
+      // the next load).
+      map.nodes = map.nodes.filter((nd) => nd.id !== id);
+      const dying = map.edges.filter((e) => e.source === id || e.target === id);
+      map.edges = map.edges.filter((e) => e.source !== id && e.target !== id);
+      const dyingUser = overlay.userEdges.filter((e) => e.source === id || e.target === id);
+      overlay.userEdges = overlay.userEdges.filter((e) => e.source !== id && e.target !== id);
+      for (const e of [...dying, ...dyingUser]) delete overlay.blocked[e.id];
+      state.dirty = true;
+    },
+
+    // Single-plane removal: library edges only — the overlay's removeUserNode
+    // / setBlocked own the chat plane (D75).
+    removeEdge: (id) => {
+      const { map, overlay } = state;
+      if (map === null || overlay === null) throw new Error('[TravelMapper] no map loaded');
+      if (!map.edges.some((e) => e.id === id)) {
+        throw new Error(`[TravelMapper] removeEdge: unknown edge id '${id}'`);
+      }
+      const clone = structuredClone(map); // C30: clone-validate-apply
+      clone.edges = clone.edges.filter((e) => e.id !== id);
+      validateWorldMap(clone);
+      map.edges = map.edges.filter((e) => e.id !== id);
+      delete overlay.blocked[id]; // a chat block on a removed edge dies with it (F50)
+      state.dirty = true;
+    },
+
+    calibrateScale: () => { throw todo('Phase 3', 'calibrateScale'); }, // D44/D75: stays a stub until M2's "measure this arc"
+
+    // F45/C29/D75: explicit save — the only command that takes unsaved editor
+    // edits live. C30 final gate: an invalid live map is refused (the error
+    // propagates, `dirty` stays TRUE, the map is untouched); on success
+    // `dirty` clears and C8's *edit save* trigger marks `stale` — the next
+    // query's ensureFresh rebuilds from the saved map. Host-side persistence
+    // subscribes at Phase 4; in the harness this is the in-memory commit.
+    saveMap: () => {
+      const { map } = state;
+      if (map === null) throw new Error('[TravelMapper] no map loaded');
+      validateWorldMap(map); // C30 final gate
+      // A-014: the saved id-plane moves to the live map — the edits are now
+      // the SAVED plane, so the runtime commands' universes admit their ids.
+      state.savedNodeIds = new Set(map.nodes.map((nd) => nd.id));
+      state.savedEdgeIds = new Set(map.edges.map((e) => e.id));
+      state.dirty = false;
+      state.stale = true; // C8 edit save
+    },
+
+    // D75/F45: the F45 unsaved-changes indicator reads its state here —
+    // nothing outside the core tracks dirtiness (R1).
+    hasUnsavedChanges: () => state.map !== null && state.dirty,
 
     // --- Queries -----------------------------------------------------------------
 

@@ -4,7 +4,14 @@
      B-106: the arc panel joins as a third region — beside the route panel on
      wide viewports, under it on narrow ones (ruling 3) — and renders ONLY
      while an edge is selected (ruling 1: mutually exclusive with the node
-     selection, so the two panels never fight for the same slot). -->
+     selection, so the two panels never fight for the same slot). B-116 (§5
+     Phase 3 M1): editor chrome joins the stage's top-right chrome stack —
+     the editor toggle above the selection chip, and the F45 save dock below
+     it (rendered only while the facade holds unsaved editor edits). B-117:
+     the property panel joins as the fourth region — editor mode with a node
+     selection only (an edge selection never shows it: the B-106 mutual
+     exclusion); the panel hides its host entirely when it has no open
+     draft, so it occupies no slot otherwise. -->
 <figure class="tme-viewer">
   <div class="tme-stage">
     @if (graph.activeBackground(); as asset) {
@@ -57,6 +64,39 @@
         <span class="tme-chip-dismiss" aria-hidden="true">×</span>
       </button>
     }
+
+    <!-- B-116 (§5 Phase 3 M1/D53/F52): the editor toggle — always visible, one
+         >= 44px tap target whose pressed state (aria-pressed + the gold
+         tme-active class bound to the editorMode signal, R3) tells the author
+         that canvas taps place nodes and node drags persist. Plain words
+         (C23); touch alone operates it (tap, no hover). -->
+    <button
+      type="button"
+      class="tme-editor-toggle"
+      data-testid="tme-editor-toggle"
+      [class.tme-active]="graph.editorMode()"
+      [attr.aria-pressed]="graph.editorMode() ? 'true' : 'false'"
+      (click)="toggleEditor()"
+    >
+      {{ graph.editorMode() ? 'Editing' : 'Edit' }}
+    </button>
+
+    <!-- B-116 (F45/D75): the save dock — the F45 unsaved-changes indicator
+         (the core's dirty flag is the single truth, R1) PLUS the Save button,
+         rendered exactly while the facade still holds unsaved editor edits,
+         so it survives editor-mode toggles (F45: edits live until saveMap).
+         A C30 save refusal surfaces user-visibly through graph.saveError
+         (the established signal → template message path, never console-only)
+         while the dock stays (dirty remains true after a refusal). -->
+    @if (graph.unsavedChanges()) {
+      <aside class="tme-save-dock" data-testid="tme-save-dock" role="status" aria-label="Unsaved map changes">
+        <span data-testid="tme-unsaved">Unsaved changes</span>
+        @if (graph.saveError(); as err) {
+          <span class="tme-save-error" data-testid="tme-save-error">{{ err }}</span>
+        }
+        <button type="button" class="tme-save" data-testid="tme-save" (click)="saveMap()">Save</button>
+      </aside>
+    }
   </div>
 
   <!-- B-105 (ruling 5): the route sidebar — beside the stage on wide
@@ -71,4 +111,11 @@
   @if (graph.edgeSelection()) {
     <tme-arc-panel class="tme-arc-panel" />
   }
+
+  <!-- B-117 (§5 Phase 3 M1/F40/F46): the property panel — the fourth region,
+       beside the others on wide viewports, stacked under them on narrow ones
+       (the SCSS owns which). Editor mode + node selection only (the draft
+       gate lives inside the component; an edge selection — the arc panel's
+       slot — can never coexist with a node selection, B-106). -->
+  <tme-property-panel class="tme-property-panel" />
 </figure>

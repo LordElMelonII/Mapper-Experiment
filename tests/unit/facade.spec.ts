@@ -2,7 +2,9 @@
 // exactly the CORE.md §9 command list (R2). A-002 implemented the seven M1
 // commands; A-006 implemented findRoute + setBlocked (M2); A-007 implemented
 // the waypoint commands (M2); A-008 implemented setCorrective + getSnapshot
-// (M3); A-009 implemented renderTemplate + getPromptBlock (M3); every
+// (M3); A-009 implemented renderTemplate + getPromptBlock (M3); A-013
+// implemented the editor commands upsertNode/upsertEdge/removeNode/removeEdge
+// + saveMap and the additive hasUnsavedChanges (D75); every
 // remaining stub still throws its exact TODO marker — no fake
 // data. The surface test below stays verbatim from Task 0.
 import { describe, expect, it } from 'vitest';
@@ -17,7 +19,7 @@ const FACADE_COMMANDS: (keyof MapFacade)[] = [
   // Overlay edits
   'setBlocked', 'addUserNodeAt', 'removeUserNode', 'promoteUserNode',
   // Editor commands
-  'upsertNode', 'upsertEdge', 'removeNode', 'removeEdge', 'calibrateScale', 'saveMap',
+  'upsertNode', 'upsertEdge', 'removeNode', 'removeEdge', 'calibrateScale', 'saveMap', 'hasUnsavedChanges', // D75: additive §9 extension
   // Queries
   'findRoute', 'getSnapshot', 'renderTemplate', 'getPromptBlock',
   // Viewer state
@@ -30,12 +32,7 @@ const FACADE_COMMANDS: (keyof MapFacade)[] = [
 const UNIMPLEMENTED: readonly (readonly [keyof MapFacade, string])[] = [
   ['forkMap', 'Phase 3 M4'],
   ['saveForkToLibrary', 'Phase 3 M4'],
-  ['upsertNode', 'Phase 3'],
-  ['upsertEdge', 'Phase 3'],
-  ['removeNode', 'Phase 3'],
-  ['removeEdge', 'Phase 3'],
-  ['calibrateScale', 'Phase 3'],
-  ['saveMap', 'Phase 3'],
+  ['calibrateScale', 'Phase 3'], // D44/D75: stays a stub until M2's "measure this arc"
 ];
 
 // The seven commands A-002 implemented — gone from the TODO list above.
@@ -59,6 +56,12 @@ const M3_RENDER_COMMANDS = ['renderTemplate', 'getPromptBlock'] as const;
 // The one viewer-state command the Phase 2 M1 packet implemented — gone from
 // the TODO list above.
 const P2_M1_COMMANDS = ['setActiveLayer'] as const;
+
+// The five editor commands the Phase 3 M1 packet implemented — gone from the
+// TODO list above. hasUnsavedChanges is the D75 additive §9 extension.
+const P3_EDITOR_COMMANDS = [
+  'upsertNode', 'upsertEdge', 'removeNode', 'removeEdge', 'saveMap', 'hasUnsavedChanges',
+] as const;
 
 describe('facade stub (Task 0)', () => {
   it('exposes exactly the CORE.md §9 command surface', () => {
@@ -118,6 +121,14 @@ describe('facade stub (Task 0)', () => {
   it('the viewer-state command no longer throws a TODO (P2 M1)', () => {
     const facade = createFacade();
     for (const command of P2_M1_COMMANDS) {
+      const fn = facade[command] as () => unknown;
+      expect(() => fn(), command).not.toThrow(/^TODO\(/);
+    }
+  });
+
+  it('the editor commands no longer throw a TODO (A-013/D75)', () => {
+    const facade = createFacade();
+    for (const command of P3_EDITOR_COMMANDS) {
       const fn = facade[command] as () => unknown;
       expect(() => fn(), command).not.toThrow(/^TODO\(/);
     }

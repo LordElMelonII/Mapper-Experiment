@@ -55,6 +55,28 @@ interface TmeE2EHook {
   nodeParent(id: string): string | null;
   /** B-113: whether one projected node currently carries a class (read-only). */
   nodeHasClass(id: string, cls: string): boolean;
+  /** B-116: MODEL position of one node (read-only) — persistence/non-drag proofs. */
+  nodeModelPosition(id: string): { x: number; y: number } | null;
+  /** B-116: the selected node's id, or null — engine-assigned ids are never hardcoded (C5/D75). */
+  selectedNodeId(): string | null;
+  /** B-117: authored fields of one library node (the editor plane), or null —
+   *  the property panel's data seam (label/kind/parent/aliases/description). */
+  nodeData(id: string): {
+    label: string;
+    kind: string;
+    parent: string | null;
+    aliases: string[];
+    description: string | null;
+  } | null;
+  /** B-118: whether quick-connect mode is currently on. */
+  connectMode(): boolean;
+  /** B-118: the quick-connect pick set, in pick order. */
+  pickedNodeIds(): string[];
+  /** B-118: authored fields of one library edge (source/target/allowed modes),
+   *  or null — the D42-default assertion seam for created arcs. */
+  edgeData(id: string): { id: string; source: string; target: string; modes: string[] } | null;
+  /** B-118: the live route's leg arc ids, or null — the F45 discriminator seam. */
+  routeLegArcIds(): string[] | null;
 }
 
 @Component({
@@ -128,6 +150,13 @@ export class App {
       edgeIds: () => this.graphService.testEdgeIds(),
       nodeParent: (id: string) => this.graphService.testNodeParent(id),
       nodeHasClass: (id: string, cls: string) => this.graphService.testNodeHasClass(id, cls),
+      nodeModelPosition: (id: string) => this.graphService.testNodeModelPosition(id),
+      selectedNodeId: () => this.graphService.selection()?.id ?? null,
+      nodeData: (id: string) => this.graphService.testNodeData(id),
+      connectMode: () => this.graphService.testConnectMode(),
+      pickedNodeIds: () => this.graphService.testPickedNodeIds(),
+      edgeData: (id: string) => this.graphService.testEdgeData(id),
+      routeLegArcIds: () => this.graphService.testRouteLegArcIds(),
     };
   }
 }

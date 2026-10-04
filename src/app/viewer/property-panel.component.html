@@ -1,0 +1,164 @@
+<!-- PKG B-117 — the F40 property panel (§5 Phase 3 M1). Rendered only in
+     editor mode with a library-node selection (the component's open() gate —
+     edge selections never show it: node and edge selection are mutually
+     exclusive in the service, B-106). Every value bound is the LOCAL DRAFT
+     (C29/R2); every commit is a facade command through GraphService (R2).
+     R1: nothing here computes or displays a number. Plain words (C23); every
+     control is a >= 44px tap target operated touch-alone (F52/D53).
+     B-118 (D42/F16): while connecting, the banner below REPLACES the edit
+     body (the panel is open exactly when connect mode is legal) — the mode
+     in words, the pick count, tap feedback, any Done-loop refusal, and the
+     Done/Cancel affordances; the canvas taps pick, this panel narrates.
+     B-119 (Q29/§8 item 3): both headers carry the panel regime — the header
+     is the floating panel's drag handle (pointerdown; buttons keep their
+     taps) and the Maximize/Restore toggle sits at its end: Restore floats
+     the panel at its remembered (stage-clamped) position, Maximize returns
+     it to this docked form (the editor's default). -->
+@if (view(); as d) {
+  <section class="tme-prop" data-testid="tme-property-panel" aria-label="Place properties">
+    @if (connecting()) {
+      <!-- B-118 connect banner: replaces the edit body while connecting
+           (the draft is already committed — Connect never interleaves). -->
+      <header class="tme-prop-head" (pointerdown)="onDragStart($event)">
+        <h2 class="tme-title">Connect</h2>
+        <div class="tme-head-actions">
+          <button type="button" class="tme-regime" data-testid="tme-panel-maximize" (click)="toggleFloat()">
+            {{ floating() ? 'Maximize' : 'Restore' }}
+          </button>
+        </div>
+      </header>
+      <p class="tme-connect-line" data-testid="tme-connect-from">
+        Connecting from {{ sourceLabel() }}
+      </p>
+      <p class="tme-connect-line" data-testid="tme-connect-count" role="status">{{ pickLine() }}</p>
+      <p class="tme-connect-hint">Tap places on the map to connect them to this one.</p>
+
+      @if (connectFeedback(); as feedback) {
+        <p class="tme-connect-feedback" data-testid="tme-connect-feedback" role="status">
+          {{ feedback }}
+        </p>
+      }
+
+      <!-- C30 field-precise refusal of the Done commit loop — user-visibly
+           rendered (never console-only); the uncommitted picks stay intact. -->
+      @if (connectRefusal(); as refusal) {
+        <div class="tme-errors" data-testid="tme-connect-errors" role="alert" aria-label="The map refused this connection">
+          @for (issue of refusal.issues; track $index) {
+            <p class="tme-error" data-testid="tme-connect-error">
+              @if (issue.path !== '') {
+                <span class="tme-error-path">{{ issue.path }}</span>
+              }
+              <span>{{ issue.message }}</span>
+            </p>
+          }
+        </div>
+      }
+
+      <div class="tme-actions">
+        <button type="button" class="tme-connect-done" data-testid="tme-connect-done" (click)="confirmConnect()">Done</button>
+        <button type="button" class="tme-connect-cancel" data-testid="tme-connect-cancel" (click)="abortConnect()">Cancel</button>
+      </div>
+    } @else {
+      <header class="tme-prop-head" (pointerdown)="onDragStart($event)">
+        <h2 class="tme-title">Properties</h2>
+        <div class="tme-head-actions">
+          <!-- B-118 (D42/F16): the quick-connect entry — batch-create arcs
+               from this node. Commits the draft first (never interleaves). -->
+          <button type="button" class="tme-connect" data-testid="tme-node-connect" (click)="startConnect()">Connect</button>
+          <button type="button" class="tme-done" data-testid="tme-node-done" (click)="done()">Done</button>
+          <!-- B-119 (Q29/§8 item 3): the panel regime toggle — Restore floats
+               the panel at its remembered (stage-clamped) position; Maximize
+               returns to this docked form (the editor's default). >= 44px (F52). -->
+          <button type="button" class="tme-regime" data-testid="tme-panel-maximize" (click)="toggleFloat()">
+            {{ floating() ? 'Maximize' : 'Restore' }}
+          </button>
+        </div>
+      </header>
+
+      <label class="tme-field-label" for="tme-node-label-input">Name</label>
+      <input
+        id="tme-node-label-input"
+        class="tme-input"
+        type="text"
+        autocomplete="off"
+        data-testid="tme-node-label-input"
+        [value]="d.label"
+        (input)="onLabelInput($event)"
+      />
+
+      <label class="tme-field-label" for="tme-node-kind">Kind</label>
+      <select id="tme-node-kind" class="tme-input" data-testid="tme-node-kind" (change)="onKindChange($event)">
+        @for (option of kinds; track option.id) {
+          <option [value]="option.id" [selected]="d.kind === option.id">{{ option.name }}</option>
+        }
+      </select>
+
+      <label class="tme-field-label" for="tme-node-parent">Parent</label>
+      <select id="tme-node-parent" class="tme-input" data-testid="tme-node-parent" (change)="onParentChange($event)">
+        <option value="" [selected]="d.parent === null">None</option>
+        @for (option of parentOptions(); track option.id) {
+          <option [value]="option.id" [selected]="d.parent === option.id">{{ option.label }}</option>
+        }
+      </select>
+
+      <span class="tme-field-label" id="tme-aliases-label">Aliases</span>
+      <div class="tme-aliases" role="group" aria-labelledby="tme-aliases-label">
+        @for (alias of d.aliases; track $index) {
+          <div class="tme-alias-row">
+            <input
+              class="tme-input tme-alias-input"
+              type="text"
+              autocomplete="off"
+              [attr.aria-label]="'Alias ' + ($index + 1)"
+              data-testid="tme-alias-input"
+              [value]="alias"
+              (input)="onAliasInput($index, $event)"
+            />
+            <button
+              type="button"
+              class="tme-alias-remove"
+              data-testid="tme-alias-remove"
+              [attr.aria-label]="'Remove alias ' + ($index + 1)"
+              (click)="removeAlias($index)"
+            >
+              ×
+            </button>
+          </div>
+        }
+        <button type="button" class="tme-alias-add" data-testid="tme-alias-add" (click)="addAlias()">Add alias</button>
+      </div>
+
+      <label class="tme-field-label" for="tme-node-description">Description</label>
+      <textarea
+        id="tme-node-description"
+        class="tme-input tme-description"
+        rows="2"
+        data-testid="tme-node-description"
+        [value]="d.description"
+        (input)="onDescriptionInput($event)"
+      ></textarea>
+
+      <!-- C30 field-precise refusals of the last commit attempt — user-visibly
+           rendered (never console-only); the draft stays open, untouched. -->
+      @if (refusals().length > 0) {
+        <div class="tme-errors" data-testid="tme-node-errors" role="alert" aria-label="The map refused this edit">
+          @for (issue of refusals(); track $index) {
+            <p class="tme-error" data-testid="tme-node-error">
+              @if (issue.path !== '') {
+                <span class="tme-error-path">{{ issue.path }}</span>
+              }
+              <span>{{ issue.message }}</span>
+            </p>
+          }
+        </div>
+      }
+
+      <!-- F46: delete-and-redo IS the workflow — direct, no confirm dialog.
+           Done (in the header) commits the whole draft as ONE upsertNode;
+           Connect (also in the header) starts the quick-connect flow. -->
+      <div class="tme-actions">
+        <button type="button" class="tme-delete" data-testid="tme-node-delete" (click)="remove()">Delete</button>
+      </div>
+    }
+  </section>
+}

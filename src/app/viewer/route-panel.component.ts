@@ -44,9 +44,24 @@ export class RoutePanelComponent {
    * source changes (a discrete gesture — the only D2-sanctioned write here).
    * At >= 700px the stylesheet's media query owns visibility and the rail is
    * display:none, so this state is phone-world only and persists nothing.
+   *
+   * B-117 (D53): in EDITOR mode a library-node selection belongs to the
+   * property panel — the sheet stays collapsed (the rail remains reachable,
+   * the user can still expand it) so the editing stage keeps its height
+   * instead of dropping to ~180px under two open panels, where the fitted
+   * content lands underneath the fixed chrome (the exact B-106 finding the
+   * resize refit exists for). View-mode behavior is unchanged from B-114,
+   * and an editor selection that is NOT a library node (a waypoint — no
+   * property panel, B-116 precedent) still expands the sheet as before.
    */
   protected readonly sheetExpanded = linkedSignal<string | null, boolean>({
-    source: () => this.graph.selection()?.id ?? this.graph.edgeSelection()?.id ?? null,
+    source: () => {
+      const sel = this.graph.selection();
+      if (sel !== null && this.graph.editorMode() && this.graph.nodeDataById(sel.id) !== null) {
+        return null;
+      }
+      return sel?.id ?? this.graph.edgeSelection()?.id ?? null;
+    },
     computation: (source) => source !== null,
   });
 

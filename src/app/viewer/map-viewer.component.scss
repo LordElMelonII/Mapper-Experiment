@@ -58,6 +58,22 @@
   border-top: 1px solid rgba(174, 189, 211, 0.25);
 }
 
+// B-117 (§5 Phase 3 M1): the property panel region — beside the other
+// panels on wide viewports, stacked under them on narrow ones (the SAME
+// 700px breakpoint and flex rules). The component hides its host entirely
+// when it has no open draft (property-panel.component.scss display:none),
+// so the map only ever shares height with it while a node is actually being
+// edited; it scrolls its own overflow internally, never the page (D53).
+// The 38% cap matches the arc panel: with the route sheet also open at
+// phone width the stage keeps at least 17% — the established worst case
+// (arc + route) from B-106/B-114.
+.tme-property-panel {
+  flex: 0 0 auto;
+  min-height: 0;
+  max-height: 38%;
+  border-top: 1px solid rgba(174, 189, 211, 0.25);
+}
+
 @media (min-width: 700px) {
   // Wide: side by side. 700, not the ruling's ~600, so the existing
   // orientation-change e2e (viewport.e2e-spec.ts: a 664px-landscape phone
@@ -76,6 +92,14 @@
   }
 
   .tme-arc-panel {
+    flex: 0 0 15rem;
+    max-width: 30%; // ultra-narrow wide-mode windows never crush the stage
+    max-height: none;
+    border-top: none;
+    border-left: 1px solid rgba(174, 189, 211, 0.25);
+  }
+
+  .tme-property-panel {
     flex: 0 0 15rem;
     max-width: 30%; // ultra-narrow wide-mode windows never crush the stage
     max-height: none;
@@ -189,4 +213,85 @@
 .tme-chip-dismiss {
   font-size: 1rem;
   opacity: 0.8;
+}
+
+// B-116 (§5 Phase 3 M1): the editor toggle — the top-right corner of the
+// stage's chrome stack, ABOVE the selection chip (which keeps its own
+// 3.75rem slot: this button occupies top 0.5rem → ~3.3rem even at its 44px
+// minimum, clearing the chip exactly the way the header's two-line wrap is
+// cleared). One always-visible >= 44px tap target (F52/D53); the active
+// state mirrors the editorMode signal, same gold accent as the active layer.
+.tme-editor-toggle {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.75rem;
+  min-width: 44px; // F52: >= 44px tap targets, touch-only parity
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  // §6.2: the canvas host owns touch-action none; non-canvas interactive
+  // chrome uses manipulation so double-taps never zoom it.
+  touch-action: manipulation;
+}
+
+.tme-editor-toggle.tme-active {
+  border-color: #ffd166;
+  color: #ffd166;
+}
+
+// B-116 (F45/D75): the save dock — the next slot down the top-right stack
+// (the chip ends ≈ 6.5rem at its 3.75rem slot with a one-line label, so
+// 7rem clears it with headroom). Visible exactly while unsavedChanges() is
+// true, so it appears on the first edit and survives editor-mode toggles.
+.tme-save-dock {
+  position: absolute;
+  top: 7rem;
+  right: 0.75rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  max-width: calc(100% - 1.5rem); // never force horizontal scroll (D53)
+  padding: 0.375rem 0.625rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.9);
+  color: #e6ebf2;
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+}
+
+// B-116: the C30 save refusal — user-visibly inside the dock (its flex item,
+// wrapped to its own line), never console-only.
+.tme-save-error {
+  flex-basis: 100%;
+  color: #c9564e;
+}
+
+// B-116: the Save button — the dock's only control, >= 44px (F52), gold to
+// read as the primary action (matching the active toggle/chip accent).
+.tme-save {
+  min-width: 44px; // F52: >= 44px tap target
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid #ffd166;
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #ffd166;
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
 }

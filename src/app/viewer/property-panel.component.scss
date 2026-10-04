@@ -1,0 +1,332 @@
+// PKG B-117 — component-scoped chrome only (D7: zero global leakage). The
+// host is the map viewer's fourth flex REGION (beside the panels on wide
+// viewports, stacked below them on narrow ones — the map-viewer SCSS owns
+// the flex sizing); the panel hides itself entirely (display:none) whenever
+// it has no open draft, so the closed panel never occupies a slot. Content
+// never forces horizontal overflow (D53) and scrolls its own overflow
+// vertically, never the page.
+// B-119 (Q29/§8 item 3): the floating regime below — the same host leaves
+// the flex flow entirely (position: fixed) and floats over the stage at its
+// remembered position; the docked (maximized) rendering is untouched.
+:host {
+  display: none; // closed (no open draft): no slot, no chrome
+  box-sizing: border-box;
+}
+
+:host(.tme-open) {
+  display: block;
+  min-width: 0;
+  padding: 0.75rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: #e6ebf2;
+  font:
+    400 0.875rem/1.5 system-ui,
+    -apple-system,
+    sans-serif;
+}
+
+.tme-prop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.375rem;
+}
+
+// B-118: the header's Connect + Done pair — wrapped (never overflowing, D53),
+// both >= 44px tap targets (F52).
+.tme-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.375rem;
+}
+
+.tme-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+// B-118 (D42/F16): the Connect entry — the quick-connect flow's only door.
+// Teal to preview the pick-set accent it leads to (distinct from Done's gold
+// primary and Delete's red).
+.tme-connect {
+  min-width: 44px; // F52
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid #4db6ac;
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #4db6ac;
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+// B-118: the connect banner's narrating lines — the mode in words, the
+// source, the pick count (C23 plain words; no numbers but the count).
+.tme-connect-line {
+  margin: 0.25rem 0;
+  color: #e6ebf2;
+}
+
+.tme-connect-hint {
+  margin: 0.25rem 0;
+  color: #9aa7b8;
+  font-size: 0.8125rem;
+}
+
+// B-118: why the last tap picked nothing — one muted amber line (feedback,
+// not an error: nothing failed, the pick simply was not legal).
+.tme-connect-feedback {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid rgba(176, 129, 63, 0.6);
+  border-radius: 8px;
+  background: rgba(176, 129, 63, 0.12);
+  color: #d9b06c;
+}
+
+// B-118: the banner's Done (gold primary — the commit) and Cancel (neutral —
+// the discard), both >= 44px (F52), touch-alone (D53).
+.tme-connect-done {
+  min-width: 44px; // F52
+  min-height: 44px;
+  padding: 0 1.25rem;
+  border: 1px solid #ffd166;
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #ffd166;
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.tme-connect-cancel {
+  min-width: 44px; // F52
+  min-height: 44px;
+  padding: 0 1.25rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.tme-field-label {
+  display: block;
+  margin: 0.375rem 0 0.25rem;
+  color: #c7d0dd;
+  font-size: 0.8125rem;
+}
+
+// Shared control chrome: full-width, >= 44px tall (F52), 16px font so iOS
+// Safari never focus-zooms (D53 — a focus zoom would scroll the host page).
+.tme-input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.25rem 0.625rem;
+  border: 1px solid rgba(174, 189, 211, 0.4);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #e6ebf2;
+  font:
+    400 1rem/1.4 system-ui,
+    -apple-system,
+    sans-serif;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+.tme-description {
+  min-height: 66px; // a textarea breathes; still one >= 44px control (F52)
+  resize: vertical;
+}
+
+.tme-aliases {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.tme-alias-row {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.tme-alias-input {
+  flex: 1 1 auto;
+  min-width: 0; // never propagate content width into the row (D53)
+}
+
+// Per-row alias remove — one >= 44px tap target (F52), no hover affordance.
+.tme-alias-remove {
+  flex: 0 0 auto;
+  min-width: 44px; // F52
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font:
+    600 1rem/1 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.tme-alias-add {
+  align-self: flex-start;
+  min-width: 44px; // F52
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.tme-done {
+  min-width: 44px; // F52
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid #ffd166;
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #ffd166; // the primary action — the established gold accent
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+// F46 delete — direct and honest: the red key matches the blocked-arc accent.
+.tme-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.625rem;
+}
+
+.tme-delete {
+  min-width: 44px; // F52
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid rgba(201, 86, 78, 0.7);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #e08a84;
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+// C30 field-precise refusals — the red family, one line per issue: the
+// field path (small, muted) then the core's message verbatim.
+.tme-errors {
+  margin-top: 0.625rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid rgba(201, 86, 78, 0.5);
+  border-radius: 8px;
+  background: rgba(201, 86, 78, 0.12);
+}
+
+.tme-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.375rem;
+  margin: 0;
+  color: #e08a84;
+}
+
+.tme-error-path {
+  color: #9aa7b8;
+  font-size: 0.75rem;
+}
+
+// --- B-119 (Q29 panel regime, §8 item 3) -------------------------------------
+
+// The FLOATING regime: the host leaves the flex flow entirely (position:
+// fixed; the stage regains the region and the ResizeObserver → refit chain
+// follows) and floats over it at the remembered position — translate(x, y)
+// of the service's viewport-px position signal, applied through the host's
+// [style.transform] binding. Requires .tme-open so a closed floating panel
+// still hides entirely (the base :host display:none must keep winning).
+// Width/max-height MIRROR the clamp constants in property-panel.component.ts
+// (FLOAT_WIDTH_PX / 18rem): Restore clamps against the floating size while
+// the panel is still docked and unmeasurable. The full border shorthand
+// replaces the map-viewer region rule's border-top/border-left for this
+// state only (higher specificity in the component's emulated scope).
+:host(.tme-open.tme-floating) {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 20; // above the map it legitimately overlaps (clamped clear of the chrome)
+  width: min(18rem, 100vw - 1.5rem); // FLOAT_WIDTH_PX — never offscreen-wide (D53)
+  max-height: min(22rem, 100vh - 1.5rem);
+  border: 1px solid rgba(174, 189, 211, 0.4);
+  border-radius: 8px;
+  background: #14171c; // opaque — the map underneath is occluded, not bled through
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+// The header is the floating panel's drag handle: pointer events unify
+// mouse/touch (D53 — one code path, no hover affordance); touch-action:
+// none lives HERE ONLY (never the stage — §6.2) so a header drag never
+// scrolls the host page. Docked, the header is plain chrome: no drag, no
+// move cursor, default touch behavior.
+:host(.tme-floating) .tme-prop-head {
+  touch-action: none;
+  cursor: move;
+  user-select: none;
+}
+
+// B-119: the Maximize/Restore regime button — one >= 44px tap target (F52),
+// touch-alone (D53), neutral chrome (panel management, not a draft action:
+// gold stays the commit's color, red the destructive one).
+.tme-regime {
+  min-width: 44px; // F52
+  min-height: 44px;
+  padding: 0 0.625rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}

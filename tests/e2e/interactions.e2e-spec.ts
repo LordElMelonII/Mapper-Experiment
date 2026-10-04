@@ -16,8 +16,13 @@
 //          double-tap zoom; no-host-scroll during canvas gestures.
 //   C1/F07 — districts are compound containers: not grabbable (drag tests
 //          target a leaf node).
-//   R1/R4 — M1 drag is view-local (cytoscape's own positions are the
-//          projection): the header's core strings never change on drag.
+//   B-116 — the M1 view-local drag is RETIRED: in view mode nodes are not
+//          draggable (cy.autoungrabify) — dragging is an editor-mode
+//          affordance; the drag cells enter editor mode first and the drag
+//          release persists the authored position through the facade
+//          (F45/D75: dirty only — the header's core strings never change).
+//   R1/R4 — the header's core strings originate in the facade snapshot, so
+//          they are verbatim-unchanged by any drag.
 //
 // Canvas content is read/aimed through the DEV-HARNESS-ONLY
 // window.__TME_E2E__ hook (see src/app/app.ts): read-only projections of the
@@ -29,6 +34,7 @@ interface TmeE2EHook {
   nodeLabels(): string[];
   edgeLineStyle(id: string): string | null;
   nodeRenderedPosition(id: string): { x: number; y: number } | null;
+  nodeModelPosition(id: string): { x: number; y: number } | null;
   zoom(): number;
   pan(): { x: number; y: number };
 }
@@ -69,6 +75,14 @@ const readPan = (page: Page): Promise<{ x: number; y: number }> =>
     if (hook === undefined) throw new Error('window.__TME_E2E__ missing — dev harness not loaded');
     return hook.pan();
   });
+
+/** B-116: MODEL coordinates of one node (pan/zoom-independent persistence read). */
+const readModelPosition = (page: Page, id: string): Promise<{ x: number; y: number } | null> =>
+  page.evaluate((nodeId): { x: number; y: number } | null => {
+    const hook = (window as unknown as { __TME_E2E__?: TmeE2EHook }).__TME_E2E__;
+    if (hook === undefined) throw new Error('window.__TME_E2E__ missing — dev harness not loaded');
+    return hook.nodeModelPosition(nodeId);
+  }, id);
 
 const readScrollY = (page: Page): Promise<number> => page.evaluate(() => window.scrollY);
 
@@ -240,10 +254,15 @@ test.describe('canvas interactions (PKG B-103)', () => {
     else await tapWithDrift(page);
   });
 
-  test('desktop: mouse drag moves the node view-locally; header strings untouched (R1/R4, D2, C1/F07)', async ({ page }) => {
+  test('desktop: editor-mode mouse drag moves the node and persists its position; header strings untouched (D75/F45, D2, C1/F07)', async ({ page }) => {
     // Mouse-drag family runs on the desktop project; the touch-drag twin is
-    // the phone-only test below (D53: one family, both worlds).
+    // the phone-only test below (D53: one family, both worlds). B-116: the
+    // drag first ENTERS EDITOR MODE — in view mode nodes are not draggable
+    // (the M1 view-local drag is retired), so the drag cell itself pins the
+    // seam's retirement by failing if nodes stayed grabbable for free.
     test.skip(isPhone(), 'mouse-drag runs on desktop; touch-drag is the phone twin');
+    await page.getByTestId('tme-editor-toggle').click();
+    const modelBefore = expectPosition(await readModelPosition(page, EMIYA_ID));
     const before = expectPosition(await readRenderedPosition(page, EMIYA_ID));
     const start = await nodeScreenPoint(page, EMIYA_ID);
     await page.mouse.move(start.x, start.y);
@@ -253,23 +272,33 @@ test.describe('canvas interactions (PKG B-103)', () => {
 
     const after = expectPosition(await readRenderedPosition(page, EMIYA_ID));
     expect(after.x).toBeGreaterThan(before.x + 50);
-    // R1/R4: the move is view-local — no facade write, so the snapshot's core
-    // strings (header location = the pin's label) are verbatim unchanged.
+    // D75/F45: the drag released → `free` → upsertNode full-replace of the
+    // KNOWN node — the MODEL position is the persisted authored position, not
+    // merely a view artifact.
+    const modelAfter = expectPosition(await readModelPosition(page, EMIYA_ID));
+    expect(modelAfter.x).toBeGreaterThan(modelBefore.x + 40);
+    // R1/R4/F45: the persist writes only the facade's dirty flag — the
+    // snapshot's core strings (header location = the pin's label) are
+    // verbatim unchanged.
     await expect(page.getByTestId('tme-location')).toHaveText(EMIYA_LABEL);
     // D2: a drag is not a tap — no selection signal was written on the way.
     await expect(page.getByTestId('tme-selection-chip')).toBeHidden();
   });
 
-  test('phone: touch-drag moves the node (D53/F52)', async () => {
+  test('phone: editor-mode touch-drag moves the node and persists its position (D53/F52/D75)', async () => {
     // Touch-drag family runs on the touch project; the mouse twin above runs
-    // on desktop.
+    // on desktop. Same B-116 editor entry as the mouse twin.
     test.skip(!isPhone(), 'touch-drag needs the touch-emulated project');
     await withPhoneChromiumPage(async (page) => {
+      await page.getByTestId('tme-editor-toggle').tap();
+      const modelBefore = expectPosition(await readModelPosition(page, EMIYA_ID));
       const before = expectPosition(await readRenderedPosition(page, EMIYA_ID));
       const cdp = await page.context().newCDPSession(page);
       await cdpTouchDrag(cdp, await nodeScreenPoint(page, EMIYA_ID), 60, 10);
       const after = expectPosition(await readRenderedPosition(page, EMIYA_ID));
       expect(after.x).toBeGreaterThan(before.x + 40);
+      const modelAfter = expectPosition(await readModelPosition(page, EMIYA_ID));
+      expect(modelAfter.x).toBeGreaterThan(modelBefore.x + 40);
       // §6.2: the canvas drag never scrolled the host page.
       expect(await readScrollY(page)).toBe(0);
     });
