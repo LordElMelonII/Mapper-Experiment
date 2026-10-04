@@ -150,6 +150,22 @@ const tapNode = async (page: Page, id: string): Promise<void> => {
 const waypointCount = async (page: Page): Promise<number> =>
   (await readLabels(page)).filter((l) => l === 'Waypoint').length;
 
+/**
+ * B-120 (D76): the placement contract — enter EDITOR mode, select the
+ * WAYPOINT tool, tap the model point, then exit back to view mode so every
+ * downstream assertion below runs in the exact regime it always has (the
+ * tool is KEPT across the exit; the reset happens at the next entry).
+ */
+const placeWaypointViaEditor = async (page: Page, model: { x: number; y: number }): Promise<void> => {
+  await activate(page, 'tme-editor-toggle');
+  await expect(page.getByTestId('tme-editor-toggle')).toHaveAttribute('aria-pressed', 'true');
+  await activate(page, 'tme-tool-waypoint');
+  await expect(page.getByTestId('tme-tool-waypoint')).toHaveAttribute('aria-pressed', 'true');
+  await tapPoint(page, await modelPoint(page, model));
+  await activate(page, 'tme-editor-toggle'); // back to view mode
+  await expect(page.getByTestId('tme-editor-toggle')).toHaveAttribute('aria-pressed', 'false');
+};
+
 const sorted = (ids: string[]): string[] => [...ids].sort();
 
 test.describe('waypoint management: remove + promote-to-map (PKG B-110)', () => {
@@ -165,9 +181,10 @@ test.describe('waypoint management: remove + promote-to-map (PKG B-110)', () => 
     // Ruling 1: no selection ⇒ no section.
     await expect(page.getByTestId('tme-waypoint')).toHaveCount(0);
 
-    // B-109 flow: place by background tap (the gesture also clears — the
-    // chip stays hidden), then tap the waypoint to select it.
-    await tapPoint(page, await modelPoint(page, BG_MODEL_POINT));
+    // B-109/B-120 flow: place through editor + Waypoint tool (the placement
+    // writes no selection — the chip stays hidden), then tap the waypoint to
+    // select it.
+    await placeWaypointViaEditor(page, BG_MODEL_POINT);
     await expect.poll(() => waypointCount(page)).toBe(1);
     await tapNode(page, 'wp-1');
 
@@ -194,7 +211,7 @@ test.describe('waypoint management: remove + promote-to-map (PKG B-110)', () => 
   test('Promote names it into the library: canvas label, section, chip, route and edges all follow (D21/C26/D61)', async ({
     page,
   }) => {
-    await tapPoint(page, await modelPoint(page, BG_MODEL_POINT));
+    await placeWaypointViaEditor(page, BG_MODEL_POINT);
     await expect.poll(() => waypointCount(page)).toBe(1);
     await tapNode(page, 'wp-1');
     await expect(page.getByTestId('tme-waypoint')).toBeVisible();
@@ -231,7 +248,7 @@ test.describe('waypoint management: remove + promote-to-map (PKG B-110)', () => 
   test('Promote stays disabled while the name is empty or whitespace (C30/D21 — the B-106 honesty pattern)', async ({
     page,
   }) => {
-    await tapPoint(page, await modelPoint(page, BG_MODEL_POINT));
+    await placeWaypointViaEditor(page, BG_MODEL_POINT);
     await expect.poll(() => waypointCount(page)).toBe(1);
     await tapNode(page, 'wp-1');
     await expect(page.getByTestId('tme-waypoint')).toBeVisible();
@@ -255,10 +272,10 @@ test.describe('waypoint management: remove + promote-to-map (PKG B-110)', () => 
   test('Remove takes the waypoint and its edges; the other waypoint is untouched; the chip clears (§6.2, ruling 2/F46)', async ({
     page,
   }) => {
-    await tapPoint(page, await modelPoint(page, BG_MODEL_POINT));
+    await placeWaypointViaEditor(page, BG_MODEL_POINT);
     await expect.poll(() => waypointCount(page)).toBe(1);
     const weAfterFirst = await readWeIds(page); // wp-1's 3 edges (C7)
-    await tapPoint(page, await modelPoint(page, BG_MODEL_POINT_2));
+    await placeWaypointViaEditor(page, BG_MODEL_POINT_2);
     await expect.poll(() => waypointCount(page)).toBe(2);
     expect(await readWeIds(page)).toHaveLength(6); // C5: engine-assigned, collision-free
 
@@ -283,9 +300,9 @@ test.describe('waypoint management: remove + promote-to-map (PKG B-110)', () => 
   test('the §6.2 orphan case, UI side: the last waypoint removed takes its edges; the survivor needs no special UI (§6.2/F46)', async ({
     page,
   }) => {
-    await tapPoint(page, await modelPoint(page, BG_MODEL_POINT));
+    await placeWaypointViaEditor(page, BG_MODEL_POINT);
     await expect.poll(() => waypointCount(page)).toBe(1);
-    await tapPoint(page, await modelPoint(page, BG_MODEL_POINT_2));
+    await placeWaypointViaEditor(page, BG_MODEL_POINT_2);
     await expect.poll(() => waypointCount(page)).toBe(2);
     expect(await readWeIds(page)).toHaveLength(6);
 
@@ -329,8 +346,9 @@ test.describe('waypoint management: remove + promote-to-map (PKG B-110)', () => 
     await settle(page);
     await expect.poll(() => readRenderedPosition(page, 'emiya-residence')).not.toBeNull();
 
-    // Place by touch, select by touch (B-109 flow).
-    await tapPoint(page, await modelPoint(page, BG_MODEL_POINT));
+    // Place by touch (editor + Waypoint tool, the B-120 contract), select by
+    // touch (B-109 flow).
+    await placeWaypointViaEditor(page, BG_MODEL_POINT);
     await expect.poll(() => waypointCount(page)).toBe(1);
     await tapNode(page, 'wp-1');
     await expect(page.getByTestId('tme-waypoint')).toBeVisible();
@@ -352,7 +370,7 @@ test.describe('waypoint management: remove + promote-to-map (PKG B-110)', () => 
     await expect(page.getByTestId('tme-selection-label')).toHaveText(PROMOTED_LABEL);
 
     // Remove by touch: place a fresh waypoint, select it, Remove.
-    await tapPoint(page, await modelPoint(page, BG_MODEL_POINT_2));
+    await placeWaypointViaEditor(page, BG_MODEL_POINT_2);
     await expect.poll(() => waypointCount(page)).toBe(1);
     await tapNode(page, 'wp-2');
     await expect(page.getByTestId('tme-waypoint')).toBeVisible();

@@ -68,6 +68,20 @@
 // Phase 4) with the maximized-default reset on editor entry. All clamp /
 // drag DOM math lives in the panel component (the consumer); the service
 // holds the two signals and nothing else.
+// B-120 (R21 rulings 1 + D76): viewport stability + editor-only placement.
+// (1) fitView belongs to mount(), notifyResize() and selectLayer() ONLY —
+// rebuildElements NEVER fits, so an edit (place/move/property-commit), a
+// block/lift, a mode switch or a map load leaves zoom and pan untouched
+// (the cull machinery follows: cullZoom is recomputed only by real fits, and
+// a rebuild re-applies the cull class from `labelCulled` — an edit while
+// culled stays culled, B-113 ruling 4's stated intent now exactly true).
+// (2) D76: view mode is purely navigational — tap selects, drag pans, pinch
+// zooms, NOTHING is ever placed (a background tap clears both selections
+// only; a compound-box tap is a deliberate no-op). Placement of every kind
+// (authored nodes via placeNodeAt, chat waypoints via placeWaypointAt) is
+// editor-mode-only and gated by the visible `editorTool` ('node' default /
+// 'waypoint'; draw-arc joins the same control in B-122) — one gesture per
+// mode, no invisible affordance (D53).
 // The ONE cytoscape instance (D3): created headless
 // in the constructor, `mount()`/`unmount()` on demand — computation works with
 // the UI closed. Zoneless (D2): the service writes signals; the ONLY canvas
@@ -109,6 +123,13 @@ export interface LayerLabel {
   readonly id: string;
   readonly name: string;
 }
+
+/**
+ * B-120 (D76): the editor's placement tools — which kind an editor-mode
+ * background/compound-box tap places. Extensible for B-122's draw-arc (a
+ * third member joins; the tap handlers switch over it then).
+ */
+export type EditorTool = 'node' | 'waypoint';
 
 /**
  * B-106 (ruling 3): what the arc panel renders for one arc — authored/overlay
@@ -490,6 +511,20 @@ export class GraphService implements OnDestroy {
   readonly editorMode = signal(false);
 
   /**
+   * B-120 (D76): the active editor tool — WHAT an editor-mode background or
+   * compound-box tap places. 'node' (default): an AUTHORED node through
+   * placeNodeAt — the B-116 behavior byte-identical (the default keeps
+   * editor-place-move.e2e-spec.ts green unmodified). 'waypoint': a chat
+   * waypoint through placeWaypointAt — the B-109 semantics (kNN and all),
+   * now editor+tool-gated. FRONTEND viewer state, in-memory only, the
+   * B-119 panelFloating class (the facade carries no command for it): reset
+   * to 'node' on every enterEditor; exitEditor KEEPS the choice (the reset
+   * happens at the next entry). Draw-arc joins this control in B-122 — the
+   * type grows a third member then, nothing here changes.
+   */
+  readonly editorTool = signal<EditorTool>('node');
+
+  /**
    * B-118 (D42/F16): quick-connect mode — on while the author picks arc
    * targets for the node selected when the mode was entered. Entered ONLY
    * from the property panel (the panel is open exactly when connect mode is
@@ -783,21 +818,22 @@ export class GraphService implements OnDestroy {
         return;
       }
       // B-109 (ruling 2, §6.2 Waypoints): a tap on a compound parent's BOX (off
-      // its children — the selector matched the parent) is a PLACEMENT tap, not
-      // a selection: `node.isParent()` (@types/cytoscape 3.21.9 index.d.ts:3624
-      // — the runtime's own compound check, not a kind-string heuristic) routes
-      // to the placement path — the event's model position is used verbatim
-      // (no coordinate math, R1). B-116: the placement target depends on the
-      // mode — in EDITOR mode the empty-canvas tap places an AUTHORED node
-      // through upsertNode (this packet's editor place); in view mode it
-      // places a chat waypoint through addUserNodeAt (F10/C7/D21 — addUserNodeAt
-      // places TOP-LEVEL (validate.ts rejects `parent` on user nodes), so the
-      // node lands in this layer unparented).
+      // its children — the selector matched the parent) routes through
+      // `node.isParent()` (@types/cytoscape 3.21.9 index.d.ts:3624 — the
+      // runtime's own compound check, not a kind-string heuristic) to the
+      // PLACEMENT path — the event's model position is used verbatim (no
+      // coordinate math, R1). B-120 (D76): placement of every kind is
+      // EDITOR-ONLY and tool-gated — editor + Node tool places an AUTHORED
+      // node (upsertNode, the B-116 behavior), editor + Waypoint tool places
+      // a chat waypoint (addUserNodeAt — TOP-LEVEL: validate.ts rejects
+      // `parent` on user nodes, so the node lands in this layer unparented).
+      // In VIEW mode the box tap is a deliberate NO-OP: the box is not a
+      // selectable leaf, nothing happens (D76 — view mode is purely
+      // navigational; nothing is ever placed).
       if (node.isParent()) {
         if (this.editorMode()) {
-          this.placeNodeAt(event.position);
-        } else {
-          this.placeWaypointAt(event.position);
+          if (this.editorTool() === 'waypoint') this.placeWaypointAt(event.position);
+          else this.placeNodeAt(event.position);
         }
         return;
       }
@@ -823,16 +859,17 @@ export class GraphService implements OnDestroy {
     });
     this.cy.on('tap', (event) => {
       // Element taps bubble to the core, so only a cy-targeted tap is a
-      // background tap. B-109 (ruling 1, F10): in VIEW mode that gesture
-      // PLACES a waypoint at the event's model position (InputEventObject
-      // .position — the library converts rendered→model coordinates, so the
-      // app performs no coordinate math, R1) AND clears both selections (the
-      // M2 panel-dismiss ergonomics survive — one gesture, two effects, no
-      // hidden modes). Stray placements are recoverable: waypoints are
-      // removable (B-110). B-116: in EDITOR mode the same gesture places an
-      // AUTHORED node through upsertNode and SELECTS it (the C5/D75 id-delta
-      // path — the editor's "place node" gesture; the placement handler owns
-      // the selection writes).
+      // background tap. B-120 (D76): the gesture is EDITOR-ONLY placement —
+      // the Node tool places an AUTHORED node through upsertNode and SELECTS
+      // it (the C5/D75 id-delta path — the B-116 behavior; the placement
+      // handler owns the selection writes), the Waypoint tool places a chat
+      // waypoint at the event's model position (InputEventObject.position —
+      // the library converts rendered→model coordinates, so the app performs
+      // no coordinate math, R1; stray placements are recoverable — waypoints
+      // are removable, B-110). In VIEW mode the same gesture clears BOTH
+      // selections ONLY (the M2 panel-dismiss ergonomics survive — one
+      // gesture, two effects, no hidden modes) and places NOTHING: view mode
+      // is purely navigational (D76).
       if (event.target === this.cy) {
         // B-118: while connecting a background tap neither places a node nor
         // dismisses the selection — both would orphan the mode mid-pick (the
@@ -840,10 +877,10 @@ export class GraphService implements OnDestroy {
         // panel). The banner's Done/Cancel own the exit.
         if (this.connectMode()) return;
         if (this.editorMode()) {
-          this.placeNodeAt(event.position);
+          if (this.editorTool() === 'waypoint') this.placeWaypointAt(event.position);
+          else this.placeNodeAt(event.position);
           return;
         }
-        this.placeWaypointAt(event.position);
         this.selection.set(null);
         this.edgeSelection.set(null);
       }
@@ -954,6 +991,10 @@ export class GraphService implements OnDestroy {
     this.activeLayer.set(firstLayer);
     this.rebuildElements();
     this.refreshSnapshot();
+    // B-120 (R21 ruling 1): loadMap deliberately has NO fit of its own — the
+    // harness loads before mount(), so mount()'s fit covers the first view.
+    // NOTE: a loadMap-while-MOUNTED (the Phase 4 map switch) will need its
+    // own explicit fit decision then — out of scope here.
   }
 
   /** D3: attach the headless instance to a DOM host and size it. */
@@ -976,13 +1017,17 @@ export class GraphService implements OnDestroy {
 
   /**
    * Switch the visible layer: through the facade (R2 — it validates the id
-   * and owns viewer state), then mirror into the signal, rebuild the
-   * projection and re-fit the view to this layer's nodes.
+   * and owns viewer state), then mirror into the signal and rebuild the
+   * projection. B-120 (R21 ruling 1): the layer switch keeps its refit —
+   * EXPLICITLY here, no longer riding rebuildElements' tail (which never
+   * fits now): a fresh layer's default view is the fitted, label-visible
+   * one (fitView also re-bases the cull threshold, B-113 ruling 1).
    */
   selectLayer(layerId: string): void {
     this.facade?.setActiveLayer(layerId);
     this.activeLayer.set(layerId);
     this.rebuildElements();
+    this.fitView();
     this.refreshSnapshot();
   }
 
@@ -1038,15 +1083,18 @@ export class GraphService implements OnDestroy {
    * given model position — the tap event's `position` verbatim (verified:
    * InputEventObject.position, @types/cytoscape 3.21.9 index.d.ts:5227 — the
    * library converts rendered→model, so there is no coordinate math to
-   * perform here, R1). R2: the ONLY mutation is the facade command
-   * addUserNodeAt — engine-assigned id (C5), label 'Waypoint', kNN connect to
-   * the k=3 nearest leaves of the merged set (C7/D58; zero eligible leaves ⇒
-   * orphaned, still legal). Then the shared post-mutation sequence: the
-   * graphRevision bump re-runs the route computed (the selection's route
-   * re-prices LIVE, F26) and rebuildElements re-projects the node + its
-   * user edges and re-prices badges (B-108). Guards degrade silently before
-   * loadMap (no facade / no active layer — C32 spirit); the facade itself
-   * remains the C30 authority on layer/position validity.
+   * perform here, R1). B-120 (D76): reachable ONLY from editor mode + the
+   * Waypoint tool (the tap handlers' branch) — view mode places nothing. R2:
+   * the ONLY mutation is the facade command addUserNodeAt — engine-assigned
+   * id (C5), label 'Waypoint', kNN connect to the k=3 nearest leaves of the
+   * merged set (C7/D58; zero eligible leaves ⇒ orphaned, still legal). Then
+   * the shared post-mutation sequence: the graphRevision bump re-runs the
+   * route computed (the selection's route re-prices LIVE, F26) and
+   * rebuildElements re-projects the node + its user edges and re-prices
+   * badges (B-108) — with NO fit (B-120: the viewport is untouched). Guards
+   * degrade silently before loadMap (no facade / no active layer — C32
+   * spirit); the facade itself remains the C30 authority on layer/position
+   * validity.
    */
   placeWaypointAt(position: { x: number; y: number }): void {
     const facade = this.facade;
@@ -1107,29 +1155,45 @@ export class GraphService implements OnDestroy {
   // --- Editor mode (PKG B-116, §5 Phase 3 M1 — D75/F45/C5/R1/R2) --------------
 
   /**
-   * Enter editor mode: the empty-canvas tap places authored nodes and leaf
+   * Enter editor mode: canvas taps place (per the active tool) and leaf
    * nodes become grabbable (drag persists — see the `free` handler). The
    * toggle is the template's only write path for this state (R3).
    * B-119 (Q29/§8 item 3): editor entry also MAXIMIZES the property panel —
    * the floating flag resets so a re-entry always opens the docked region
    * form. The remembered position survives (panelPosition untouched): the
    * next Restore floats it back where the author left it.
+   * B-120 (D76): entry also RESETS the tool to 'node' — every editor session
+   * starts from the authored-node default (no remembered placement kind
+   * fires as a surprise gesture).
    */
   enterEditor(): void {
     this.editorMode.set(true);
+    this.editorTool.set('node'); // B-120: the session default (D76)
     this.panelFloating.set(false); // B-119: the editor maximizes by default
     this.cy.autoungrabify(false); // restores the per-element `grabbable` field
   }
 
   /**
    * Exit editor mode: nodes are no longer draggable (grabbable off — the M1
-   * view-local drag is retired) and the canvas tap returns to waypoint
-   * placement (B-109). Unsaved edits survive the toggle (F45: they live in
-   * the core's dirty flag until saveMap, not in the editor mode).
+   * view-local drag is retired) and the canvas returns to purely
+   * navigational taps (D76/B-120: a background tap clears the selections,
+   * nothing is ever placed in view mode). Unsaved edits survive the toggle
+   * (F45: they live in the core's dirty flag until saveMap, not in the
+   * editor mode). The tool choice is KEPT (reset at the next entry).
    */
   exitEditor(): void {
     this.editorMode.set(false);
     this.cy.autoungrabify(true);
+  }
+
+  /**
+   * B-120 (D76): the segmented tool control's write path — the template's
+   * only writer (R3). Meaningful in editor mode (the control renders only
+   * there); harmless anytime, and the value is never remembered across
+   * sessions (enterEditor resets it).
+   */
+  setEditorTool(tool: EditorTool): void {
+    this.editorTool.set(tool);
   }
 
   /**
@@ -1172,7 +1236,8 @@ export class GraphService implements OnDestroy {
       origin: 'authored',
     });
     // The projection rebuild re-reads the live references (R4) inside ONE
-    // cy.batch (B-112) and refreshes projectedNodeIds (also mounted-fit).
+    // cy.batch (B-112) and refreshes projectedNodeIds (no fit — B-120: the
+    // viewport is untouched by edits).
     this.rebuildElements();
     // The single-command delta: the post-command projection's ids minus the
     // pre-command ones. Absent (projection blocked by a null layer/map)
@@ -1752,7 +1817,11 @@ export class GraphService implements OnDestroy {
    * Swap the projected elements to the active layer, atomically. §6.1 dense
    * rows + PKG B-112 (ruling 1): remove, add AND the selection-accent
    * re-projection run in ONE cy.batch — one render pass per rebuild, per
-   * caller (block/lift, travel-mode switch, layer switch, map load).
+   * caller (block/lift, travel-mode switch, layer switch, map load, editor
+   * commands). B-120 (R21 ruling 1): a rebuild NEVER fits the view — zoom
+   * and pan are the user's; the ONLY fit sites are mount(), notifyResize()
+   * and selectLayer()'s explicit fitView (a loadMap-while-mounted gets its
+   * own decision in Phase 4 — see loadMap).
    */
   private rebuildElements(): void {
     const layerId = this.activeLayer();
@@ -1786,16 +1855,16 @@ export class GraphService implements OnDestroy {
       // block/lift rebuilds included) without a second render pass (§6.1
       // dense-row mitigation; PKG B-112 ruling 1).
       this.projectSelectionClasses();
-      // B-113 (ruling 4): same slot, same reason — a rebuild must not
-      // un-cull a culled view, so the blanket class re-applies to the FRESH
-      // elements from the labelCulled state field (D2) inside this batch.
-      // When mounted, the fitView() below then re-fits and re-runs the
-      // threshold check (a re-fit restores the default, label-visible view);
-      // while headless the zoom is frozen below the frozen threshold, and
-      // the cull state survives the swap intact.
+      // B-113 (ruling 4), exactly true since B-120: a rebuild must not
+      // un-cull a culled view — the blanket class re-applies to the FRESH
+      // elements from the labelCulled state field (D2) inside this batch,
+      // and rebuildElements NEVER fits (B-120/R21 ruling 1: an edit while
+      // culled stays culled; cullZoom is recomputed only by real fits —
+      // mount, notifyResize, selectLayer's explicit fitView). applyLabelCull
+      // still rides zoom events, so the class follows the threshold again
+      // the moment the user zooms.
       if (this.labelCulled) this.cy.nodes().addClass('tme-cull-labels');
     });
-    if (this.mounted) this.fitView();
   }
 
   /**
@@ -1864,13 +1933,16 @@ export class GraphService implements OnDestroy {
   }
 
   /**
-   * The single fit site (mount, notifyResize, rebuild-while-mounted).
-   * B-113 (ruling 1): after cy.fit the cull threshold is RECOMPUTED from the
-   * fit zoom (every re-fit re-bases it — the threshold is fit-relative), then
-   * the cull check re-runs. The re-run is required, not defensive: the fit
-   * itself synchronously emits `zoom` (cytoscape.esm.mjs:19478) and that
-   * handler pass executes against the PREVIOUS threshold. Idempotent — see
-   * applyLabelCull. An empty canvas takes the never-cull threshold instead.
+   * The single fit site — and since B-120 (R21 ruling 1) the ONLY fit sites
+   * are mount(), notifyResize() and selectLayer()'s explicit call: an edit,
+   * a block/lift, a mode switch or a map load never refits (zoom and pan
+   * are the user's). B-113 (ruling 1): after cy.fit the cull threshold is
+   * RECOMPUTED from the fit zoom (every re-fit re-bases it — the threshold
+   * is fit-relative), then the cull check re-runs. The re-run is required,
+   * not defensive: the fit itself synchronously emits `zoom`
+   * (cytoscape.esm.mjs:19478) and that handler pass executes against the
+   * PREVIOUS threshold. Idempotent — see applyLabelCull. An empty canvas
+   * takes the never-cull threshold instead.
    */
   private fitView(): void {
     if (this.cy.elements().length > 0) {

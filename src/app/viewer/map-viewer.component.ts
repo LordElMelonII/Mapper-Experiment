@@ -20,6 +20,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { GraphService } from '../graph/graph.service';
+import type { EditorTool } from '../graph/graph.service';
 import { ArcPanelComponent } from './arc-panel.component';
 import { PropertyPanelComponent } from './property-panel.component';
 import { RoutePanelComponent } from './route-panel.component';
@@ -74,6 +75,15 @@ export class MapViewerComponent implements AfterViewInit, OnDestroy {
   protected toggleEditor(): void {
     if (this.graph.editorMode()) this.graph.exitEditor();
     else this.graph.enterEditor();
+  }
+
+  /**
+   * B-120 (D76): the segmented tool control's tap path — the service's
+   * single write path for the editor tool (R2/R3, the toggleEditor pattern:
+   * one signal write, the template follows).
+   */
+  protected setEditorTool(tool: EditorTool): void {
+    this.graph.setEditorTool(tool);
   }
 
   /**

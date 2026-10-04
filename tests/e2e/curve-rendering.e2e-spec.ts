@@ -223,7 +223,13 @@ test.describe('curve rendering — unbundled-bezier (PKG B-111)', () => {
     page,
   }) => {
     const before = await readWeIds(page);
+    // B-120 (D76): the placement contract — editor + Waypoint tool, tap, back
+    // to view mode; the assertions are the placement's edge set either way.
+    await activate(page, 'tme-editor-toggle');
+    await activate(page, 'tme-tool-waypoint');
+    await expect(page.getByTestId('tme-tool-waypoint')).toHaveAttribute('aria-pressed', 'true');
     await tapPoint(page, await modelPoint(page, BG_MODEL_POINT));
+    await activate(page, 'tme-editor-toggle');
     // C7 (k=3 on layer-fuyuki — the waypoints spec pins this exact point):
     // the placement creates exactly 3 `we-` user edges.
     await expect.poll(async () => (await readWeIds(page)).length - before.length).toBe(3);

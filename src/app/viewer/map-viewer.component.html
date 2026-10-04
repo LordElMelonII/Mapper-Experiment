@@ -81,6 +81,41 @@
       {{ graph.editorMode() ? 'Editing' : 'Edit' }}
     </button>
 
+    <!-- B-120 (D76/F52/D53): the editor's segmented TOOL control — what an
+         editor-mode background/compound-box tap places: Node (default, the
+         B-116 authored-node behavior) or Waypoint (the B-109 chat-waypoint
+         semantics, kNN and all). Editor chrome only (view mode never renders
+         it — view mode is purely navigational, nothing is ever placed); one
+         >= 44px segment per tool; the pressed state (aria-pressed + the gold
+         tme-active class bound to the editorTool signal, R3) makes the
+         active placement kind visible — no invisible affordance (D53).
+         Plain words (C23); touch alone operates it. Extensible: draw-arc
+         joins the same control as a third segment in B-122. -->
+    @if (graph.editorMode()) {
+      <div class="tme-tools" role="group" aria-label="Editor tools" data-testid="tme-editor-tools">
+        <button
+          type="button"
+          class="tme-tool"
+          data-testid="tme-tool-node"
+          [class.tme-active]="graph.editorTool() === 'node'"
+          [attr.aria-pressed]="graph.editorTool() === 'node' ? 'true' : 'false'"
+          (click)="setEditorTool('node')"
+        >
+          Node
+        </button>
+        <button
+          type="button"
+          class="tme-tool"
+          data-testid="tme-tool-waypoint"
+          [class.tme-active]="graph.editorTool() === 'waypoint'"
+          [attr.aria-pressed]="graph.editorTool() === 'waypoint' ? 'true' : 'false'"
+          (click)="setEditorTool('waypoint')"
+        >
+          Waypoint
+        </button>
+      </div>
+    }
+
     <!-- B-116 (F45/D75): the save dock — the F45 unsaved-changes indicator
          (the core's dirty flag is the single truth, R1) PLUS the Save button,
          rendered exactly while the facade still holds unsaved editor edits,

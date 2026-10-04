@@ -235,9 +235,19 @@ test.describe('F52 tap-target sweep (PKG B-114)', () => {
   test('waypoint selected: the Waypoint section input and buttons — every visible control >= 44x44 (F52/D53/§6.2)', async ({
     page,
   }) => {
-    // Place by background tap (the B-109 gesture), then select the waypoint
-    // so the Waypoint management section renders (B-110).
+    // Place through the B-120 contract (editor + Waypoint tool, then back to
+    // view mode so the swept state is exactly the original one), then select
+    // the waypoint so the Waypoint management section renders (B-110).
+    const toggle = page.getByTestId('tme-editor-toggle');
+    if (isPhone()) await toggle.tap();
+    else await toggle.click();
+    const tool = page.getByTestId('tme-tool-waypoint');
+    if (isPhone()) await tool.tap();
+    else await tool.click();
+    await expect(tool).toHaveAttribute('aria-pressed', 'true');
     await tapPoint(page, await modelPoint(page, BG_MODEL_POINT));
+    if (isPhone()) await toggle.tap();
+    else await toggle.click();
     await expect
       .poll(async () => (await readLabels(page)).filter((l) => l === 'Waypoint'))
       .toHaveLength(1);

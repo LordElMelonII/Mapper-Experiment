@@ -1,10 +1,14 @@
 // tests/e2e/waypoints.e2e-spec.ts — PKG B-109: tap-to-place waypoints with
 // full input disambiguation, proven at BOTH playwright projects (desktop +
-// emulated phone with touch) per D53/F52.
+// emulated phone with touch) per D53/F52. B-120 (D76): every placement cell
+// now runs through the NEW contract — enter editor mode first, then select
+// the Waypoint tool on the segmented control; view mode is purely
+// navigational and places NOTHING (the view-mode no-op cells pin that side).
 //
 // Cited IDs:
 //   F10/D21  — user nodes (waypoints) are placed at runtime by tapping empty
-//              canvas; the plain-word label 'Waypoint' is chat state (the
+//              canvas (in the editor with the Waypoint tool, D76/B-120);
+//              the plain-word label 'Waypoint' is chat state (the
 //              overlay), never an id-like machine name on the canvas (C23).
 //   C5       — ids belong to the engine: rapid creations cannot collide. The
 //              facade's counter starts at 1 and FX1 authors no `wp-`/`we-`
@@ -73,6 +77,8 @@ interface TmeE2EHook {
   edgeLineStyle(id: string): string | null;
   nodeRenderedPosition(id: string): { x: number; y: number } | null;
   nodeRenderedBoundingBox(id: string): { x: number; y: number; w: number; h: number } | null;
+  /** B-120: the selection's id — identifies the placed node for the drag aim. */
+  selectedNodeId(): string | null;
   zoom(): number;
   pan(): { x: number; y: number };
 }
@@ -99,10 +105,10 @@ const isPhone = (): boolean => test.info().project.name === 'phone';
  *   - >110 model units from every authored edge segment and >60 from every
  *     node center, the cross-layer badge, and both compound boxes;
  *   - inside the fitted content bounding box with node-body margin, so the
- *     post-placement fitView (afterGraphMutation → rebuildElements) is a
- *     no-op and the waypoint renders exactly at the tap point (asserted);
- *   - rendered clear of the fixed chrome (header, layer switcher) at both
- *     project viewports.
+ *     waypoint renders exactly at the tap point (asserted — and since B-120
+ *     a placement never refits at all: zoom and pan are untouched);
+ *   - rendered clear of the fixed chrome (header, layer switcher, the
+ *     B-120 bottom-right editor tool control) at both project viewports;
  * The BG_POINT discipline of interactions.e2e-spec.ts:44, model-anchored:
  * the points convert to canvas-relative px at runtime through the zoom/pan
  * seams (test-side math — the UI computes nothing, R1).
@@ -163,6 +169,42 @@ const readPan = (page: Page): Promise<{ x: number; y: number }> =>
     if (hook === undefined) throw new Error('window.__TME_E2E__ missing — dev harness not loaded');
     return hook.pan();
   });
+
+const readZoom = (page: Page): Promise<number> =>
+  page.evaluate((): number => {
+    const hook = (window as unknown as { __TME_E2E__?: TmeE2EHook }).__TME_E2E__;
+    if (hook === undefined) throw new Error('window.__TME_E2E__ missing — dev harness not loaded');
+    return hook.zoom();
+  });
+
+const readSelectedId = (page: Page): Promise<string | null> =>
+  page.evaluate((): string | null => {
+    const hook = (window as unknown as { __TME_E2E__?: TmeE2EHook }).__TME_E2E__;
+    if (hook === undefined) throw new Error('window.__TME_E2E__ missing — dev harness not loaded');
+    return hook.selectedNodeId();
+  });
+
+/** F52/D53: one activation path for DOM controls on every project. */
+const activate = async (page: Page, testId: string): Promise<void> => {
+  const locator = page.getByTestId(testId);
+  if (isPhone()) await locator.tap();
+  else await locator.click();
+};
+
+/**
+ * B-120 (D76): the placement prefix every waypoint cell now runs through —
+ * enter EDITOR mode, then select the WAYPOINT tool on the segmented control.
+ * View mode is purely navigational (nothing is ever placed); the tool makes
+ * the placement kind visible before the first tap (no invisible affordance,
+ * D53). Both controls are >= 44px and touch-alone operable.
+ */
+const enterEditorWaypointTool = async (page: Page): Promise<void> => {
+  await activate(page, 'tme-editor-toggle');
+  await expect(page.getByTestId('tme-editor-toggle')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('tme-editor-tools')).toBeVisible();
+  await activate(page, 'tme-tool-waypoint');
+  await expect(page.getByTestId('tme-tool-waypoint')).toHaveAttribute('aria-pressed', 'true');
+};
 
 const readScrollY = (page: Page): Promise<number> => page.evaluate(() => window.scrollY);
 
@@ -317,7 +359,14 @@ const withPhoneChromiumPage = async (run: (page: Page) => Promise<void>): Promis
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** One-finger drag through CDP Input.dispatchTouchEvent (touchscreen has no drag). */
+/**
+ * One-finger drag through CDP Input.dispatchTouchEvent (touchscreen has no
+ * drag). The 200ms HOLD before the release is load-bearing (the
+ * editor-panel-regime gotcha): a touchEnd landing immediately after the last
+ * move leaves Chromium's gesture recognizer half-armed and the NEXT tap's
+ * click is silently dropped — the B-120 stability cell follows its drag with
+ * taps, so the hold is mandatory here.
+ */
 const cdpTouchDrag = async (cdp: CDPSession, from: Point, dx: number, dy: number): Promise<void> => {
   const steps = 6;
   await cdp.send('Input.dispatchTouchEvent', {
@@ -332,6 +381,38 @@ const cdpTouchDrag = async (cdp: CDPSession, from: Point, dx: number, dy: number
     });
     await sleep(25);
   }
+  await sleep(200);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+};
+
+/**
+ * Two-finger pinch synthesized through CDP (the interactions.e2e-spec.ts
+ * twin): two touchPoints touching down, spreading `from` → `to` px around
+ * the center, lifting. Pinch-zoom is native touch under userZoomingEnabled
+ * — the B-120 stability cell's zoom-in gesture on the phone.
+ */
+const cdpPinch = async (cdp: CDPSession, center: Point, from: number, to: number): Promise<void> => {
+  const steps = 6;
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [
+      { x: center.x - from, y: center.y },
+      { x: center.x + from, y: center.y },
+    ],
+  });
+  await sleep(60);
+  for (let i = 1; i <= steps; i++) {
+    const spread = from + ((to - from) * i) / steps;
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [
+        { x: center.x - spread, y: center.y },
+        { x: center.x + spread, y: center.y },
+      ],
+    });
+    await sleep(30);
+  }
+  await sleep(200);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 };
 
@@ -342,13 +423,16 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
     await expect.poll(() => readRenderedPosition(page, 'emiya-residence')).not.toBeNull();
   });
 
-  test('background tap places one top-level waypoint with its k=3 kNN edges (F10/D21/C7/C5, §6.2)', async ({
+  test('background tap places one top-level waypoint with its k=3 kNN edges (F10/D21/C7/C5, §6.2, D76)', async ({
     page,
   }) => {
     const before = await readState(page);
     expect(before.labels.filter((l) => l === 'Waypoint')).toHaveLength(0);
     expect(before.weIds).toHaveLength(0);
 
+    // D76/B-120: the placement contract — editor mode first, then the
+    // Waypoint tool; the background tap that follows places the waypoint.
+    await enterEditorWaypointTool(page);
     await tapPoint(page, await modelPoint(page, BG_MODEL_POINT));
 
     // F10/D21: exactly one 'Waypoint' appears — the plain-word C23 label of
@@ -371,17 +455,17 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
     expect(new Set(after.weIds).size).toBe(3); // C5: no id collisions
 
     // The waypoint renders exactly at the tap point: BG_MODEL_POINT is inside
-    // the fitted content bbox, so the post-placement fitView is a no-op and
-    // the rendered position must round-trip within screen-px noise (seam
-    // read, test-side only — the UI did no coordinate math, R1).
+    // the fitted content bbox and a placement never refits (B-120), so the
+    // rendered position must round-trip within screen-px noise (seam read,
+    // test-side only — the UI did no coordinate math, R1).
     const wp = expectPosition(await readRenderedPosition(page, 'wp-1'));
     const aim = await modelPoint(page, BG_MODEL_POINT);
     expect(Math.hypot(wp.x - aim.x, wp.y - aim.y)).toBeLessThanOrEqual(3);
 
-    // Ruling 1: the placement gesture is also the M2 dismiss — no selection
-    // chip may appear from a background tap. And D35: no double-tap gesture
-    // is bound — a single tap placed exactly one waypoint (the rapid
-    // double-tap case is its own test below).
+    // The waypoint placement writes NO selection (B-109 semantics, unchanged
+    // by the editor gate) — no chip appears from the placement tap. And D35:
+    // no double-tap gesture is bound — a single tap placed exactly one
+    // waypoint (the rapid double-tap case is its own test below).
     await expect(page.getByTestId('tme-selection-chip')).toBeHidden();
   });
 
@@ -406,10 +490,12 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
     await expect(page.getByTestId('tme-unreachable')).toHaveText(BLOCKED_REASON_TEXT);
     const legsBlocked = await page.getByTestId('tme-leg').count(); // 0: an unreachable state renders no legs
 
-    // Place a waypoint in the gap between Outskirts and the castle: its C7
-    // kNN edges (castle, outskirts, matou — see gapPoint) reconnect the
-    // castle TOPOLOGICALLY through the waypoint.
+    // Place a waypoint in the gap between Outskirts and the castle — the F26
+    // flow under D76/B-120: enter the editor, pick the Waypoint tool, tap the
+    // gap. The waypoint's C7 kNN edges (castle, outskirts, matou — see
+    // gapPoint) reconnect the castle TOPOLOGICALLY through the waypoint.
     const before = await readState(page);
+    await enterEditorWaypointTool(page);
     await tapPoint(page, await gapPoint(page));
     await expect
       .poll(async () => (await readLabels(page)).filter((l) => l === 'Waypoint'))
@@ -475,11 +561,13 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
     const before = await readState(page);
     expect(before.weIds).toHaveLength(0);
 
-    // Two rapid taps at two DISTINCT clear background points (both model-
-    // vetted; ~560 model units apart, so the second tap clears the first
-    // waypoint's node hit disk and its 3 we- edge corridors). §6.2: rapid
-    // taps are discrete taps (D35: no double-tap gesture is bound); C5: the
-    // engine assigns collision-free ids.
+    // D76/B-120: editor + Waypoint tool, then two rapid taps at two DISTINCT
+    // clear background points (both model-vetted; ~560 model units apart, so
+    // the second tap clears the first waypoint's node hit disk and its 3 we-
+    // edge corridors). §6.2: rapid taps are discrete taps (D35: no
+    // double-tap gesture is bound); C5: the engine assigns collision-free
+    // ids.
+    await enterEditorWaypointTool(page);
     await tapPoint(page, await modelPoint(page, BG_MODEL_POINT));
     await tapPoint(page, await modelPoint(page, BG_MODEL_POINT_2));
 
@@ -500,7 +588,7 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
     await expect(page.getByTestId('tme-selection-chip')).toBeHidden();
   });
 
-  test('desktop: a small background drag pans the map and places NOTHING (§6.2 tap-vs-drag)', async ({
+  test('desktop: a small background drag pans the map and places NOTHING; a view-mode background TAP places nothing too (§6.2 tap-vs-drag, D76)', async ({
     page,
   }) => {
     test.skip(isPhone(), 'mouse drag runs on desktop; the touch twin is the phone test below (D53)');
@@ -514,9 +602,25 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
     const panAfter = await readPan(page);
     expect(panAfter.x).not.toBe(panBefore.x); // the gesture PANNED…
     expect((await readLabels(page)).filter((l) => l === 'Waypoint')).toHaveLength(0); // …and never placed
+
+    // B-120 (D76) extension: in VIEW mode even a clean background TAP places
+    // nothing — the gesture clears the selections only. Node count (and the
+    // we- set) is unchanged by the tap.
+    const before = await readState(page);
+    await settle(page);
+    const aim = await modelPoint(page, BG_MODEL_POINT_2);
+    await page.mouse.click(aim.x, aim.y);
+    await settle(page);
+    const after = await readState(page);
+    expect(after.labels.length, 'a view-mode background tap places NOTHING (D76)').toBe(before.labels.length);
+    expect(after.labels.filter((l) => l === 'Waypoint')).toHaveLength(0);
+    expect(after.labels.filter((l) => l === 'New place')).toHaveLength(0);
+    expect(after.weIds).toHaveLength(before.weIds.length);
   });
 
   test('phone: a touch drag on the background pans and places NOTHING (§6.2 tap-vs-drag, D53)', async () => {
+    // Still true in BOTH modes since D76/B-120 — in view mode trivially so
+    // (nothing is ever placed there); this cell stays in view mode.
     test.skip(!isPhone(), 'touch-drag needs the touch-emulated project');
     await withPhoneChromiumPage(async (page) => {
       const panBefore = await readPan(page);
@@ -531,12 +635,16 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
     });
   });
 
-  test('tap inside the Miyama district box, off every child, places a TOP-LEVEL waypoint (§6.2, B-109 ruling 2)', async ({
+  test('tap inside the Miyama district box, off every child, places a TOP-LEVEL waypoint — editor + Waypoint tool (§6.2, B-109 ruling 2, D76)', async ({
     page,
   }) => {
     const before = await readState(page);
     expect(before.labels.filter((l) => l === 'Waypoint')).toHaveLength(0);
 
+    // D76/B-120: the compound-box placement joins every other placement kind
+    // behind editor mode + the Waypoint tool (the view-mode box tap is the
+    // no-op cell below).
+    await enterEditorWaypointTool(page);
     await tapPoint(page, await miyamaBoxCorner(page));
 
     // The compound parent's box is a placement tap, not a selection: exactly
@@ -569,14 +677,16 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
     expect((await readLabels(page)).filter((l) => l === 'Waypoint')).toHaveLength(0);
   });
 
-  test('phone 375px: waypoint placement by touch alone, no horizontal scroll (F52/D53)', async ({ page }) => {
+  test('phone 375px: waypoint placement by touch alone, no horizontal scroll (F52/D53, D76)', async ({ page }) => {
     test.skip(!isPhone(), 'the 375px geometry check belongs to the phone project (D53)');
     await page.setViewportSize({ width: 375, height: 667 });
     await settle(page);
     await expect.poll(() => readRenderedPosition(page, CASTLE_ARC.source)).not.toBeNull();
 
-    // Background placement via runtime-derived aims (the fit changed with the
-    // narrower stage, so fixed constants would be stale here).
+    // D76/B-120: editor + Waypoint tool by touch alone, then background
+    // placement via runtime-derived aims (the fit changed with the narrower
+    // stage, so fixed constants would be stale here).
+    await enterEditorWaypointTool(page);
     const before = await readState(page);
     const gap = await gapPoint(page);
     await page.touchscreen.tap(gap.x, gap.y);
@@ -598,5 +708,230 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(overflow, 'no horizontal scroll at 375px (F52/D53)').toBeLessThanOrEqual(0);
+  });
+
+  // --- B-120 (D76): the view-mode no-op pins + the tool regime ---------------
+
+  test('view mode: a background tap clears the selections and places NOTHING (D76/B-120)', async ({
+    page,
+  }) => {
+    // A selection is open (the M2 dismiss ergonomics the view-mode tap keeps).
+    await tapNode(page, STATION_ID);
+    await expect(page.getByTestId('tme-selection-chip')).toBeVisible();
+    await expect(page.getByTestId('tme-selection-label')).toHaveText(STATION_LABEL);
+
+    // D76: view mode is purely navigational — the background tap's ONLY
+    // effect is clearing both selections. The node count is unchanged and no
+    // placement kind (authored node or waypoint) appeared.
+    const before = await readState(page);
+    await tapPoint(page, await modelPoint(page, BG_MODEL_POINT));
+    await expect(page.getByTestId('tme-selection-chip')).toBeHidden();
+    const after = await readState(page);
+    expect(after.labels.length, 'a view-mode background tap places NOTHING (D76)').toBe(
+      before.labels.length,
+    );
+    expect(after.labels.filter((l) => l === 'Waypoint')).toHaveLength(0);
+    expect(after.labels.filter((l) => l === 'New place')).toHaveLength(0);
+    expect(after.weIds).toHaveLength(before.weIds.length);
+  });
+
+  test('view mode: a compound-box tap is a no-op — nothing placed, the selection survives (D76/B-120)', async ({
+    page,
+  }) => {
+    // A selection is open, then the box tap: the box is not a selectable
+    // leaf and placement is editor-only — NOTHING happens (the chip survives
+    // untouched, unlike the background tap's clear).
+    await tapNode(page, STATION_ID);
+    await expect(page.getByTestId('tme-selection-chip')).toBeVisible();
+    const before = await readState(page);
+    await tapPoint(page, await miyamaBoxCorner(page));
+    await settle(page);
+    await expect(page.getByTestId('tme-selection-chip')).toBeVisible();
+    await expect(page.getByTestId('tme-selection-label')).toHaveText(STATION_LABEL);
+    const after = await readState(page);
+    expect(after.labels.length, 'a view-mode compound-box tap is a no-op (D76)').toBe(
+      before.labels.length,
+    );
+    expect(after.labels.filter((l) => l === 'Waypoint')).toHaveLength(0);
+    expect(after.weIds).toHaveLength(before.weIds.length);
+  });
+
+  test('the Waypoint tool round-trips: place from the editor, remove from the panel; the tool resets on re-entry (D76/B-110/B-120)', async ({
+    page,
+  }) => {
+    await enterEditorWaypointTool(page);
+    await tapPoint(page, await modelPoint(page, BG_MODEL_POINT));
+    await expect
+      .poll(async () => (await readLabels(page)).filter((l) => l === 'Waypoint'))
+      .toHaveLength(1);
+
+    // The placed waypoint is an ordinary selection target (B-110): the
+    // Waypoint section renders and Remove takes it — the editor gate changed
+    // the ENTRY, not the management.
+    await tapNode(page, 'wp-1');
+    await expect(page.getByTestId('tme-waypoint')).toBeVisible();
+    await activate(page, 'tme-waypoint-remove');
+    await expect
+      .poll(async () => (await readLabels(page)).filter((l) => l === 'Waypoint'))
+      .toHaveLength(0);
+
+    // B-120: exitEditor KEEPS the tool, the next enterEditor RESETS it to
+    // Node — every editor session starts from the authored-node default.
+    await activate(page, 'tme-editor-toggle'); // exit (Waypoint still chosen)
+    await expect(page.getByTestId('tme-editor-tools')).toBeHidden();
+    await activate(page, 'tme-editor-toggle'); // re-enter
+    await expect(page.getByTestId('tme-editor-tools')).toBeVisible();
+    await expect(page.getByTestId('tme-tool-node')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('tme-tool-waypoint')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  // --- B-120 (R21 ruling 1): THE viewport-stability pin ----------------------
+  //
+  // Mutant discriminators: any placement/move/commit path that ends in a fit
+  // (the pre-B-120 rebuildElements tail) moves zoom AND pan — the exact
+  // equality below catches it. The pin deliberately starts AFTER the panels
+  // opened by placing node A have settled (their open/close resize is the
+  // pinned B-112 RO chain, untouched by this packet); from then on every
+  // edit path is pure rebuild — the viewport must not move by a sub-pixel.
+
+  test('desktop: place/move/property-commit and a Waypoint-tool placement while ZOOMED leave zoom and pan untouched (R21 ruling 1 / B-120)', async ({
+    page,
+  }) => {
+    test.skip(isPhone(), 'wheel zoom runs on desktop; the pinch twin is the phone cell below (D53)');
+
+    // Editor with the default Node tool (B-116 behavior); node A pre-opens
+    // the property-panel column and save dock — the RO refit that follows is
+    // the B-112 chain, NOT under pin here.
+    await activate(page, 'tme-editor-toggle');
+    await expect(page.getByTestId('tme-tool-node')).toHaveAttribute('aria-pressed', 'true');
+    await tapPoint(page, await modelPoint(page, BG_MODEL_POINT));
+    await expect
+      .poll(async () => (await readLabels(page)).filter((l) => l === 'New place'))
+      .toHaveLength(1);
+    await settle(page); // let the panel-open RO refit land before noting
+
+    // Zoom IN by wheel (user gesture) around the stage center — a modest
+    // ×1.25 keeps every vetted aim point inside the canvas.
+    const fitZoom = await readZoom(page);
+    const box = await canvasBox(page);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    for (let i = 0; i < 10; i++) await page.mouse.wheel(0, -240);
+    await settle(page);
+    const zoom = await readZoom(page);
+    expect(zoom, 'the zoom-in driver must actually zoom in').toBeGreaterThan(fitZoom * 1.15);
+    const pan = await readPan(page);
+
+    // PLACE a node while zoomed: placeNodeAt → rebuild, no fit.
+    await tapPoint(page, await modelPoint(page, BG_MODEL_POINT_2));
+    await expect
+      .poll(async () => (await readLabels(page)).filter((l) => l === 'New place'))
+      .toHaveLength(2);
+    expect(await readZoom(page), 'place while zoomed: zoom unchanged (R21 ruling 1)').toBe(zoom);
+    expect(await readPan(page), 'place while zoomed: pan unchanged (R21 ruling 1)').toEqual(pan);
+
+    // MOVE it while zoomed: drag → free → persistNodePosition → rebuild.
+    const placedId = await readSelectedId(page);
+    if (placedId === null) throw new Error('placed node not selected (C5/D75 id discovery failed)');
+    const before = expectPosition(await readRenderedPosition(page, placedId));
+    const start = await modelPoint(page, BG_MODEL_POINT_2);
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x + 60, start.y + 8, { steps: 6 });
+    await page.mouse.up();
+    const after = expectPosition(await readRenderedPosition(page, placedId));
+    expect(after.x, 'the editor drag moved the node').toBeGreaterThan(before.x + 40);
+    expect(await readZoom(page), 'move while zoomed: zoom unchanged (R21 ruling 1)').toBe(zoom);
+    expect(await readPan(page), 'move while zoomed: pan unchanged (R21 ruling 1)').toEqual(pan);
+
+    // PROPERTY COMMIT while zoomed: rename via the property panel, Done.
+    await page.getByTestId('tme-node-label-input').fill('Market Square');
+    await activate(page, 'tme-node-done');
+    await expect(page.getByTestId('tme-selection-label')).toHaveText('Market Square');
+    expect(await readZoom(page), 'property commit while zoomed: zoom unchanged').toBe(zoom);
+    expect(await readPan(page), 'property commit while zoomed: pan unchanged').toEqual(pan);
+
+    // WAYPOINT-tool placement while zoomed (the F26 path): tool switch, tap.
+    await activate(page, 'tme-tool-waypoint');
+    await tapPoint(page, await gapPoint(page));
+    await expect
+      .poll(async () => (await readLabels(page)).filter((l) => l === 'Waypoint'))
+      .toHaveLength(1);
+    expect(await readZoom(page), 'waypoint place while zoomed: zoom unchanged').toBe(zoom);
+    expect(await readPan(page), 'waypoint place while zoomed: pan unchanged').toEqual(pan);
+  });
+
+  test('phone: pinch-zoom in, then place/move/property-commit while zoomed leave zoom and pan untouched (R21 ruling 1 / B-120, D53)', async () => {
+    test.skip(!isPhone(), 'the in-test Chromium twin reproduces the iPhone-13 device identically from either project; wheel zoom is the desktop twin above');
+    await withPhoneChromiumPage(async (page) => {
+      // Editor + Node tool; node A pre-opens the phone's panels (sheet
+      // expansion + property region) — settle their RO refit first.
+      await activate(page, 'tme-editor-toggle');
+      await expect(page.getByTestId('tme-tool-node')).toHaveAttribute('aria-pressed', 'true');
+      await tapPoint(page, await modelPoint(page, BG_MODEL_POINT));
+      await expect
+        .poll(async () => (await readLabels(page)).filter((l) => l === 'New place'))
+        .toHaveLength(1);
+      await settle(page);
+
+      // Pinch-IN with BOTH fingers on bare canvas: the stage chrome is all
+      // live tap targets, and a finger released on one fires its tap (found
+      // live — a right finger on the editor toggle EXITED the editor mid-
+      // pinch). The center and spread therefore derive from the chrome's
+      // runtime boxes: left of the right-side stack (toggle + tool control),
+      // above the bottom-left layer switcher, below the header band.
+      const fitZoom = await readZoom(page);
+      const box = await canvasBox(page);
+      const toggle = await page.getByTestId('tme-editor-toggle').boundingBox();
+      const tools = await page.getByTestId('tme-editor-tools').boundingBox();
+      const layers = await page.getByTestId('tme-layer-layer-fuyuki').boundingBox();
+      const rightEdge = Math.min(toggle?.x ?? Infinity, tools?.x ?? Infinity) - 16;
+      const bottomEdge = layers?.y ?? box.y + box.height;
+      const center = {
+        x: box.x + (12 + rightEdge) / 2,
+        y: box.y + Math.max(64, Math.min(box.height * 0.45, bottomEdge - box.y - 20)),
+      };
+      const spreadMax = Math.min(120, (rightEdge - 12) / 2 - 8);
+      const cdp = await page.context().newCDPSession(page);
+      await cdpPinch(cdp, center, spreadMax * 0.65, spreadMax);
+      await settle(page);
+      const zoom = await readZoom(page);
+      expect(zoom, 'the pinch driver must actually zoom in').toBeGreaterThan(fitZoom * 1.15);
+      const pan = await readPan(page);
+
+      // PLACE while zoomed.
+      await tapPoint(page, await modelPoint(page, BG_MODEL_POINT_2));
+      await expect
+        .poll(async () => (await readLabels(page)).filter((l) => l === 'New place'))
+        .toHaveLength(2);
+      expect(await readZoom(page), 'place while zoomed: zoom unchanged (R21 ruling 1)').toBe(zoom);
+      expect(await readPan(page), 'place while zoomed: pan unchanged (R21 ruling 1)').toEqual(pan);
+
+      // MOVE while zoomed (CDP touch drag, hold-terminated).
+      const placedId = await readSelectedId(page);
+      if (placedId === null) throw new Error('placed node not selected (C5/D75 id discovery failed)');
+      const before = expectPosition(await readRenderedPosition(page, placedId));
+      const start = await modelPoint(page, BG_MODEL_POINT_2);
+      await cdpTouchDrag(cdp, { x: box.x + start.x, y: box.y + start.y }, 55, 8);
+      const after = expectPosition(await readRenderedPosition(page, placedId));
+      expect(after.x, 'the editor drag moved the node').toBeGreaterThan(before.x + 35);
+      expect(await readZoom(page), 'move while zoomed: zoom unchanged (R21 ruling 1)').toBe(zoom);
+      expect(await readPan(page), 'move while zoomed: pan unchanged (R21 ruling 1)').toEqual(pan);
+
+      // PROPERTY COMMIT while zoomed.
+      await page.getByTestId('tme-node-label-input').fill('Market Square');
+      await activate(page, 'tme-node-done');
+      await expect(page.getByTestId('tme-selection-label')).toHaveText('Market Square');
+      expect(await readZoom(page), 'property commit while zoomed: zoom unchanged').toBe(zoom);
+      expect(await readPan(page), 'property commit while zoomed: pan unchanged').toEqual(pan);
+
+      // WAYPOINT-tool placement while zoomed (the F26 path).
+      await activate(page, 'tme-tool-waypoint');
+      await tapPoint(page, await gapPoint(page));
+      await expect
+        .poll(async () => (await readLabels(page)).filter((l) => l === 'Waypoint'))
+        .toHaveLength(1);
+      expect(await readZoom(page), 'waypoint place while zoomed: zoom unchanged').toBe(zoom);
+      expect(await readPan(page), 'waypoint place while zoomed: pan unchanged').toEqual(pan);
+    });
   });
 });

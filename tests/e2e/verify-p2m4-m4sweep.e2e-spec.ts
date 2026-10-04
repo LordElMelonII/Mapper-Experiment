@@ -306,11 +306,15 @@ test.describe('P2 M4 verifier sweep (D-P2M4)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Culling vs layer switch and vs waypoint placement (D-P2M4 edge cases):
-  // both run rebuildElements → (mounted) fitView — the fresh default view is
-  // never culled, and a placement made while culled lands cleanly.
+  // 2. Culling vs layer switch and vs waypoint placement (D-P2M4 edge cases,
+  // SPLIT by B-120): the layer switch keeps its refit — EXPLICIT in
+  // selectLayer since B-120 (R21 ruling 1), so a fresh layer's default view
+  // is never culled. The placement half FLIPS: rebuildElements never fits
+  // anymore, so a placement made while culled lands cleanly AND the cull
+  // state survives the edit (B-113 ruling 4's stated intent, exactly true
+  // since B-120) — zoom and pan untouched (the ruling's own pin).
   // -------------------------------------------------------------------------
-  test('layer switch and waypoint placement from a CULLED view re-fit to a label-visible default (§5 M4, F10, B-113 ruling 1)', async ({
+  test('layer switch from a CULLED view re-fits to a label-visible default — explicit in selectLayer (§5 M4, B-113 ruling 1, B-120)', async ({
     page,
   }) => {
     test.skip(isPhone(), 'desktop wheel drives the zoom; the rebuild-refit seam is viewport-independent (D53: the cull family runs natively on the phone in label-culling.e2e-spec.ts)');
@@ -318,19 +322,37 @@ test.describe('P2 M4 verifier sweep (D-P2M4)', () => {
     await zoomOutPast(page, (await readZoom(page)) * FIT_CULL_FACTOR);
     expect(await readNodeHasClass(page, STATION_ID, CULL_CLASS)).toBe(true);
 
-    // Layer switch: rebuild + refit → the Misaki default view is not culled.
+    // Layer switch: rebuild + EXPLICIT fit → the Misaki default view is not culled.
     await page.getByTestId('tme-layer-layer-misaki').click();
     await expect.poll(() => readPosition(page, 'misaki-town')).not.toBeNull();
     await expect
       .poll(() => readNodeHasClass(page, 'misaki-town', CULL_CLASS), 'fresh layer projection is not culled')
       .toBe(false);
 
-    // Back to Fuyuki, cull again, place a waypoint by background tap: the
-    // placement rebuild refits → un-culled, and the waypoint is projected.
+    // Back to Fuyuki: the explicit selectLayer fit re-bases there too.
     await page.getByTestId('tme-layer-layer-fuyuki').click();
     await expect.poll(() => readPosition(page, STATION_ID)).not.toBeNull();
+    await expect
+      .poll(() => readNodeHasClass(page, STATION_ID, CULL_CLASS), 'the layer-switch refit un-culls (explicit in selectLayer)')
+      .toBe(false);
+  });
+
+  test('waypoint placement from a CULLED view no longer re-fits — the cull state SURVIVES the edit (§5 M4, F10, B-113 ruling 4, B-120)', async ({
+    page,
+  }) => {
+    test.skip(isPhone(), 'desktop wheel drives the zoom; the rebuild-refit seam is viewport-independent (D53: the cull family runs natively on the phone in label-culling.e2e-spec.ts)');
+
     await zoomOutPast(page, (await readZoom(page)) * FIT_CULL_FACTOR);
     expect(await readNodeHasClass(page, STATION_ID, CULL_CLASS)).toBe(true);
+    const zoomBefore = await readZoom(page);
+    const panBefore = await readPan(page);
+
+    // D76/B-120: placement runs through editor mode + the Waypoint tool (no
+    // selection is written, so no panel opens — the viewport is isolated to
+    // the placement rebuild alone).
+    await page.getByTestId('tme-editor-toggle').click();
+    await page.getByTestId('tme-tool-waypoint').click();
+    await expect(page.getByTestId('tme-tool-waypoint')).toHaveAttribute('aria-pressed', 'true');
 
     // The vetted clear background point (tap-targets' BG_MODEL_POINT: >110
     // model units from every edge segment, >60 from every node/badge/box —
@@ -342,9 +364,16 @@ test.describe('P2 M4 verifier sweep (D-P2M4)', () => {
     await expect
       .poll(() => readPosition(page, 'wp-1'), 'the culled-view placement projected the waypoint')
       .not.toBeNull();
+    // The FLIP (B-120): the placement rebuild does NOT refit — the edit
+    // stays culled (rebuildElements re-applies the blanket class from the
+    // labelCulled state; only real fits re-base the threshold).
     await expect
-      .poll(() => readNodeHasClass(page, 'wp-1', CULL_CLASS), 'the placement refit re-based the threshold (default view never culled)')
-      .toBe(false);
+      .poll(() => readNodeHasClass(page, 'wp-1', CULL_CLASS), 'an edit while culled stays culled (B-113 ruling 4)')
+      .toBe(true);
+    expect(await readNodeHasClass(page, STATION_ID, CULL_CLASS), 'the whole view stays culled').toBe(true);
+    // R21 ruling 1's own pin, stated on the viewport: zoom and pan untouched.
+    expect(await readZoom(page), 'placement while culled: zoom unchanged').toBe(zoomBefore);
+    expect(await readPan(page), 'placement while culled: pan unchanged').toEqual(panBefore);
   });
 
   // -------------------------------------------------------------------------

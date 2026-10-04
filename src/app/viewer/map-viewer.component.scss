@@ -295,3 +295,57 @@
   cursor: pointer;
   touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
 }
+
+// B-120 (D76/F52/D53): the editor's segmented tool control — the stage's
+// BOTTOM-RIGHT corner. The top-right stack stays toggle/chip/dock (the
+// B-119 clamp protects exactly that stack) and the bottom-left holds the
+// layer switcher; this slot is empty chrome in both modes and at both
+// breakpoints, below the fitted content band (the fits are width-limited,
+// so the stage's bottom padding band is free). Editor chrome only — the
+// template renders it in editor mode alone.
+.tme-tools {
+  position: absolute;
+  bottom: 0.75rem;
+  right: 0.75rem;
+  display: flex;
+  max-width: calc(100% - 1.5rem); // never force horizontal scroll (D53)
+}
+
+// One >= 44px segment per tool, joined as one segmented control (shared
+// border collapsed, outer corners rounded) so B-122's draw-arc segment
+// joins the group with zero restructuring. The active segment carries the
+// gold accent (the tme-active class bound to the editorTool signal, R3) —
+// the placement kind is always VISIBLE, never an invisible affordance (D53).
+.tme-tool {
+  min-width: 44px; // F52: >= 44px tap targets, touch-only parity
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  // §6.2: the canvas host owns touch-action none; non-canvas interactive
+  // chrome uses manipulation so double-taps never zoom it.
+  touch-action: manipulation;
+}
+
+.tme-tool + .tme-tool {
+  margin-left: -1px; // collapse the shared border (one segmented control)
+}
+
+.tme-tool:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.tme-tool:last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+.tme-tool.tme-active {
+  border-color: #ffd166;
+  color: #ffd166;
+}
