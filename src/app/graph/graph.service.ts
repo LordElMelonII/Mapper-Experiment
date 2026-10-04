@@ -1,9 +1,16 @@
 // src/app/graph/graph.service.ts — PKG B-102, extended by B-103 (selection +
 // drag), B-105 (route sidebar state), B-106 (edge selection + the blocked
 // toggle), B-107 (cross-layer endpoint badges — C3 pseudo-nodes with
-// core-sourced cost text) and B-108 (gate fix: the badge IS the cross-layer
+// core-sourced cost text), B-108 (gate fix: the badge IS the cross-layer
 // arc's management surface — badge taps select the arc; badges re-price on
-// travel-mode switches). The ONE cytoscape instance (D3): created headless
+// travel-mode switches) and B-109 (tap-to-place waypoints: background and
+// compound-box taps place through facade.addUserNodeAt, F10/C7/D21/§6.2) and
+// B-110 (waypoint management: removeWaypoint/promoteWaypoint mirror
+// facade.removeUserNode/promoteUserNode — D21/C26/D61 — plus the isUserNode
+// presence getter, ruling 1) and B-111 (curve rendering: the `edge.tme-curved`
+// stylesheet entry — §5 M3/api.ts:45, authored curve data mapped verbatim,
+// R1/D7 — plus the testEdgeCurveStyle read-only seam).
+// The ONE cytoscape instance (D3): created headless
 // in the constructor, `mount()`/`unmount()` on demand — computation works with
 // the UI closed. Zoneless (D2): the service writes signals; the ONLY canvas
 // events bound are discrete gestures (`tap` → selection signals, `free` →
@@ -175,6 +182,27 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
       // so the width feeds both the visual and half the hit radius. The e2e
       // taps the rendered midpoint of the two endpoints (test-side math).
       width: 4,
+    },
+  },
+  {
+    // B-111 (§5 M3, api.ts:45): edges carrying authored `curve` data render
+    // as unbundled-bezier with their control-point distances — authored
+    // LAYOUT data mapped verbatim off the projection (R1/D7: plain data, the
+    // stylesheet computes nothing). Declared BEFORE tme-blocked /
+    // tme-edge-selected so those accents can still override line-color (and
+    // the blocked line-style) on a curved blocked or selected edge — C2 is
+    // orthogonal to curve-style, no special case. `control-point-weights`
+    // rides along as data because the installed runtime REQUIRES it:
+    // findBezierPoints (cytoscape.esm.mjs) sizes the curve at
+    // Math.min(distances.length, weights.length) and the default weight is
+    // the scalar 0.5, which would truncate a multi-point curve to one
+    // control point — buildLayerElements emits the constant-weight array
+    // (CURVE_CONTROL_POINT_WEIGHT, the runtime's own default value).
+    selector: 'edge.tme-curved',
+    style: {
+      'curve-style': 'unbundled-bezier',
+      'control-point-distances': 'data(curveDistances)',
+      'control-point-weights': 'data(curveWeights)',
     },
   },
   {
@@ -369,6 +397,20 @@ export class GraphService implements OnDestroy {
         }
         return;
       }
+      // B-109 (ruling 2, §6.2 Waypoints): a tap on a compound parent's BOX (off
+      // its children — the selector matched the parent) is a PLACEMENT tap, not
+      // a selection: `node.isParent()` (@types/cytoscape 3.21.9 index.d.ts:3624
+      // — the runtime's own compound check, not a kind-string heuristic) routes
+      // to the same placeWaypointAt(event.position) path as the background tap.
+      // addUserNodeAt places TOP-LEVEL (validate.ts rejects `parent` on user
+      // nodes), so the waypoint lands in this layer unparented, and the event's
+      // model position is used verbatim (no coordinate math, R1). This retires
+      // the M2 hazard where a district tap selected a node that can never be an
+      // edge endpoint (C1) and dead-ended the route panel.
+      if (node.isParent()) {
+        this.placeWaypointAt(event.position);
+        return;
+      }
       // B-105 (ruling 1): selection carries the id (stable, unique) + the
       // label (authored string, projected once at tap time).
       // B-106 (ruling 1): node and edge selection are mutually exclusive —
@@ -388,9 +430,14 @@ export class GraphService implements OnDestroy {
     });
     this.cy.on('tap', (event) => {
       // Element taps bubble to the core, so only a cy-targeted tap is a
-      // background tap: clear BOTH selections (D2, same discrete path;
-      // B-106 ruling 1).
+      // background tap. B-109 (ruling 1, F10): that gesture PLACES a waypoint
+      // at the event's model position (InputEventObject.position — the library
+      // converts rendered→model coordinates, so the app performs no coordinate
+      // math, R1) AND clears both selections (the M2 panel-dismiss ergonomics
+      // survive — one gesture, two effects, no hidden modes). Stray placements
+      // are recoverable: waypoints are removable (B-110).
       if (event.target === this.cy) {
+        this.placeWaypointAt(event.position);
         this.selection.set(null);
         this.edgeSelection.set(null);
       }
@@ -538,6 +585,77 @@ export class GraphService implements OnDestroy {
     this.afterGraphMutation();
   }
 
+  /**
+   * B-109 (ruling 3, F10/C7/D21): place a waypoint in the ACTIVE layer at the
+   * given model position — the tap event's `position` verbatim (verified:
+   * InputEventObject.position, @types/cytoscape 3.21.9 index.d.ts:5227 — the
+   * library converts rendered→model, so there is no coordinate math to
+   * perform here, R1). R2: the ONLY mutation is the facade command
+   * addUserNodeAt — engine-assigned id (C5), label 'Waypoint', kNN connect to
+   * the k=3 nearest leaves of the merged set (C7/D58; zero eligible leaves ⇒
+   * orphaned, still legal). Then the shared post-mutation sequence: the
+   * graphRevision bump re-runs the route computed (the selection's route
+   * re-prices LIVE, F26) and rebuildElements re-projects the node + its
+   * user edges and re-prices badges (B-108). Guards degrade silently before
+   * loadMap (no facade / no active layer — C32 spirit); the facade itself
+   * remains the C30 authority on layer/position validity.
+   */
+  placeWaypointAt(position: { x: number; y: number }): void {
+    const facade = this.facade;
+    const layerId = this.activeLayer();
+    if (facade === null || layerId === null) return;
+    facade.addUserNodeAt(layerId, position);
+    this.afterGraphMutation();
+  }
+
+  /**
+   * B-110 (ruling 1): presence check of one id against `overlay.userNodes` —
+   * a live read of the C24 reference, never a copy (R4). Library nodes and
+   * unknown ids answer false, which is what fences the route panel's Waypoint
+   * section to PLACED waypoints: removal of library nodes is Phase 3 editor
+   * business and the facade itself refuses it (C30).
+   */
+  isUserNode(id: string): boolean {
+    return this.overlay?.userNodes.some((node) => node.id === id) ?? false;
+  }
+
+  /**
+   * B-110 (ruling 2, D21/§6.2): remove the waypoint. R2: the ONLY mutation is
+   * the facade command removeUserNode (C30 throws for library/unknown ids —
+   * the section never renders for those, so the throw is structurally out of
+   * reach); it takes the node, every user edge with either endpoint `id`, and
+   * any overlay block on those edges, leaving other waypoints untouched
+   * (§6.2). Then the shared post-mutation sequence (rerender/reroute/
+   * re-badge), and — per ruling 2, in this order — the selection is CLEARED
+   * when the removed node WAS the selection, so the chip and panels go with
+   * it. No confirmation dialogs (ruling 3: recoverable by replacement; one
+   * tap = one command, D2/F46).
+   */
+  removeWaypoint(id: string): void {
+    this.facade?.removeUserNode(id);
+    this.afterGraphMutation();
+    if (this.selection()?.id === id) this.selection.set(null);
+  }
+
+  /**
+   * B-110 (ruling 2, C26/D21/D61): promote the waypoint into the library
+   * under the SAME id with the given label. R2: the ONLY mutation is the
+   * facade command promoteUserNode (C30 throws for library/unknown ids and
+   * empty labels — the UI disables Promote while the trimmed input is empty,
+   * the B-106 honesty pattern; C26 atomic: on refusal nothing is touched);
+   * incident user edges graduate per D61 (library-bound edges move into
+   * map.edges, waypoint-bound stay overlay) with ids KEPT, so the projection
+   * re-renders seamlessly. Then the shared post-mutation sequence and — per
+   * ruling 2 — the selection is RE-POINTED to `{ id, label }`: same id (C26),
+   * so the chip and route panel re-render under the new name with zero drift
+   * (R3). No rename-after-promote exists (Phase 3 upsertNode).
+   */
+  promoteWaypoint(id: string, label: string): void {
+    this.facade?.promoteUserNode(id, label);
+    this.afterGraphMutation();
+    if (this.selection()?.id === id) this.selection.set({ id, label });
+  }
+
   /** B-106 (ruling 4): the shared post-mutation sequence — bump, re-project, re-snapshot. */
   private afterGraphMutation(): void {
     this.graphRevision.update((n) => n + 1);
@@ -635,6 +753,36 @@ export class GraphService implements OnDestroy {
   testEdgeLineStyle(id: string): string | null {
     const edge = this.cy.getElementById(id);
     return edge.length === 0 ? null : String(edge.style('line-style'));
+  }
+
+  /**
+   * B-111: resolved curve-style of one edge ('bezier' | 'unbundled-bezier' |
+   * ...), or null — mirrors testEdgeLineStyle. Read-only (R2/R4 hold).
+   */
+  testEdgeCurveStyle(id: string): string | null {
+    const edge = this.cy.getElementById(id);
+    return edge.length === 0 ? null : String(edge.style('curve-style'));
+  }
+
+  /**
+   * B-109 (ruling 4): ids of every edge in the projection — authored arcs
+   * (`arc-`) plus kNN user edges (`we-`, C7), so e2e can count the walk-only
+   * connections a placement creates. Read-only (R2/R4 hold).
+   */
+  testEdgeIds(): string[] {
+    return this.cy.edges().map((edge) => edge.id());
+  }
+
+  /**
+   * B-109 (ruling 4): the projected `parent` data of one node — null for a
+   * top-level node (the §6.2 compound-box case: addUserNodeAt places
+   * unparented) or an unknown id (degrade, C32 spirit). Read-only (R2/R4).
+   */
+  testNodeParent(id: string): string | null {
+    const node = this.cy.getElementById(id);
+    if (node.length === 0) return null;
+    const parent: unknown = node.data('parent');
+    return typeof parent === 'string' ? parent : null;
   }
 
   /** B-103: rendered (canvas-relative, screen-px) position of one node, or null

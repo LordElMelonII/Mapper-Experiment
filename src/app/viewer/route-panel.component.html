@@ -1,5 +1,7 @@
 <!-- PKG B-105 — the M2 route sidebar (C2, C15, C17, C18, C19, D19, D60(a),
-     D72, F32/F52, FX2). R1: every number, unit and reason below originates in
+     D72, F32/F52, FX2), extended by B-110 (ruling 1): the Waypoint management
+     section (D21/C26/D61, C30 honesty) renders above the route legs only for
+     PLACED waypoints. R1: every number, unit and reason below originates in
      the core (facade snapshot / findRoute); the template only renders. -->
 <section class="tme-route" data-testid="tme-route-panel" aria-label="Route">
   <h2 class="tme-title">Route</h2>
@@ -8,6 +10,43 @@
     <!-- Target line: the pin's snapshot label → the tapped node's authored
          label (core/authored strings, verbatim). -->
     <p class="tme-target" data-testid="tme-target">{{ graph.snapshot()?.location ?? '' }} → {{ sel.label }}</p>
+
+    @if (waypoint()) {
+      <!-- B-110 (ruling 1): the Waypoint management section, ABOVE the route
+           legs (D58: the waypoint stays an ordinary route target below — the
+           legs/total render unchanged). C30/D21 honesty: Promote is disabled
+           while the trimmed name is empty — the facade stays the authority,
+           the UI refuses to offer the throw (the B-106 pattern). No
+           confirmation dialogs (ruling 3: recoverable by replacement, F46 —
+           one tap = one command, D2). Machine ids never render (C23). -->
+      <section class="tme-waypoint" data-testid="tme-waypoint" aria-label="Waypoint">
+        <h3 class="tme-waypoint-title">Waypoint</h3>
+        <label class="tme-field-label" for="tme-waypoint-label-input">Name</label>
+        <input
+          id="tme-waypoint-label-input"
+          class="tme-label-input"
+          type="text"
+          autocomplete="off"
+          data-testid="tme-waypoint-label-input"
+          [value]="label()"
+          (input)="onLabelInput($event)"
+        />
+        <div class="tme-actions">
+          <button
+            type="button"
+            class="tme-button tme-promote-button"
+            data-testid="tme-waypoint-promote"
+            [disabled]="!canPromote()"
+            (click)="promote()"
+          >
+            Promote
+          </button>
+          <button type="button" class="tme-button tme-remove-button" data-testid="tme-waypoint-remove" (click)="remove()">
+            Remove
+          </button>
+        </div>
+      </section>
+    }
 
     @if (graph.pinSelected()) {
       <!-- Ruling 6: the selection IS the pin — a current-location state, no

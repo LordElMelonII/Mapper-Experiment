@@ -28,6 +28,9 @@ import type { ChatMapOverlay, RouteResult, TravelMode, WorldMapData } from '../.
  *     simply not drawn in M1 (badges are M2).
  * Blocked state is the merge the effective graph implements: an authored
  * block OR a chat-scoped overlay block (D20) — read-only, no math (R1).
+ * B-111: an edge carrying authored `curve` data gains the `tme-curved`
+ * display class + verbatim control-point data (api.ts:45) — display classing
+ * only, exactly like `tme-blocked`/`tme-crosslayer`; no behavior branches.
  */
 export function buildLayerElements(
   map: WorldMapData,
@@ -82,10 +85,34 @@ export function buildLayerElements(
     if (sourceLayer !== targetLayer) {
       classes.push('tme-crosslayer'); // C3: informational — such arcs are filtered out in M1
     }
+    if (edge.curve !== undefined) {
+      classes.push('tme-curved'); // B-111 (§5 M3): authored curve data → unbundled-bezier
+    }
     if (sourceLayer !== layerId || targetLayer !== layerId) continue; // F01/D16 + C3 (M1)
     edges.push({
       group: 'edges' as const,
-      data: { id: edge.id, source: edge.source, target: edge.target },
+      data: {
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        // B-111 (§5 M3, api.ts:45): authored curve control-point distances
+        // projected VERBATIM — R1/D7: layout data, the builder computes
+        // nothing, and C14 keeps curves out of cost/routing/prompts entirely.
+        // `curveWeights` is the runtime's requirement, not our math: the
+        // installed cytoscape (3.34.3, findBezierPoints) sizes the curve at
+        // Math.min(distances.length, weights.length) and the default weight
+        // is the scalar 0.5 (a length-1 array), which would truncate a
+        // multi-point curve to ONE control point — so a constant-weight
+        // array (the runtime's own default value, CURVE_CONTROL_POINT_WEIGHT
+        // below) rides alongside. A layout constant like BADGE_OFFSET, never
+        // user-facing math (R1).
+        ...(edge.curve !== undefined
+          ? {
+              curveDistances: edge.curve.distances,
+              curveWeights: edge.curve.distances.map(() => CURVE_CONTROL_POINT_WEIGHT),
+            }
+          : {}),
+      },
       classes,
     });
   }
@@ -144,6 +171,18 @@ export function crossLayerAnchors(
  * placement constant never feeds either.
  */
 const BADGE_OFFSET = 40;
+
+/**
+ * B-111: the control-point WEIGHT emitted for every curve control point —
+ * the installed runtime's own default value (cytoscape 3.34.3,
+ * cytoscape.esm.mjs stylesheet defaults: `'control-point-weights': 0.5`).
+ * A LAYOUT constant (like BADGE_OFFSET above): the runtime requires weights
+ * alongside distances for `unbundled-bezier` — findBezierPoints sizes the
+ * curve at `Math.min(distances.length, weights.length)` — but the weights
+ * themselves are pure display placement, never computed geography that
+ * routing or prompts consume (R1).
+ */
+const CURVE_CONTROL_POINT_WEIGHT = 0.5;
 
 /**
  * B-107 (C3): cross-layer arcs render as BADGES at their on-layer endpoints —

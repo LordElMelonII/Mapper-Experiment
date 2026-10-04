@@ -98,10 +98,11 @@ const isUnnamedUser = (node: MapNodeData): boolean => node.origin === 'user' && 
  * list, so a canonical run accepts minutes-priced modes too: the minutes pass
  * runs first (keeping D60's preference rule intact for authored arcs) and
  * geometric-only arcs fall through to the canonical pass. Every other
- * currency/map shape is priceEdgeIn verbatim. Routing itself keeps D60's
- * strict currency filter (the interleaved-currency verifier pin), so this
- * helper is the SNAPSHOT seam only: getSnapshot's priceEdge closure and the
- * forced destination runs (D65(c)) — never findRoute's own runs.
+ * currency/map shape is priceEdgeIn verbatim. D74: findRoute's own runs price
+ * through this helper too (the honest canonical fallback on time-kind 'min'
+ * scales); the minutes pass stays strict — the helper no-ops for that
+ * currency — so routing's fallback joins the snapshot seam in ONE honest
+ * read (D65(a)/D74).
  */
 function priceForSnapshot(
   edge: MapEdgeData,
@@ -214,21 +215,23 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
     // Per-edge pricing (D19/F32, D60): an explicit mode is a strict filter
     // (C14 row 2) over a single candidate; the default prefers the chat's
     // travel mode and falls back to the cheapest mode the arc allows. Every
-    // number comes from edgeCost via priceEdgeIn — one cost function for every
-    // edge kind, no parallel math (C14, §6.2). C15/D60: ONE currency per route
-    // — every computation runs minutes-first and falls back to canonical units
-    // only when no minutes-priced route exists; a mode priced in the other
-    // currency is unroutable in a run (counting as "disallowed" for it).
-    // D65(c): a FORCED run prices through the snapshot seam's honest read
-    // (priceForSnapshot) so destination costs share the snapshot's ONE honest
-    // currency; findRoute's own runs keep the strict D60 filter verbatim.
+    // number comes from edgeCost via priceForSnapshot → priceEdgeIn — one cost
+    // function for every edge kind, no parallel math (C14, §6.2). C15/D60: ONE
+    // currency per route — every computation runs minutes-first and falls back
+    // to canonical units only when no minutes-priced route exists.
+    // D65(c)/D74: every run prices through the snapshot seam's honest read
+    // (priceForSnapshot). A FORCED run (D65(c)) shares the snapshot's ONE
+    // honest currency; findRoute's own runs (D74) keep D60's minutes pass
+    // strict — the helper no-ops for the minutes currency — and gain the
+    // honest canonical read ONLY on a time-kind 'min' scale, where authored
+    // minutes ARE the canonical unit (FX1's D45 shape). Every other map shape
+    // (distance-kind, other labels) keeps the strict D60 filter verbatim —
+    // the pinned league-map interleaving refusal stands.
     const nodeIds = eff.nodes.map((node) => node.id);
     const candidates: readonly TravelMode[] = mode !== undefined ? [mode] : TRAVEL_MODES;
     const preferred = mode !== undefined ? mode : overlay.travelMode;
     const priceIn = (edge: MapEdgeData, currency: CostCurrency): { mode: TravelMode; cost: number } =>
-      forcedCurrency !== undefined
-        ? priceForSnapshot(edge, currency, candidates, preferred, map.scale, positionOf)
-        : priceEdgeIn(edge, currency, candidates, preferred, map.scale, positionOf);
+      priceForSnapshot(edge, currency, candidates, preferred, map.scale, positionOf);
     const run = (currency: CostCurrency) =>
       shortestPath(nodeIds, eff.edges, (edge) => priceIn(edge, currency).cost, from, to);
     let currency: CostCurrency;
@@ -575,8 +578,12 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
         throw new Error(`[TravelMapper] promoteUserNode: unknown user node id '${id}'`);
       }
       // D21: promote NAMES it. A runtime caller can lie about the typed string
-      // (C30/F50 — the setStatusNote precedent).
-      if (typeof label !== 'string' || label.length === 0) {
+      // (C30/F50 — the setStatusNote precedent). Whitespace-only is the same
+      // defect (P2 M3 verifier finding 1, the setBlocked precedent): a blank
+      // label would persist into the library and render as blank space in
+      // prompt-facing structures (C23 spirit). Valid strings are stored
+      // verbatim, untrimmed — the name is the author's payload.
+      if (typeof label !== 'string' || label.trim().length === 0) {
         throw new Error(`[TravelMapper] promoteUserNode: label must be a non-empty string (got '${String(label)}')`);
       }
       // The full mutation, computed first (C26): the node enters map.nodes and

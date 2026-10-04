@@ -90,10 +90,13 @@ describe('D60(a) — the default prefers overlay.travelMode over the cheaper mod
 //
 // D60's consequence clause, verbatim: "a map whose only path mixes
 // authored-time arcs with unconverted geometric arcs yields ok:false rather
-// than a meaningless mixed total". The unit suite severs both corridors at the
-// origin; this map interleaves them WITHIN the single path (a–b authored 10,
-// b–c geometric only, c–d authored 5), so no uniform-currency route exists at
-// all and a mixing implementation would happily return 15+something.
+// than a meaningless mixed total". D74 amended that consequence for the
+// time-kind 'min' scale: authored minutes ARE the canonical unit there, so
+// the canonical fallback prices the whole interleaved path honestly
+// (10 + 10 + 5 = 25 'min' — one honest currency, C15's letter intact). The
+// strict refusal survives on every other map shape and stays pinned on a
+// distance-kind scale by tests/verify/p2m2-route-currency-adversarial.spec.ts:99
+// (the league map, untouched). // D74
 
 const interleaved = (): WorldMapData => ({
   schemaVersion: 2,
@@ -129,27 +132,30 @@ const loadInterleaved = () => {
   return f;
 };
 
-describe('D60(b)/C15 — a path that interleaves minutes-priced and canonical arcs is unroutable (D60, C15, C17)', () => {
-  it('ok:false with the disallowed reason; never a mixed total, never Infinity (D60, C15, C17)', () => {
+describe('D60(b)/C15 as amended by D74 — on a time-kind min scale the canonical fallback prices the interleaved path honestly (D74, C15)', () => {
+  it('ok:true at 25 min: authored legs verbatim, the geometric leg via the scale; never a second currency, never Infinity (D74, C14, C15, C17, D72)', () => {
     const f = loadInterleaved();
     const r = f.findRoute('a', 'd');
-    expect(r.ok).toBe(false);
-    expect(r.total).toBe(0);
-    expect(r.legs).toEqual([]);
-    // the currency exclusion counts as "disallowed" (D60b); the weight-1 probe
-    // proves the graph is connected in principle (C17 reason distinction)
-    expect(r.reason).toMatch(/blocked or disallowed/);
+    expect(r.ok).toBe(true); // D74: the minutes run failed (e-bc has no minutes read); the canonical fallback reads authored minutes honestly on this scale
+    expect(r.total).toBe(25); // D74: 10 (authored) + 10 (geometric: 10 px × unitPerPx 1) + 5 (authored) — one honest 'min' total, not a mixed currency (C15)
+    expect(r.legs).toEqual([
+      { arcId: 'e-ab', from: 'a', to: 'b', mode: 'walk', cost: 10 }, // authored minutes verbatim (C14 row 3, D14) // D74
+      { arcId: 'e-bc', from: 'b', to: 'c', mode: 'walk', cost: 10 }, // geometric via the scale (C14 row 5)
+      { arcId: 'e-cd', from: 'c', to: 'd', mode: 'walk', cost: 5 },
+    ]);
+    expect(r.unit).toBe('min'); // D72: the canonical label on a time-min scale — both branches label 'min' // D74
     const json = JSON.stringify(r);
     expect(json).not.toContain('Infinity'); // C17: ∞ never appears in any output
     assertNoInfinity(r);
   });
 
-  it('the explicit-mode variant is gated identically (D60b)', () => {
+  it('the explicit-mode variant prices the same honest canonical read (D74; the D60b strict mode filter itself is untouched)', () => {
     const f = loadInterleaved();
     const r = f.findRoute('a', 'd', 'walk');
-    expect(r.ok).toBe(false);
-    expect(r.reason).toMatch(/blocked or disallowed/);
-    expect(JSON.stringify(r)).not.toContain('Infinity');
+    expect(r.ok).toBe(true); // D74
+    expect(r.total).toBe(25); // D74
+    expect(r.unit).toBe('min'); // D72/D74
+    expect(JSON.stringify(r)).not.toContain('Infinity'); // C17
   });
 });
 
