@@ -26,13 +26,11 @@ import type {
 } from '../api';
 import { cardinal } from '../geometry/measure';
 import type { EffectiveGraph } from '../model/effective';
-import { resolveModeLabel } from '../model/validate';
+import { modeUniverseOf, resolveModeLabel } from '../model/validate';
 import { minutesPriced } from '../routing/price';
 
 /** C20: the destinations section is capped; the cap dropping an entry is marked. */
 export const DESTINATIONS_CAP = 12;
-
-const TRAVEL_MODES: readonly TravelMode[] = ['walk', 'car', 'train'];
 
 /**
  * C23: an unnamed user waypoint — the tap-placed label the facade assigns, so
@@ -55,16 +53,25 @@ function isUnnamedUserNode(node: MapNodeData | undefined): boolean {
  * arcs are exempt (D65(b): they always list — best-effort cost or cost 0 — so
  * they price in either currency and never constrain the choice). Kept in
  * lockstep with the facade's getSnapshot decision: same minutesPriced
- * predicate, same exemptions, same arc selection (the frozen buildSnapshot
- * signature carries no currency argument, so the unit label is derived here
- * from the same inputs the facade decided over).
+ * predicate, same exemptions, same arc selection, same universe scan (the
+ * frozen buildSnapshot signature carries no currency argument, so the unit
+ * label is derived here from the same inputs the facade decided over).
  */
 function routesCurrency(map: WorldMapData, arcs: MapEdgeData[]): 'minutes' | 'canonical' {
+  // A-016b/D78: the predicate scans the MAP's mode universe (built-ins ∪
+  // registry ids) — a registry speed is a minutes source the currency decision
+  // must see (C19's "exactly": an arc must not flip the currency — or drop —
+  // over a hardcoded scan). Universe source is the LIVE map: no M2 editor
+  // command can mutate map.modes (the registry arrives only via loadMap), so
+  // live == saved today; when a registry-EDITING command arrives, this scan
+  // must move to the saved plane exactly as the facade's savedScale did
+  // (A-015 doctrine).
+  const universe = [...modeUniverseOf(map)];
   const liveArcs = arcs.filter((edge) => edge.blocked === undefined);
   const allMinutes =
     liveArcs.length > 0 &&
     liveArcs.every((edge) =>
-      TRAVEL_MODES.some((m) => edge.modes[m]?.allowed === true && minutesPriced(edge, m, map.scale)),
+      universe.some((m) => edge.modes[m]?.allowed === true && minutesPriced(edge, m, map.scale)),
     );
   return allMinutes ? 'minutes' : 'canonical';
 }

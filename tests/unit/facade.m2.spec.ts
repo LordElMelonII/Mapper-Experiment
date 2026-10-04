@@ -344,11 +344,14 @@ const registryMap = (
   modes: registry,
 });
 
-const loadRegistry = (map: WorldMapData): { f: ReturnType<typeof createFacade> } => {
+// A-016b: the preferred mode is a parameter — the widening cells pin the
+// regime that motivated the ruling (preferred NOT the registry mode), while
+// the A-016 cells above keep their 'horse'-preferred default untouched.
+const loadRegistry = (map: WorldMapData, preferred: TravelMode = 'horse'): { f: ReturnType<typeof createFacade> } => {
   const overlay: ChatMapOverlay = {
     mapId: map.id,
     currentLocationId: 'a',
-    travelMode: 'horse', // D78: a registry mode the loaded map knows
+    travelMode: preferred, // D78: a registry mode the loaded map knows
     userNodes: [],
     userEdges: [],
     blocked: {},
@@ -424,5 +427,83 @@ describe('D78 mode registry — the speed seam and modeLabel (C14, C15, C23, D78
     expect(snap.routes).toEqual([{ label: 'Beta Ruin', direction: 'E', cost: 100, mode: 'Horseback' }]); // the word, not 'horse'
     expect(snap.destinations).toEqual([{ label: 'Beta Ruin', via: 'Beta Ruin', mode: 'Horseback', cost: 100 }]);
     expect(snap.unit).toBe('km'); // the cost-currency label says canonical
+  });
+});
+
+// --- A-016b: default scans read the map's mode universe (D78/C19) ------------------------------
+//
+// The lead ruling on A-016's Q1: the DEFAULT candidate scan (no explicit mode)
+// is "modes the route may try", and that set is map-relative since D78 —
+// built-ins ∪ registry ids. The regime that motivated it: the overlay's
+// preferred mode is 'walk' while the arc allows ONLY the registry mode, so
+// neither the preferred-mode path nor an explicit call can reach it.
+
+describe('A-016b — default scans read the map\'s mode universe (D78/C19)', () => {
+  it('a horse-ONLY arc is priceable by DEFAULT (preferred walk): leg carries the registry mode + resolved label (D78, C14 row 5)', () => {
+    const { f } = loadRegistry(registryMap([{ id: 'horse', label: 'Horseback', speed: 10, allowedByDefault: false }]), 'walk');
+    const r = f.findRoute('a', 'b'); // no explicit mode ⇒ the default scan
+    expect(r.ok).toBe(true);
+    expect(r.total).toBe(600); // 100 units / 10 × 60 — registry speed, edgeCost verbatim (C14 row 5)
+    expect(r.unit).toBe('min'); // the speed makes the run minutes (C15/D60)
+    expect(r.legs[0].mode).toBe('horse'); // the registry id prices — not the preferred 'walk'
+    expect(r.legs[0].modeLabel).toBe('Horseback'); // the resolved word (C23)
+  });
+
+  it('the same arc lists PRICED in the snapshot routes — "exactly the arcs incident to the pin", never silently dropped (C19, D65(a), C23)', () => {
+    const { f } = loadRegistry(registryMap([{ id: 'horse', label: 'Horseback', speed: 10, allowedByDefault: false }]), 'walk');
+    const snap = f.getSnapshot();
+    expect(snap.routes).toEqual([{ label: 'Beta Ruin', direction: 'E', cost: 600, mode: 'Horseback' }]); // priced, not dropped
+    expect(snap.destinations).toEqual([{ label: 'Beta Ruin', via: 'Beta Ruin', mode: 'Horseback', cost: 600 }]); // the forced-currency destination run reached it too (D65(c))
+    expect(snap.unit).toBe('min'); // build.ts's routesCurrency scanned the same universe (lockstep)
+  });
+
+  it('a speedless-horse variant prices canonical with the canonical label — widening adds candidates, never prices (C14 row 6, C15)', () => {
+    const { f } = loadRegistry(registryMap([{ id: 'horse', label: 'Horseback', allowedByDefault: false }]), 'walk');
+    const r = f.findRoute('a', 'b');
+    expect(r.ok).toBe(true);
+    expect(r.total).toBe(100); // geometry × unitPerPx — no speed anywhere ⇒ canonical (C14 row 6)
+    expect(r.unit).toBe('km'); // the canonical label (C15)
+    expect(r.legs[0].mode).toBe('horse');
+    expect(r.legs[0].modeLabel).toBe('Horseback');
+    const snap = f.getSnapshot();
+    expect(snap.routes).toEqual([{ label: 'Beta Ruin', direction: 'E', cost: 100, mode: 'Horseback' }]);
+    expect(snap.unit).toBe('km');
+  });
+
+  it('the D65(b) minutes predicate sees a registry speed: allMinutes flips true when every live arc is minutes-priced via registry speeds (D65(b), D78)', () => {
+    // The ONLY minutes source on this map is the registry speed — the flip is
+    // impossible without scanning the universe.
+    const withSpeed = loadRegistry(registryMap([{ id: 'horse', label: 'Horseback', speed: 10, allowedByDefault: false }]), 'walk').f.getSnapshot();
+    expect(withSpeed.unit).toBe('min');
+    // Negative control: a speedless registry mode is NOT a minutes source — the currency stays canonical.
+    const speedless = loadRegistry(registryMap([{ id: 'horse', label: 'Horseback', allowedByDefault: false }]), 'walk').f.getSnapshot();
+    expect(speedless.unit).toBe('km');
+  });
+
+  it('a BLOCKED registry-only arc still lists — cost 0 with its OWN allowed mode from the universe, never the preferred word (D65(b), C2, C19)', () => {
+    const { f } = loadRegistry(registryMap([{ id: 'horse', label: 'Horseback', speed: 10, allowedByDefault: false }]), 'walk');
+    f.setBlocked('e-ab', 'rockslide');
+    const snap = f.getSnapshot();
+    // liveArcs is empty (the only incident arc is blocked) ⇒ canonical currency;
+    // a speed-horse arc cannot honestly price there (speed ⇒ minutes-only) ⇒
+    // the D65(b) fallback: cost 0 + the cheapest ALLOWED universe mode.
+    expect(snap.routes).toEqual([{ label: 'Beta Ruin', direction: 'E', cost: 0, mode: 'Horseback', blockedReason: 'rockslide' }]);
+    expect(snap.unit).toBe('km'); // empty live set ⇒ canonical (the D65(a) empty precedent)
+  });
+
+  it('compat: a no-registry map prices byte-identically — the trio IS its universe, scan set and order (D78, FX2)', () => {
+    const { f } = loadFuyuki();
+    // The same FX1 query as the FX2 acceptance cell, pinned to the FULL object:
+    // modes absent ⇒ modeUniverseOf is exactly walk/car/train in order, so the
+    // widened default scan is the old scan.
+    expect(f.findRoute('emiya-residence', 'misaki-town')).toEqual({
+      ok: true,
+      total: 350,
+      legs: [
+        { arcId: 'arc-emiya-residence-fuyuki-station', from: 'emiya-residence', to: 'fuyuki-station', mode: 'walk', modeLabel: 'walk', cost: 50 },
+        { arcId: 'arc-fuyuki-station-misaki-town', from: 'fuyuki-station', to: 'misaki-town', mode: 'train', modeLabel: 'train', cost: 300 },
+      ],
+      unit: 'min',
+    });
   });
 });

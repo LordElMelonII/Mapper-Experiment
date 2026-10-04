@@ -32,6 +32,13 @@
 // pricing closures read a SAVED scale snapshot (taken at loadMap, refreshed
 // at saveMap — the A-014 doctrine: the saved plane moves only at load/save),
 // so an unsaved calibration never enters routing or the snapshot (D75/F45).
+// A-016b (A-016's lead ruling, D78/C19) widens the DEFAULT pricing scans —
+// computeRoute's no-mode fallback, getSnapshot's candidates + currency
+// predicates, snapshot/build.ts's routesCurrency — to the loaded map's mode
+// universe (built-ins ∪ registry ids): a registry-only arc is priceable in
+// default runs and never silently drops from C19's route list; explicit
+// modes stay strict (C14 row 2), the C14/C15 arithmetic stands, and a
+// no-registry map prices byte-identically (the trio IS its universe).
 // Commands still unimplemented throw their exact TODO markers — never fake
 // data (Task 0 rule).
 
@@ -95,14 +102,6 @@ export interface MapFacade {
 
 const todo = (milestone: string, command: string): Error =>
   new Error(`TODO(${milestone}): ${command} is not implemented — facade stub from Task 0`);
-
-// Mirrors validate.ts's private union membership (F50) — the built-in trio the
-// DEFAULT pricing scans use as candidates (D60/D65: the chat's preferred mode
-// is priced first regardless; the fallback scan stays the trio until B-124
-// makes the route panel map-driven — D78's staged ruling). setTravelMode's
-// guard no longer reads this: it validates against the LOADED map's universe
-// (D78). Kept local: the facade needs no new export from validate.
-const TRAVEL_MODES: readonly TravelMode[] = ['walk', 'car', 'train'];
 
 /**
  * D78 + A-015: the SAVED scale's speed table is the RESOLVED mode-speed map —
@@ -287,7 +286,16 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
     // (distance-kind, other labels) keeps the strict D60 filter verbatim —
     // the pinned league-map interleaving refusal stands.
     const nodeIds = eff.nodes.map((node) => node.id);
-    const candidates: readonly TravelMode[] = mode !== undefined ? [mode] : TRAVEL_MODES;
+    // A-016b/D78/C19: the DEFAULT scan reads the loaded map's mode universe
+    // (built-ins ∪ registry ids) — an arc allowing ONLY a registry mode is
+    // priceable in a default run and never silently drops from C19's "exactly
+    // the arcs incident to the pin". An explicit mode stays a STRICT
+    // single-candidate filter (C14 row 2 — untouched). Universe source is the
+    // LIVE map: no M2 editor command can mutate map.modes (the registry
+    // arrives only via loadMap), so live == saved today; when a
+    // registry-EDITING command arrives, this scan set must move to the saved
+    // plane exactly as savedScale did (A-015 doctrine).
+    const candidates: readonly TravelMode[] = mode !== undefined ? [mode] : [...modeUniverseOf(map)];
     const preferred = mode !== undefined ? mode : overlay.travelMode;
     const priceIn = (edge: MapEdgeData, currency: CostCurrency): { mode: TravelMode; cost: number } =>
       priceForSnapshot(edge, currency, candidates, preferred, savedScale, positionOf);
@@ -984,11 +992,20 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       const eff = effective!; // C8 invariant: with map+overlay loaded, ensureFresh has built the graph
       const savedScale = state.savedScale!; // A-015/D75: the snapshot prices the SAVED scale — an unsaved calibration never enters it
 
-      // D60 default pricing context: the chat's travel mode preferred, all
-      // modes candidates (getSnapshot takes no mode argument — §9 surface).
+      // D60 default pricing context: the chat's travel mode preferred, the
+      // MAP's mode universe the candidates (A-016b/D78/C19 — getSnapshot takes
+      // no mode argument, §9 surface; the universe is built-ins ∪ registry
+      // ids, so an arc allowing only a registry mode prices here too instead
+      // of silently dropping from C19's "exactly" list). Universe source is
+      // the LIVE map: no M2 editor command can mutate map.modes (the registry
+      // arrives only via loadMap), so live == saved today; when a
+      // registry-EDITING command arrives, this scan set must move to the
+      // saved plane exactly as savedScale did (A-015 doctrine). ONE derived
+      // constant serves the pricing scan, the D65(b) minutes predicate and
+      // the blocked-arc allowed-list fallback below.
       const positions = new Map(eff.nodes.map((node) => [node.id, node.position] as const));
       const positionOf = (id: string): { x: number; y: number } | undefined => positions.get(id);
-      const candidates: readonly TravelMode[] = TRAVEL_MODES;
+      const candidates: readonly TravelMode[] = [...modeUniverseOf(map)];
       const preferred = overlay.travelMode;
 
       // The C19 arc list — the same selection buildSnapshot walks (a pure
@@ -1017,12 +1034,13 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       // presents no minutes-derived cost, so it stays canonical — the same
       // unit-label default as the C27 degraded path. Same minutesPriced helper
       // routing uses (C15/D60); kept in lockstep with build.ts's
-      // routesCurrency: same predicate, same exemptions, same arc selection.
+      // routesCurrency: same predicate, same exemptions, same arc selection,
+      // same universe scan (A-016b — modeUniverseOf on both sides).
       const liveArcs = neighborhood.filter((edge) => edge.blocked === undefined);
       const allMinutes =
         liveArcs.length > 0 &&
         liveArcs.every((edge) =>
-          TRAVEL_MODES.some((m) => edge.modes[m]?.allowed === true && minutesPriced(edge, m, savedScale)),
+          candidates.some((m) => edge.modes[m]?.allowed === true && minutesPriced(edge, m, savedScale)),
         );
       const currency: CostCurrency = allMinutes ? 'minutes' : 'canonical';
 
@@ -1044,7 +1062,10 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
         );
         if (Number.isFinite(priced.cost)) return priced;
         if (edge.blocked === undefined) return null; // D65(a): a live arc that cannot honestly price drops
-        const allowed = TRAVEL_MODES.filter((m) => edge.modes[m]?.allowed === true);
+        // A-016b: the fallback's allowed-list scans the universe too — a
+        // blocked registry-only arc lists with ITS mode ('Horseback'), never
+        // the preferred mode's word for an arc that forbids it.
+        const allowed = candidates.filter((m) => edge.modes[m]?.allowed === true);
         return { mode: allowed[0] ?? preferred, cost: 0 }; // D65(b): cost 0 + cheapest allowed mode
       };
 
