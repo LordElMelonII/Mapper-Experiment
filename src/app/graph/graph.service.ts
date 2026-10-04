@@ -9,13 +9,29 @@
 // facade.removeUserNode/promoteUserNode — D21/C26/D61 — plus the isUserNode
 // presence getter, ruling 1) and B-111 (curve rendering: the `edge.tme-curved`
 // stylesheet entry — §5 M3/api.ts:45, authored curve data mapped verbatim,
-// R1/D7 — plus the testEdgeCurveStyle read-only seam).
-// The ONE cytoscape instance (D3): created headless
+// R1/D7 — plus the testEdgeCurveStyle read-only seam) and B-112 (one
+// `cy.batch` per rebuild: the selection-accent re-projection moved INSIDE
+// rebuildElements' batch — §6.1 dense-row mitigation, one render pass per
+// rebuild; the resize→refit chain itself is pinned by
+// tests/e2e/resize-refit.e2e-spec.ts) and B-113 (label culling, §5 M4/§6.1:
+// past a FIT-RELATIVE zoom threshold one `tme-cull-labels` class is applied
+// blindly to all nodes — the stylesheet's later entries keep the pin and
+// selected labels visible; `min-zoomed-font-size` is deliberately never
+// set, per the B-107 gotcha; pinned by tests/e2e/label-culling.e2e-spec.ts)
+// and B-115 (P2-M4 verifier gate fix: the B-113 BADGE exemption is dropped —
+// badges cull WITH all map content. The verifier derived the mechanism off
+// the installed runtime's findNearestElements touch slop: the host node's
+// touch hit reach is 22·z + 8 px while the badge anchor sits ≈56.6·z px
+// away, so touch swallows badge taps for z ≲ 0.28 — every culled phone view
+// showed the exempt badge text (11·z ≈ 2–3 px, illegible dust) as a dead
+// affordance; the cross-layer surface now returns exactly when it is both
+// readable and tappable). The ONE cytoscape instance (D3): created headless
 // in the constructor, `mount()`/`unmount()` on demand — computation works with
 // the UI closed. Zoneless (D2): the service writes signals; the ONLY canvas
 // events bound are discrete gestures (`tap` → selection signals, `free` →
-// debug log) — high-frequency events (tapstart/tapdrag/tapend) are never
-// registered, so dragging costs zero change detection.
+// debug log) plus B-113's `zoom` (high-frequency, writes NO signals — it only
+// toggles the cull class on threshold crossings); the tapstart/tapdrag/tapend
+// stream is never registered, so dragging costs zero change detection.
 //
 // R4 (no shadow truth): the service stores the SAME live WorldMapData +
 // ChatMapOverlay references the host handed to the facade (C24) and builds a
@@ -171,6 +187,57 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
     },
   },
   {
+    // B-113 (§5 M4 label culling, §6.1 dense row): the culled state is ONE
+    // class applied blindly to ALL nodes (ruling 2) — the stylesheet owns
+    // the policy, the code owns no per-element branching (R1/D7 spirit).
+    // `text-opacity` hides the label text while the node body (44px, F52)
+    // stays tappable. (B-115 finding 2 corrects this comment's original
+    // mechanism claim — "a culled label is not a hit target": labels are
+    // never hit targets AT ALL, `text-events` defaulting to 'no' so the
+    // installed runtime's checkLabel skips rendered text at any zoom; the
+    // cull changes only what is PAINTED, never what a tap reaches. The
+    // behavior stands: a culled node remains tappable by its 44px body.)
+    // Declared BEFORE the two exemption entries below because
+    // cytoscape has no CSS specificity cascade: matching rules apply in
+    // declaration order and the LAST match per property wins (verified
+    // against the installed 3.34.3 runtime — the stylesheet's contextStyles
+    // loop, cytoscape.esm.mjs:16097-16112; the tme-blocked → tme-edge-selected
+    // pair below already relies on that order).
+    // NOTE: `min-zoomed-font-size` is deliberately NOT used anywhere in this
+    // stylesheet (B-107 gotcha, binding): it is a hide-floor, not an
+    // upscale-floor, and would suppress labels renderer-internally with no
+    // runtime-assertable seam.
+    selector: 'node.tme-cull-labels',
+    style: { 'text-opacity': 0 },
+  },
+  {
+    // B-113 (ruling 3), AMENDED by B-115 (P2-M4 verifier gate, major
+    // finding): the PIN's label never culls (F09 wayfinding — the party's
+    // position stays readable at any zoom). The exemption survives the
+    // B-115 gate because the pin is an ORDINARY node: its label is dust at
+    // culled zooms too, but that is no false affordance — nothing promises
+    // a tap target there, and the pin's wayfinding identity shows the
+    // moment it is legible. (The BADGE exemption B-113 ruled here is GONE,
+    // per B-115: a culled badge's tap anchor sits inside its host node's
+    // touch reach — host reach 22·z + 8 px vs anchor ≈56.6·z px away, so
+    // touch swallows the tap for z ≲ 0.28 — while its 11·z ≈ 2–3 px text is
+    // illegible: the visible-but-dead affordance the cull exists to
+    // remove. Badges cull with all map content and return exactly when
+    // readable AND tappable.) Later entry overrides the culled text-opacity
+    // for pins only.
+    selector: 'node.tme-pin.tme-cull-labels',
+    style: { 'text-opacity': 1 },
+  },
+  {
+    // B-113 (ruling 3): the SELECTED node's label never culls (the node
+    // under inspection). The exemption is cascade data, not class removal:
+    // a selected node in a culled view carries BOTH tme-cull-labels and
+    // tme-selected. District labels cull with everything else — and since
+    // B-115, badge labels do too.
+    selector: 'node.tme-selected.tme-cull-labels',
+    style: { 'text-opacity': 1 },
+  },
+  {
     selector: 'edge',
     style: {
       'curve-style': 'bezier',
@@ -234,6 +301,29 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
 const FIT_PADDING = 40;
 
 /**
+ * B-113 (§5 M4 label culling, §6.1 dense sub-graph perf row): labels hide
+ * when the current zoom falls below the CURRENT fit zoom × this factor.
+ * The threshold is fit-RELATIVE, not absolute, because one absolute floor
+ * cannot serve both worlds (D53): FX1's Fuyuki-layer authored coordinates
+ * span ≈1050×430 model units (data/worlds/fuyuki.ts:37-49), which fits at
+ * ≈0.84 zoom on the desktop stage but ≈0.30 on the iPhone-13 portrait
+ * stage — a floor that spares the phone's default view would never fire on
+ * desktop, and one that fires usefully on desktop would blank the phone's
+ * default view. 0.6 keeps the default fit itself label-visible by
+ * construction (zoom === fitZoom is never below fitZoom × 0.6), so labels
+ * are ON at every default view and only deliberate zoom-OUT culls them.
+ */
+const LABEL_CULL_FACTOR = 0.6;
+
+/**
+ * B-113 (ruling 1): the cull threshold while there is nothing to fit — the
+ * never-cull default. Cytoscape zoom is strictly positive (the runtime's
+ * min-zoom floor), so `zoom() < NEVER_CULL_ZOOM` can never fire and nothing
+ * culls on an empty canvas.
+ */
+const NEVER_CULL_ZOOM = 0;
+
+/**
  * The D3 cytoscape owner. `providedIn: 'root'`: one instance per app — in the
  * dev harness the app root; in the extension the panel root (Phase 3).
  */
@@ -246,6 +336,23 @@ export class GraphService implements OnDestroy {
   private overlay: ChatMapOverlay | null = null;
   private facade: MapFacade | null = null;
   private mounted = false;
+
+  /**
+   * B-113 (ruling 1): the label-cull threshold — the fit zoom ×
+   * LABEL_CULL_FACTOR, recomputed by fitView() after EVERY fit (each re-fit
+   * re-bases the threshold on its own fit zoom); NEVER_CULL_ZOOM while there
+   * is nothing to fit. A plain field, deliberately NOT a signal (D2: the
+   * high-frequency `zoom` event reads it and must never touch Angular state).
+   */
+  private cullZoom = NEVER_CULL_ZOOM;
+
+  /**
+   * B-113 (ruling 2): which side of the threshold the view is currently on —
+   * the crossing gate that keeps the high-frequency `zoom` handler from
+   * batching class operations when nothing flips. Same plain-field discipline
+   * as cullZoom (D2); rebuildElements' batch re-projects from it (ruling 4).
+   */
+  private labelCulled = false;
 
   /** Facade-held viewer state mirrored for the switcher's active highlight. */
   readonly activeLayer = signal<string | null>(null);
@@ -455,6 +562,18 @@ export class GraphService implements OnDestroy {
       // signal (D2: high-frequency events never touch Angular state).
       // Phase 3: upsertNode persists node positions.
       console.debug('[TravelMapper] node moved (view-local; Phase 3 upsertNode persists)');
+    });
+    this.cy.on('zoom', () => {
+      // B-113 (§5 M4 label culling, §6.1 dense row): `zoom` is a Core
+      // GraphEventName in the installed @types/cytoscape 3.21.9
+      // (index.d.ts:5387 — "when the viewport is zoomed"), and the runtime
+      // streams it for every user zoom (pinch/scroll) AND every programmatic
+      // viewport change — cy.fit emits 'pan zoom viewport'
+      // (cytoscape.esm.mjs:19478). D2: this is a HIGH-FREQUENCY event, so the
+      // handler writes NO signals and no change detection — applyLabelCull
+      // reads two scalars and, only on a threshold crossing, toggles one
+      // class inside cy.batch (one render pass).
+      this.applyLabelCull();
     });
 
     // R3: the tme-selected / tme-edge-selected accents follow the SIGNALS —
@@ -713,11 +832,21 @@ export class GraphService implements OnDestroy {
    * arc-panel phone e2e: the castle node landed under a layer button). The
    * refit keeps the whole layer visible AND tappable at any stage size; it
    * writes no signals (D2 — outside Angular, like mount()'s fit).
+   *
+   * B-113 (ruling 5): the cull check re-runs after the re-fit — idempotent.
+   * Verification finding (B-111 precedent, file:line): a programmatic
+   * cy.fit DOES emit `zoom` (cytoscape.esm.mjs:19478, 'pan zoom viewport'),
+   * and fitView re-runs the check after recomputing the threshold — so this
+   * explicit pass is belt-and-braces, keeping the resize path self-sufficient
+   * should a resize ever change zoom without a fit (cy.resize() itself emits
+   * only `resize`). The re-fit also re-bases cullZoom: a resize that moves
+   * zoom across the old threshold cannot strand a stale cull state.
    */
   notifyResize(): void {
     if (!this.mounted) return;
     this.cy.resize();
     this.fitView();
+    this.applyLabelCull();
   }
 
   // --- Dev-harness-only e2e seam (exposed via window.__TME_E2E__ in App —
@@ -785,6 +914,21 @@ export class GraphService implements OnDestroy {
     return typeof parent === 'string' ? parent : null;
   }
 
+  /**
+   * B-113: whether the projected node `id` currently carries class `cls` —
+   * the label-culling spec's assertion surface (the class IS the cull state;
+   * which labels stay visible is stylesheet data the class assertions pin
+   * structurally). Mirrors the other read-only test* seams: no mutation path
+   * (R2/R4 hold); an unknown id answers false (degrade, C32 spirit).
+   * `hasClass` is typed on SingularStyle (@types/cytoscape 3.21.9
+   * index.d.ts:2274), reachable on the getElementById collection via
+   * CollectionReturnValue (index.d.ts:1407).
+   */
+  testNodeHasClass(id: string, cls: string): boolean {
+    const node = this.cy.getElementById(id);
+    return node.length > 0 && node.hasClass(cls);
+  }
+
   /** B-103: rendered (canvas-relative, screen-px) position of one node, or null
    * when unmounted or absent — `node.renderedPosition()` (typed on
    * NodeSingular), a pure read used by e2e to aim taps/drag at real pixels.
@@ -825,7 +969,12 @@ export class GraphService implements OnDestroy {
 
   // --- Projection -----------------------------------------------------------
 
-  /** Swap the projected elements to the active layer, atomically. */
+  /**
+   * Swap the projected elements to the active layer, atomically. §6.1 dense
+   * rows + PKG B-112 (ruling 1): remove, add AND the selection-accent
+   * re-projection run in ONE cy.batch — one render pass per rebuild, per
+   * caller (block/lift, travel-mode switch, layer switch, map load).
+   */
   private rebuildElements(): void {
     const layerId = this.activeLayer();
     const map = this.map();
@@ -844,10 +993,20 @@ export class GraphService implements OnDestroy {
     this.cy.batch(() => {
       this.cy.elements().remove();
       this.cy.add([...elements, ...badges]);
+      // The swap drops ALL classes — re-project the selection accents INSIDE
+      // this same batch so the signals stay the single truth (R3; B-106:
+      // block/lift rebuilds included) without a second render pass (§6.1
+      // dense-row mitigation; PKG B-112 ruling 1).
+      this.projectSelectionClasses();
+      // B-113 (ruling 4): same slot, same reason — a rebuild must not
+      // un-cull a culled view, so the blanket class re-applies to the FRESH
+      // elements from the labelCulled state field (D2) inside this batch.
+      // When mounted, the fitView() below then re-fits and re-runs the
+      // threshold check (a re-fit restores the default, label-visible view);
+      // while headless the zoom is frozen below the frozen threshold, and
+      // the cull state survives the swap intact.
+      if (this.labelCulled) this.cy.nodes().addClass('tme-cull-labels');
     });
-    // The swap drops ALL classes — re-project the selection accents so the
-    // signals stay the single truth (R3; B-106: block/lift rebuilds included).
-    this.applySelectionClasses();
     if (this.mounted) this.fitView();
   }
 
@@ -877,27 +1036,74 @@ export class GraphService implements OnDestroy {
   }
 
   /**
-   * The selection-accent projection (R3): tme-selected on the selected node,
-   * tme-edge-selected on the selected edge. Called from the constructor's
-   * effect (signal-driven) and after every rebuildElements (element swap) —
-   * one function, so the two paths can never diverge.
+   * The selection-accent projection (R3), batched — the constructor effect's
+   * path (signal-driven: tap-select, background-tap clear, chip dismiss).
+   * PKG B-112 (ruling 1): the raw class operations live in
+   * projectSelectionClasses so rebuildElements can run them inside ITS
+   * batch; this wrapper stays the effect's whole write.
    */
   private applySelectionClasses(): void {
+    this.cy.batch(() => this.projectSelectionClasses());
+  }
+
+  /**
+   * The RAW selection-accent class operations — deliberately UN-batched
+   * (PKG B-112 ruling 1): the CALLER owns the cy.batch, so a rebuild costs
+   * one render pass, not two (§6.1 dense sub-graph perf). tme-selected on
+   * the selected node, tme-edge-selected on the selected edge — read off the
+   * signals at call time. One function for both call sites (the effect via
+   * applySelectionClasses, the element swap inside rebuildElements' batch),
+   * so the two paths can never diverge.
+   */
+  private projectSelectionClasses(): void {
     const sel = this.selection();
     const edgeSel = this.edgeSelection();
-    this.cy.batch(() => {
-      this.cy.nodes().removeClass('tme-selected');
-      if (sel !== null) this.cy.getElementById(sel.id).addClass('tme-selected');
-      this.cy.edges().removeClass('tme-edge-selected');
-      if (edgeSel !== null) this.cy.getElementById(edgeSel.id).addClass('tme-edge-selected');
-    });
+    this.cy.nodes().removeClass('tme-selected');
+    if (sel !== null) this.cy.getElementById(sel.id).addClass('tme-selected');
+    this.cy.edges().removeClass('tme-edge-selected');
+    if (edgeSel !== null) this.cy.getElementById(edgeSel.id).addClass('tme-edge-selected');
   }
 
   private refreshSnapshot(): void {
     this.snapshot.set(this.facade === null ? null : this.facade.getSnapshot());
   }
 
+  /**
+   * The single fit site (mount, notifyResize, rebuild-while-mounted).
+   * B-113 (ruling 1): after cy.fit the cull threshold is RECOMPUTED from the
+   * fit zoom (every re-fit re-bases it — the threshold is fit-relative), then
+   * the cull check re-runs. The re-run is required, not defensive: the fit
+   * itself synchronously emits `zoom` (cytoscape.esm.mjs:19478) and that
+   * handler pass executes against the PREVIOUS threshold. Idempotent — see
+   * applyLabelCull. An empty canvas takes the never-cull threshold instead.
+   */
   private fitView(): void {
-    if (this.cy.elements().length > 0) this.cy.fit(undefined, FIT_PADDING);
+    if (this.cy.elements().length > 0) {
+      this.cy.fit(undefined, FIT_PADDING);
+      this.cullZoom = this.cy.zoom() * LABEL_CULL_FACTOR;
+    } else {
+      this.cullZoom = NEVER_CULL_ZOOM;
+    }
+    this.applyLabelCull();
+  }
+
+  /**
+   * B-113 (ruling 2): the label-cull check — one viewport read, one crossing
+   * gate, and on a crossing ONE blanket class toggled on ALL nodes inside
+   * cy.batch. Which labels stay visible while the class is on is the
+   * stylesheet's business (the tme-pin/tme-selected entries — B-115: badges
+   * no longer exempt, they cull with all content) — the
+   * code applies the class blindly, no per-element branching (R1/D7 spirit).
+   * Safe to call from any zoom-change path at any frequency: below the
+   * crossing threshold it is two scalar reads (D2).
+   */
+  private applyLabelCull(): void {
+    const shouldCull = this.cy.zoom() < this.cullZoom;
+    if (shouldCull === this.labelCulled) return; // only on crossing
+    this.labelCulled = shouldCull;
+    this.cy.batch(() => {
+      if (shouldCull) this.cy.nodes().addClass('tme-cull-labels');
+      else this.cy.nodes().removeClass('tme-cull-labels');
+    });
   }
 }

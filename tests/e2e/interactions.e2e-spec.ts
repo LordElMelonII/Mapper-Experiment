@@ -97,6 +97,20 @@ const activatePoint = async (page: Page, point: Point): Promise<void> => {
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
+ * Wait two animation frames: panel open/close changes the stage size
+ * synchronously, but the ResizeObserver-driven re-fit (B-106/B-112) runs just
+ * before the next paint — reads inside that window yield pre-fit coordinates
+ * (the arc-panel.e2e-spec.ts settle precedent).
+ */
+const settle = (page: Page): Promise<void> =>
+  page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+
+/**
  * The `phone` playwright project runs the iPhone 13 device on WebKit
  * (devices['iPhone 13'] sets defaultBrowserType: 'webkit' and the frozen
  * playwright.config.ts overrides no browser), and a CDP session exists only
@@ -294,7 +308,15 @@ test.describe('canvas interactions (PKG B-103)', () => {
     );
     const point = await nodeScreenPoint(page, EMIYA_ID);
     await page.touchscreen.tap(point.x, point.y);
-    await page.touchscreen.tap(point.x, point.y);
+    // B-114 (deliberate, packet ruling 6): the first tap auto-expands the
+    // route sheet, which shrinks the stage and re-fits the view (the B-112
+    // RO chain) — the node moves under the finger. Waiting out the refit and
+    // re-aiming keeps the gesture under test what it has always been: two
+    // discrete taps on the node (D35 — no double-tap gesture is bound), not
+    // a tap plus an accidental background tap on the shifted canvas.
+    await settle(page);
+    const second = await nodeScreenPoint(page, EMIYA_ID);
+    await page.touchscreen.tap(second.x, second.y);
     // touch-action: none suppressed the browser's double-tap page zoom —
     // no scroll/viewport artifacts.
     expect(await readScrollY(page)).toBe(0);

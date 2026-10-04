@@ -2,108 +2,139 @@
      D72, F32/F52, FX2), extended by B-110 (ruling 1): the Waypoint management
      section (D21/C26/D61, C30 honesty) renders above the route legs only for
      PLACED waypoints. R1: every number, unit and reason below originates in
-     the core (facade snapshot / findRoute); the template only renders. -->
-<section class="tme-route" data-testid="tme-route-panel" aria-label="Route">
-  <h2 class="tme-title">Route</h2>
+     the core (facade snapshot / findRoute); the template only renders.
+     B-114 (§5 M4 responsive panels, D53/F52): below 700px the panel is a
+     bottom SHEET — the rail button is the always-visible ≥44px affordance
+     (ruling 1); everything the panel has ever rendered lives inside the ONE
+     tme-sheet-body wrapper, shown while expanded / hidden while collapsed
+     (the SCSS owns it under max-width: 699.98px) and always shown at ≥700px,
+     where the media query hides the rail. The sheet is the narrow form of
+     THIS panel — not a second panel (Q29 fence: no floating, no persistence,
+     no maximize). -->
+<section
+  class="tme-route"
+  data-testid="tme-route-panel"
+  aria-label="Route"
+  [class.tme-collapsed]="!sheetExpanded()"
+>
+  <!-- B-114 (ruling 1): the sheet rail — one full-width button, ≥44px tall
+       (F52), with the bound aria-expanded state and a CSS-rotated chevron
+       glyph (no hover affordance; touch-action: manipulation in SCSS, §6.2).
+       Its tap is the discrete D2 gesture that toggles the body. -->
+  <button
+    type="button"
+    class="tme-sheet-rail"
+    data-testid="tme-sheet-rail"
+    [attr.aria-expanded]="sheetExpanded()"
+    aria-controls="tme-sheet-body"
+    (click)="toggleSheet()"
+  >
+    <span class="tme-sheet-title">Route</span>
+    <span class="tme-sheet-chevron" aria-hidden="true">▾</span>
+  </button>
 
-  @if (graph.selection(); as sel) {
-    <!-- Target line: the pin's snapshot label → the tapped node's authored
-         label (core/authored strings, verbatim). -->
-    <p class="tme-target" data-testid="tme-target">{{ graph.snapshot()?.location ?? '' }} → {{ sel.label }}</p>
+  <div class="tme-sheet-body" id="tme-sheet-body" data-testid="tme-sheet-body">
+    <h2 class="tme-title">Route</h2>
 
-    @if (waypoint()) {
-      <!-- B-110 (ruling 1): the Waypoint management section, ABOVE the route
-           legs (D58: the waypoint stays an ordinary route target below — the
-           legs/total render unchanged). C30/D21 honesty: Promote is disabled
-           while the trimmed name is empty — the facade stays the authority,
-           the UI refuses to offer the throw (the B-106 pattern). No
-           confirmation dialogs (ruling 3: recoverable by replacement, F46 —
-           one tap = one command, D2). Machine ids never render (C23). -->
-      <section class="tme-waypoint" data-testid="tme-waypoint" aria-label="Waypoint">
-        <h3 class="tme-waypoint-title">Waypoint</h3>
-        <label class="tme-field-label" for="tme-waypoint-label-input">Name</label>
-        <input
-          id="tme-waypoint-label-input"
-          class="tme-label-input"
-          type="text"
-          autocomplete="off"
-          data-testid="tme-waypoint-label-input"
-          [value]="label()"
-          (input)="onLabelInput($event)"
-        />
-        <div class="tme-actions">
-          <button
-            type="button"
-            class="tme-button tme-promote-button"
-            data-testid="tme-waypoint-promote"
-            [disabled]="!canPromote()"
-            (click)="promote()"
-          >
-            Promote
-          </button>
-          <button type="button" class="tme-button tme-remove-button" data-testid="tme-waypoint-remove" (click)="remove()">
-            Remove
-          </button>
-        </div>
+    @if (graph.selection(); as sel) {
+      <!-- Target line: the pin's snapshot label → the tapped node's authored
+           label (core/authored strings, verbatim). -->
+      <p class="tme-target" data-testid="tme-target">{{ graph.snapshot()?.location ?? '' }} → {{ sel.label }}</p>
+
+      @if (waypoint()) {
+        <!-- B-110 (ruling 1): the Waypoint management section, ABOVE the route
+             legs (D58: the waypoint stays an ordinary route target below — the
+             legs/total render unchanged). C30/D21 honesty: Promote is disabled
+             while the trimmed name is empty — the facade stays the authority,
+             the UI refuses to offer the throw (the B-106 pattern). No
+             confirmation dialogs (ruling 3: recoverable by replacement, F46 —
+             one tap = one command, D2). Machine ids never render (C23). -->
+        <section class="tme-waypoint" data-testid="tme-waypoint" aria-label="Waypoint">
+          <h3 class="tme-waypoint-title">Waypoint</h3>
+          <label class="tme-field-label" for="tme-waypoint-label-input">Name</label>
+          <input
+            id="tme-waypoint-label-input"
+            class="tme-label-input"
+            type="text"
+            autocomplete="off"
+            data-testid="tme-waypoint-label-input"
+            [value]="label()"
+            (input)="onLabelInput($event)"
+          />
+          <div class="tme-actions">
+            <button
+              type="button"
+              class="tme-button tme-promote-button"
+              data-testid="tme-waypoint-promote"
+              [disabled]="!canPromote()"
+              (click)="promote()"
+            >
+              Promote
+            </button>
+            <button type="button" class="tme-button tme-remove-button" data-testid="tme-waypoint-remove" (click)="remove()">Remove</button>
+          </div>
+        </section>
+      }
+
+      @if (graph.pinSelected()) {
+        <!-- Ruling 6: the selection IS the pin — a current-location state, no
+             route query, no numbers. -->
+        <p class="tme-state" data-testid="tme-current-location">Current location: {{ sel.label }}</p>
+      } @else if (graph.route(); as route) {
+        @if (route.ok) {
+          <!-- C18: legs are the unit of UI display — one row per leg, in order:
+               from-label → to-label · mode · cost (the cost NUMBER only; C15/D72
+               puts the unit on the total line, once). -->
+          <ol class="tme-legs" data-testid="tme-legs">
+            @for (leg of route.legs; track leg.arcId) {
+              <li data-testid="tme-leg">{{ graph.labelOf(leg.from) }} → {{ graph.labelOf(leg.to) }} · {{ leg.mode }} · {{ leg.cost }}</li>
+            }
+          </ol>
+          <p class="tme-total" data-testid="tme-total">{{ route.total }} {{ route.unit }}</p>
+        } @else {
+          <!-- C17/F24: unreachable ⇒ the core's human-readable reason, verbatim;
+               never a number, never ∞. -->
+          <p class="tme-state" data-testid="tme-unreachable">{{ route.reason }}</p>
+        }
+      }
+    } @else {
+      <p class="tme-state" data-testid="tme-hint">Tap a node on the map to route there from the pin.</p>
+    }
+
+    <!-- Ruling 3 (F32/D19): the travel-mode preference — three tappable modes,
+         no 'auto'. The active button mirrors the service signal; a tap goes
+         through the facade (R2) and the route computed re-prices (D60(a)). -->
+    <div class="tme-modes" role="group" aria-label="Travel mode preference">
+      @for (mode of modes; track mode.id) {
+        <button
+          type="button"
+          class="tme-mode"
+          [class.tme-active]="graph.travelMode() === mode.id"
+          [attr.aria-pressed]="graph.travelMode() === mode.id"
+          [attr.data-testid]="'tme-mode-' + mode.id"
+          (click)="setMode(mode.id)"
+        >
+          {{ mode.name }}
+        </button>
+      }
+    </div>
+
+    <!-- C2/C19 — the M1 deferral, discharged: every pin-incident blocked arc
+         with its authored/overlay reason, verbatim (never hidden, never a
+         number). D65(b): blocked arcs always list, currency-neutral. B-114:
+         at narrow widths the list sits behind one explicit rail tap —
+         reachable, never gone (C2). -->
+    @if (blockedHere().length > 0) {
+      <section class="tme-blocked" data-testid="tme-blocked" aria-label="Blocked here">
+        <h3 class="tme-blocked-title">Blocked here</h3>
+        @for (blocked of blockedHere(); track blocked.label) {
+          <p class="tme-blocked-item" data-testid="tme-blocked-item">
+            <span data-testid="tme-blocked-label">{{ blocked.label }}</span>
+            <span class="tme-blocked-sep" aria-hidden="true">—</span>
+            <span data-testid="tme-blocked-reason">{{ blocked.blockedReason }}</span>
+          </p>
+        }
       </section>
     }
-
-    @if (graph.pinSelected()) {
-      <!-- Ruling 6: the selection IS the pin — a current-location state, no
-           route query, no numbers. -->
-      <p class="tme-state" data-testid="tme-current-location">Current location: {{ sel.label }}</p>
-    } @else if (graph.route(); as route) {
-      @if (route.ok) {
-        <!-- C18: legs are the unit of UI display — one row per leg, in order:
-             from-label → to-label · mode · cost (the cost NUMBER only; C15/D72
-             puts the unit on the total line, once). -->
-        <ol class="tme-legs" data-testid="tme-legs">
-          @for (leg of route.legs; track leg.arcId) {
-            <li data-testid="tme-leg">{{ graph.labelOf(leg.from) }} → {{ graph.labelOf(leg.to) }} · {{ leg.mode }} · {{ leg.cost }}</li>
-          }
-        </ol>
-        <p class="tme-total" data-testid="tme-total">{{ route.total }} {{ route.unit }}</p>
-      } @else {
-        <!-- C17/F24: unreachable ⇒ the core's human-readable reason, verbatim;
-             never a number, never ∞. -->
-        <p class="tme-state" data-testid="tme-unreachable">{{ route.reason }}</p>
-      }
-    }
-  } @else {
-    <p class="tme-state" data-testid="tme-hint">Tap a node on the map to route there from the pin.</p>
-  }
-
-  <!-- Ruling 3 (F32/D19): the travel-mode preference — three tappable modes,
-       no 'auto'. The active button mirrors the service signal; a tap goes
-       through the facade (R2) and the route computed re-prices (D60(a)). -->
-  <div class="tme-modes" role="group" aria-label="Travel mode preference">
-    @for (mode of modes; track mode.id) {
-      <button
-        type="button"
-        class="tme-mode"
-        [class.tme-active]="graph.travelMode() === mode.id"
-        [attr.aria-pressed]="graph.travelMode() === mode.id"
-        [attr.data-testid]="'tme-mode-' + mode.id"
-        (click)="setMode(mode.id)"
-      >
-        {{ mode.name }}
-      </button>
-    }
   </div>
-
-  <!-- C2/C19 — the M1 deferral, discharged: every pin-incident blocked arc
-       with its authored/overlay reason, verbatim (never hidden, never a
-       number). D65(b): blocked arcs always list, currency-neutral. -->
-  @if (blockedHere().length > 0) {
-    <section class="tme-blocked" data-testid="tme-blocked" aria-label="Blocked here">
-      <h3 class="tme-blocked-title">Blocked here</h3>
-      @for (blocked of blockedHere(); track blocked.label) {
-        <p class="tme-blocked-item" data-testid="tme-blocked-item">
-          <span data-testid="tme-blocked-label">{{ blocked.label }}</span>
-          <span class="tme-blocked-sep" aria-hidden="true">—</span>
-          <span data-testid="tme-blocked-reason">{{ blocked.blockedReason }}</span>
-        </p>
-      }
-    </section>
-  }
 </section>

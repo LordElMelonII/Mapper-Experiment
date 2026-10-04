@@ -428,6 +428,14 @@ test.describe('badge-tap arc management + badge re-pricing (PKG B-108 — findin
     // rebuild neither drops the badge nor corrupts its text.
     await expect.poll(() => readBadgeText(page)).toBe('Misaki Town · train · 300 min');
 
+    // B-114 (ruling 6, deliberate): the mode switch is route-panel content —
+    // at narrow widths the collapsed sheet hides it, so the phone expands the
+    // sheet first (one rail tap); desktop keeps the always-open sidebar.
+    if (isPhone()) {
+      await page.getByTestId('tme-sheet-rail').tap();
+      await expect(page.getByTestId('tme-sheet-body')).toBeVisible();
+    }
+
     await activate(page.getByTestId('tme-mode-car'));
     await expect(page.getByTestId('tme-mode-car')).toHaveAttribute('aria-pressed', 'true');
     await expect.poll(() => readBadgeText(page)).toBe('Misaki Town · train · 300 min');

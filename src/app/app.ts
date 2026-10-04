@@ -53,6 +53,8 @@ interface TmeE2EHook {
   edgeIds(): string[];
   /** B-109 (ruling 4): projected `parent` of one node — null for top-level (§6.2). */
   nodeParent(id: string): string | null;
+  /** B-113: whether one projected node currently carries a class (read-only). */
+  nodeHasClass(id: string, cls: string): boolean;
 }
 
 @Component({
@@ -125,6 +127,7 @@ export class App {
       badgeText: (arcId: string) => this.graphService.testBadgeText(arcId),
       edgeIds: () => this.graphService.testEdgeIds(),
       nodeParent: (id: string) => this.graphService.testNodeParent(id),
+      nodeHasClass: (id: string, cls: string) => this.graphService.testNodeHasClass(id, cls),
     };
   }
 }

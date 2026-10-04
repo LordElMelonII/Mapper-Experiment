@@ -3,11 +3,17 @@
 // element is sized by the map viewer's flex layout; here it only guarantees
 // its own content never forces horizontal overflow (D53) and scrolls its own
 // overflow vertically.
+// B-114 (§5 M4 responsive panels, D53/F52): below the 700px breakpoint the
+// panel presents as a bottom SHEET — the rail is the always-visible ≥44px
+// row and the body hides while collapsed (ruling 1). Narrow is the DEFAULT
+// (mobile-first, matching map-viewer.component.scss); the ≥700px media query
+// neutralizes the sheet — rail display:none, body always shown regardless of
+// state. The padding moved off :host onto the body so the rail spans the
+// panel edge-to-edge while the desktop rendering is pixel-identical.
 :host {
   display: block;
   min-width: 0; // never propagate content width into the flex row (D53)
   box-sizing: border-box;
-  padding: 0.75rem;
   overflow-y: auto;
   overscroll-behavior: contain;
   color: #e6ebf2;
@@ -16,6 +22,67 @@
     -apple-system,
     sans-serif;
 }
+
+// B-114 (ruling 1): the sheet rail — one full-width ≥44px tap target (F52).
+// No hover affordance: the chevron rotation and the body visibility are the
+// signal-driven state (R3); touch-action: manipulation keeps double-taps
+// from zooming the chrome (§6.2).
+.tme-sheet-rail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px; // F52: >= 44px tap target
+  padding: 0 0.875rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font:
+    600 1rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+.tme-sheet-chevron {
+  font-size: 1rem;
+  opacity: 0.8;
+}
+
+// Collapsed: the chevron points right (the expand affordance); expanded it
+// points down into the open body. Pure CSS off the state class — no hover.
+.tme-collapsed .tme-sheet-chevron {
+  transform: rotate(-90deg);
+}
+
+// The body wrapper (B-114 ruling 1): every control/content the panel has
+// ever rendered lives inside it. It is ALWAYS in the DOM (the ≥700px media
+// query shows it regardless of state); the padding lives here, not on the
+// host, so the rail spans edge-to-edge and the desktop look is unchanged.
+.tme-sheet-body {
+  padding: 0.75rem;
+}
+
+// Narrow only: collapsed hides the body — the freed height returns to the
+// canvas stage (the host is flex: 0 0 auto in map-viewer.component.scss, so
+// it shrinks to rail height and the ResizeObserver → refit chain follows).
+// Scoped to the media query so the ≥700px world can never hide the body.
+@media (max-width: 699.98px) {
+  .tme-collapsed .tme-sheet-body {
+    display: none;
+  }
+}
+
+// Wide (the existing breakpoint): the sheet neutralizes — the rail is gone
+// and the body always shows, whatever the (phone-world) toggle state is.
+@media (min-width: 700px) {
+  .tme-sheet-rail {
+    display: none;
+  }
+}
+
 
 .tme-title {
   margin: 0 0 0.5rem;

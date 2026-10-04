@@ -9,7 +9,11 @@
 // Remove (D21/§6.2), with the route-to-waypoint rows unchanged below (D58:
 // waypoints are ordinary route targets). Library-node selections and
 // no-selection render no section (removal of library nodes is Phase 3 editor
-// business; the facade itself refuses, C30).
+// business; the facade itself refuses, C30). Extended by B-114 (§5 M4, D53):
+// below the 700px breakpoint the panel presents as a bottom SHEET — an
+// always-visible rail (F52 ≥44px) toggling its body — the narrow-viewport
+// FORM of this same panel, never a second one (Q29 fence: no floating, no
+// remembered position, no maximize; that regime is Phase 3).
 // Every number and reason string is a core projection rendered verbatim (R1);
 // the component mutates nothing itself — the mode switch and the waypoint
 // actions go through GraphService's facade commands (R2), and state flows one
@@ -27,6 +31,29 @@ import { GraphService } from '../graph/graph.service';
 })
 export class RoutePanelComponent {
   protected readonly graph = inject(GraphService);
+
+  /**
+   * B-114 (ruling 2): the narrow-viewport sheet state — component-local VIEW
+   * chrome only (Q29 fence: no floating, no persistence, no maximize; the
+   * Phase 3 panel regime is out of scope). A linkedSignal keyed on the
+   * selection (the node id, else the edge id, else null): collapsed when
+   * idle (source null), auto-EXPANDS on every new node/edge selection — a
+   * map tap means the user wants the panel, so the M2 tap-to-see-route flow
+   * keeps its zero-extra-taps shape — and collapses again when the selection
+   * clears (chip dismiss / background tap). The rail's toggle writes between
+   * source changes (a discrete gesture — the only D2-sanctioned write here).
+   * At >= 700px the stylesheet's media query owns visibility and the rail is
+   * display:none, so this state is phone-world only and persists nothing.
+   */
+  protected readonly sheetExpanded = linkedSignal<string | null, boolean>({
+    source: () => this.graph.selection()?.id ?? this.graph.edgeSelection()?.id ?? null,
+    computation: (source) => source !== null,
+  });
+
+  /** B-114 (ruling 2): the rail's collapse/expand — one discrete tap (D2). */
+  protected toggleSheet(): void {
+    this.sheetExpanded.update((expanded) => !expanded);
+  }
 
   /**
    * F32/D19 (ruling 3): the three overlay preference modes — there is no

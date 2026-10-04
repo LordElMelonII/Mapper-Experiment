@@ -86,8 +86,16 @@ test.describe('route sidebar (PKG B-105)', () => {
   test('tap Fuyuki Station: one walk leg, total with the unit once (C18, C15/D72, FX1)', async ({
     page,
   }) => {
-    // No-selection hint before any tap (the panel's empty state).
-    await expect(page.getByTestId('tme-hint')).toBeVisible();
+    // No-selection hint before any tap (the panel's empty state). B-114
+    // (ruling 6, deliberate): at narrow widths the panel starts as a
+    // COLLAPSED sheet — the hint lives behind the rail, and the rail is the
+    // always-visible affordance; desktop keeps the always-open sidebar.
+    if (isPhone()) {
+      await expect(page.getByTestId('tme-sheet-rail')).toBeVisible();
+      await expect(page.getByTestId('tme-hint')).toBeHidden();
+    } else {
+      await expect(page.getByTestId('tme-hint')).toBeVisible();
+    }
     await expect(page.getByTestId('tme-leg')).toHaveCount(0);
 
     await tapNode(page, STATION_ID);
@@ -152,6 +160,13 @@ test.describe('route sidebar (PKG B-105)', () => {
   }) => {
     // Selection-independent: the pin's blocked neighborhood lists on load —
     // excluded from routing, never hidden, reason verbatim (the M1 deferral).
+    // B-114 (ruling 6, deliberate): at narrow widths the collapsed sheet puts
+    // the list one explicit rail tap away — reachable, never gone (C2);
+    // desktop keeps the always-open sidebar that lists at load.
+    if (isPhone()) {
+      await activate(page, 'tme-sheet-rail');
+      await expect(page.getByTestId('tme-sheet-body')).toBeVisible();
+    }
     await expect(page.getByTestId('tme-blocked')).toBeVisible();
     await expect(page.getByTestId('tme-blocked-item')).toHaveCount(1);
     await expect(page.getByTestId('tme-blocked-label')).toHaveText('Fuyuki Bridge');
@@ -177,8 +192,19 @@ test.describe('route sidebar (PKG B-105)', () => {
     test.skip(!isPhone(), 'the 375px panel-geometry check belongs to the phone project (D53)');
     await page.setViewportSize({ width: 375, height: 667 });
 
-    // The whole flow by touch: tap a node → route renders.
+    // B-114 (ruling 6, deliberate re-pin): at idle the panel is the collapsed
+    // sheet — the rail is the visible, ≥44px affordance; the node tap below
+    // auto-expands the body (zero extra taps preserved, B-114 ruling 2).
+    const rail = page.getByTestId('tme-sheet-rail');
+    await expect(rail).toBeVisible();
+    await expect(rail).toHaveAttribute('aria-expanded', 'false');
+    const railBox = await rail.boundingBox();
+    if (railBox === null) throw new Error('tme-sheet-rail not visible');
+    expect(railBox.height, 'tme-sheet-rail height >= 44px (F52)').toBeGreaterThanOrEqual(44);
+
+    // The whole flow by touch: tap a node → the sheet auto-expands → route renders.
     await tapNode(page, STATION_ID);
+    await expect(page.getByTestId('tme-sheet-body')).toBeVisible();
     await expect(legRow(page, 0)).toHaveText('Emiya Residence → Fuyuki Station · walk · 50');
     await expect(page.getByTestId('tme-total')).toHaveText('50 min');
 
