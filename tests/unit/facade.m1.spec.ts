@@ -48,10 +48,12 @@ const brokenMap = (): WorldMapData => {
   return m;
 };
 
-// Deliberately invalid overlay — loadMap must refuse it at runtime.
+// Deliberately invalid overlay — loadMap must refuse it at runtime. D78/C32:
+// an unknown travelMode no longer refuses a load (it degrades to 'walk'), so
+// the refusal defect is a dangling blocked key instead.
 const brokenOverlay = (): ChatMapOverlay => {
   const o = JSON.parse(JSON.stringify(tinyOverlay()));
-  o.travelMode = 'teleport';
+  o.blocked['ghost-edge'] = 'no such arc';
   return o;
 };
 
@@ -61,6 +63,14 @@ const brokenOverlay = (): ChatMapOverlay => {
 const twoLayerMap = (): WorldMapData => {
   const m = JSON.parse(JSON.stringify(tinyMap()));
   m.layers.push({ id: 'layer-2', name: 'Second Layer' });
+  return m;
+};
+
+// D78: the tiny map plus a one-entry mode registry — 'horse' is declared, so
+// it is in THIS map's universe and nowhere else.
+const horseMap = (): WorldMapData => {
+  const m = JSON.parse(JSON.stringify(tinyMap()));
+  m.modes = [{ id: 'horse', label: 'Horseback', speed: 10, allowedByDefault: false }];
   return m;
 };
 
@@ -96,6 +106,30 @@ describe('loadMap', () => {
     expect(() => f.loadMap(tinyMap(), brokenOverlay())).toThrow(MapValidationError);
     expect(facadeStateOf(f).map).toBeNull();
     expect(facadeStateOf(f).overlay).toBeNull();
+  });
+
+  it("D78/C32: an overlay travelMode the loaded map doesn't know degrades to 'walk' — never a throw (the D58 tolerance shape)", () => {
+    // chat state saved against a registry map: 'horse' is valid THERE and rides along untouched
+    const overlay = tinyOverlay();
+    overlay.travelMode = 'horse';
+    const f = createFacade();
+    f.loadMap(horseMap(), overlay);
+    expect(overlay.travelMode).toBe('horse');
+
+    // ...and degrades after the switch to a map whose universe lacks it (C32/D78)
+    f.loadMap(tinyMap(), overlay);
+    expect(overlay.travelMode).toBe('walk');
+    expect(facadeStateOf(f).overlay).toBe(overlay); // C24: the stored overlay is still the caller's object
+    expect(() => f.getSnapshot()).not.toThrow(); // the degraded load serves queries (C32)
+  });
+
+  it('D78/C32: the degrade lands only on a load that passes every other gate — a refused overlay keeps its travelMode (C30)', () => {
+    const overlay = tinyOverlay();
+    overlay.travelMode = 'horse'; // unknown to tinyMap ⇒ would degrade
+    overlay.blocked['ghost-edge'] = 'dangling key'; // the refusal defect
+    const f = createFacade();
+    expect(() => f.loadMap(tinyMap(), overlay)).toThrow(MapValidationError);
+    expect(overlay.travelMode).toBe('horse'); // NOT rewritten — reject-before-mutate held
   });
 
   it('stores references and marks stale; materialize() then yields the merged graph (C8, C24)', () => {
@@ -233,6 +267,16 @@ describe('setStatusNote / setTravelMode', () => {
     f.loadMap(tinyMap(), tinyOverlay());
     expect(() => f.setTravelMode('teleport' as never)).toThrow(/\[TravelMapper\]/);
     expect(facadeStateOf(f).overlay!.travelMode).toBe('walk'); // untouched by the refused call
+  });
+
+  it('setTravelMode accepts a registry mode of the loaded map and still rejects garbage (C30, D78)', () => {
+    const overlay = tinyOverlay();
+    const f = createFacade();
+    f.loadMap(horseMap(), overlay);
+    f.setTravelMode('horse'); // in the loaded map's universe — accepted
+    expect(overlay.travelMode).toBe('horse');
+    expect(() => f.setTravelMode('balloon' as never)).toThrow(/setTravelMode/); // not in the universe — refused
+    expect(overlay.travelMode).toBe('horse'); // untouched by the refused call (C30)
   });
 
   it('setStatusNote refuses a non-string note before mutating the overlay (C30, D17)', () => {

@@ -132,10 +132,10 @@ describe('D74(b)(e) — the honest canonical fallback on a time-kind min scale (
     expect(r.total).toBe(90); // 50 + 10 + 10 + 20 — one honest 'min' total (C15)
     expect(r.unit).toBe('min'); // D72: the canonical label on this scale — both branches read 'min'
     expect(r.legs).toEqual([
-      { arcId: 'e-ab', from: 'a', to: 'b', mode: 'walk', cost: 50 }, // authored minutes VERBATIM — mountain ×2.5 must NOT accrue (C14 row 3, D14)
-      { arcId: weB, from: 'b', to: wp, mode: 'walk', cost: 10 }, // 50 px × 0.2, plain (C14 row 5)
-      { arcId: weC, from: wp, to: 'c', mode: 'walk', cost: 10 },
-      { arcId: 'e-cd', from: 'c', to: 'd', mode: 'walk', cost: 20 },
+      { arcId: 'e-ab', from: 'a', to: 'b', mode: 'walk', modeLabel: 'walk', cost: 50 }, // authored minutes VERBATIM — mountain ×2.5 must NOT accrue (C14 row 3, D14)
+      { arcId: weB, from: 'b', to: wp, mode: 'walk', modeLabel: 'walk', cost: 10 }, // 50 px × 0.2, plain (C14 row 5)
+      { arcId: weC, from: wp, to: 'c', mode: 'walk', modeLabel: 'walk', cost: 10 },
+      { arcId: 'e-cd', from: 'c', to: 'd', mode: 'walk', modeLabel: 'walk', cost: 20 },
     ]);
     assertClean(r);
 
@@ -231,7 +231,7 @@ describe('D74(a) — minutes-first stays strict: a cheaper honest-canonical path
     expect(r.ok).toBe(true);
     expect(r.total).toBe(22); // the authored arc — NOT ≈20.09 (the mixed we- path must not win, D74(a))
     expect(r.legs).toEqual([
-      { arcId: 'arc-emiya-residence-matou-residence', from: 'emiya-residence', to: 'matou-residence', mode: 'walk', cost: 22 },
+      { arcId: 'arc-emiya-residence-matou-residence', from: 'emiya-residence', to: 'matou-residence', mode: 'walk', modeLabel: 'walk', cost: 22 },
     ]);
     expect(r.unit).toBe('min');
     assertClean(r);

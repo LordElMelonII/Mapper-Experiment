@@ -194,8 +194,8 @@ describe('VERIFY M3 — FX2 on the imported map, re-proven (FX2, D54/D60)', () =
     expect(route.ok).toBe(true);
     expect(route.total).toBe(350); // 50 (E–S) + 300 (S–MT 5h train)
     expect(route.legs).toEqual([
-      { arcId: 'import-E-S', from: 'E', to: 'S', mode: 'walk', cost: 50 },
-      { arcId: 'import-S-MT', from: 'S', to: 'MT', mode: 'train', cost: 300 },
+      { arcId: 'import-E-S', from: 'E', to: 'S', mode: 'walk', modeLabel: 'walk', cost: 50 },
+      { arcId: 'import-S-MT', from: 'S', to: 'MT', mode: 'train', modeLabel: 'train', cost: 300 },
     ]);
 
     // the imported map has no hubs (the legacy table has no hub concept), so

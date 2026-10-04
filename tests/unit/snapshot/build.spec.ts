@@ -285,19 +285,19 @@ describe('buildSnapshot — C20/D25 destinations', () => {
     const overlay = overlayFor(m, 'p');
     const routes: Record<string, RouteResult> = {
       // single leg: via is the hub itself; cost 20
-      h1: { ok: true, total: 20, legs: [{ arcId: 'a1', from: 'p', to: 'h1', mode: 'walk', cost: 20 }], unit: 'min' }, // D72 — destinationMap's canonical label
+      h1: { ok: true, total: 20, legs: [{ arcId: 'a1', from: 'p', to: 'h1', mode: 'walk', modeLabel: 'walk', cost: 20 }], unit: 'min' }, // D72 — destinationMap's canonical label; D78 modeLabel === mode (no registry)
       // two legs: via/mode from the FIRST leg only
       h5: {
         ok: true,
         total: 10,
         unit: 'min', // D72
         legs: [
-          { arcId: 'a5', from: 'p', to: 'mid', mode: 'car', cost: 2 },
-          { arcId: 'a6', from: 'mid', to: 'h5', mode: 'train', cost: 8 },
+          { arcId: 'a5', from: 'p', to: 'mid', mode: 'car', modeLabel: 'car', cost: 2 },
+          { arcId: 'a6', from: 'mid', to: 'h5', mode: 'train', modeLabel: 'train', cost: 8 },
         ],
       },
       // single leg, cost 5 — sorts first
-      h4: { ok: true, total: 5, legs: [{ arcId: 'a4', from: 'p', to: 'h4', mode: 'car', cost: 5 }], unit: 'min' }, // D72
+      h4: { ok: true, total: 5, legs: [{ arcId: 'a4', from: 'p', to: 'h4', mode: 'car', modeLabel: 'car', cost: 5 }], unit: 'min' }, // D72
     };
     const routeTo = (id: string): RouteResult => routes[id] ?? neverRoute(); // unrouted hubs ⇒ ok:false ⇒ dropped
     const snap = build(m, overlay, () => null, routeTo);
@@ -335,8 +335,8 @@ describe('buildSnapshot — C20/D25 destinations', () => {
         total: 30,
         unit: 'min', // D72
         legs: [
-          { arcId: 'a2', from: 'p', to: 'wp-9', mode: 'walk', cost: 10 },
-          { arcId: 'a3', from: 'wp-9', to: 'h2', mode: 'train', cost: 20 },
+          { arcId: 'a2', from: 'p', to: 'wp-9', mode: 'walk', modeLabel: 'walk', cost: 10 },
+          { arcId: 'a3', from: 'wp-9', to: 'h2', mode: 'train', modeLabel: 'train', cost: 20 },
         ],
       }),
     );
@@ -355,7 +355,7 @@ describe('buildSnapshot — C20/D25 destinations', () => {
       () => null,
       (id) => {
         if (id === 'p' || id === 'wp-h') throw new Error(`routeTo must not be called for '${id}'`);
-        return { ok: true, total: 7, legs: [{ arcId: 'a', from: 'p', to: id, mode: 'walk', cost: 7 }], unit: 'min' }; // D72
+        return { ok: true, total: 7, legs: [{ arcId: 'a', from: 'p', to: id, mode: 'walk', modeLabel: 'walk', cost: 7 }], unit: 'min' }; // D72 + D78 modeLabel
       },
     );
     // h1..h5 all routed at 7 — no entry for the pin, none for the unnamed hub
@@ -405,7 +405,7 @@ describe('buildSnapshot — C20 cap (DESTINATIONS_CAP = 12, truncation marked, D
         ok: true,
         total: Number(id.slice(1)) + 1,
         unit: 'min', // D72
-        legs: [{ arcId: `e-${id}`, from: 'p', to: id, mode: 'walk', cost: Number(id.slice(1)) + 1 }],
+        legs: [{ arcId: `e-${id}`, from: 'p', to: id, mode: 'walk', modeLabel: 'walk', cost: Number(id.slice(1)) + 1 }],
       }),
     );
     expect(snap.destinations.map((d) => d.cost)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]); // 13 dropped
@@ -423,7 +423,7 @@ describe('buildSnapshot — C20 cap (DESTINATIONS_CAP = 12, truncation marked, D
         ok: true,
         total: Number(id.slice(1)) + 1,
         unit: 'min', // D72
-        legs: [{ arcId: `e-${id}`, from: 'p', to: id, mode: 'walk', cost: Number(id.slice(1)) + 1 }],
+        legs: [{ arcId: `e-${id}`, from: 'p', to: id, mode: 'walk', modeLabel: 'walk', cost: Number(id.slice(1)) + 1 }],
       }),
     );
     expect(snap.destinations).toHaveLength(12);

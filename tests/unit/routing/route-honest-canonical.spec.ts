@@ -91,10 +91,10 @@ describe('D74 — the canonical fallback accepts authored minutes on a time-kind
     expect(r.ok).toBe(true); // pre-D74 BOTH single-currency runs refused this path (the D74 finding — F26 was inert)
     expect(r.total).toBe(110); // 10 (authored) + 40 + 40 (we- geometry) + 20 (authored) — one honest 'min' total
     expect(r.legs).toEqual([
-      { arcId: 'e-ab', from: 'a', to: 'b', mode: 'walk', cost: 10 }, // authored minutes verbatim (C14 row 3, D14)
-      { arcId: weEdgeTo(overlay, wp, 'b'), from: 'b', to: wp, mode: 'walk', cost: 40 }, // euclid 40 px × unitPerPx 1 (C14 row 5; C7: the we- edge has no authored values)
-      { arcId: weEdgeTo(overlay, wp, 'c'), from: wp, to: 'c', mode: 'walk', cost: 40 },
-      { arcId: 'e-cd', from: 'c', to: 'd', mode: 'walk', cost: 20 }, // authored minutes verbatim (C14 row 3, D14)
+      { arcId: 'e-ab', from: 'a', to: 'b', mode: 'walk', modeLabel: 'walk', cost: 10 }, // authored minutes verbatim (C14 row 3, D14)
+      { arcId: weEdgeTo(overlay, wp, 'b'), from: 'b', to: wp, mode: 'walk', modeLabel: 'walk', cost: 40 }, // euclid 40 px × unitPerPx 1 (C14 row 5; C7: the we- edge has no authored values)
+      { arcId: weEdgeTo(overlay, wp, 'c'), from: wp, to: 'c', mode: 'walk', modeLabel: 'walk', cost: 40 },
+      { arcId: 'e-cd', from: 'c', to: 'd', mode: 'walk', modeLabel: 'walk', cost: 20 }, // authored minutes verbatim (C14 row 3, D14)
     ]);
     expect(r.unit).toBe('min'); // D72: the canonical label on a time-min scale — both branches label 'min'
     assertClean(r); // C17
@@ -144,7 +144,7 @@ describe('D74 — minutes-first stays strict: the fallback changed, not the pref
     const r = f.findRoute('s', 't');
     expect(r.ok).toBe(true);
     expect(r.total).toBe(50); // the MINUTES route — the mixed path (30) would win if the fallback ran or minutes leaked
-    expect(r.legs).toEqual([{ arcId: 'e-st', from: 's', to: 't', mode: 'walk', cost: 50 }]); // D60 preference semantics verbatim
+    expect(r.legs).toEqual([{ arcId: 'e-st', from: 's', to: 't', mode: 'walk', modeLabel: 'walk', cost: 50 }]); // D60 preference semantics verbatim
     expect(r.unit).toBe('min'); // D72 — the run priced minutes
     assertClean(r); // C17
   });

@@ -219,8 +219,8 @@ describe('waypoint edges route with edgeCost numbers — no parallel math (C14, 
     expect(r.ok).toBe(true);
     expect(r.total).toBe(30); // euclid 10 + 20 at unitPerPx 1 — the numbers edgeCost computes
     expect(r.legs).toEqual([
-      { arcId: edgeBetween(overlay, wp, 'n1'), from: 'n1', to: wp, mode: 'walk', cost: 10 },
-      { arcId: edgeBetween(overlay, wp, 'n2'), from: wp, to: 'n2', mode: 'walk', cost: 20 },
+      { arcId: edgeBetween(overlay, wp, 'n1'), from: 'n1', to: wp, mode: 'walk', modeLabel: 'walk', cost: 10 },
+      { arcId: edgeBetween(overlay, wp, 'n2'), from: wp, to: 'n2', mode: 'walk', modeLabel: 'walk', cost: 20 },
     ]);
     expect(JSON.stringify(r)).not.toContain('Infinity'); // C17
     expectStillValid(map, overlay);

@@ -50,7 +50,7 @@ import { euclid } from './geometry/measure';
 import { buildEffectiveGraph } from './model/effective';
 import type { EffectiveGraph } from './model/effective';
 import { migrateWorldMap } from './model/migrate';
-import { isPinEligible, validateOverlay, validateWorldMap } from './model/validate';
+import { isPinEligible, modeUniverseOf, resolveModeLabel, validateOverlay, validateWorldMap } from './model/validate';
 import { shortestPath } from './routing/dijkstra';
 import { minutesPriced, priceEdgeIn } from './routing/price';
 import type { CostCurrency } from './routing/price';
@@ -96,9 +96,32 @@ export interface MapFacade {
 const todo = (milestone: string, command: string): Error =>
   new Error(`TODO(${milestone}): ${command} is not implemented — facade stub from Task 0`);
 
-// Mirrors validate.ts's private union membership (F50) — the runtime guard for
-// setTravelMode (C30). Kept local: the facade needs no new export from validate.
+// Mirrors validate.ts's private union membership (F50) — the built-in trio the
+// DEFAULT pricing scans use as candidates (D60/D65: the chat's preferred mode
+// is priced first regardless; the fallback scan stays the trio until B-124
+// makes the route panel map-driven — D78's staged ruling). setTravelMode's
+// guard no longer reads this: it validates against the LOADED map's universe
+// (D78). Kept local: the facade needs no new export from validate.
 const TRAVEL_MODES: readonly TravelMode[] = ['walk', 'car', 'train'];
+
+/**
+ * D78 + A-015: the SAVED scale's speed table is the RESOLVED mode-speed map —
+ * registry-first, then scale.speed (an entry with `speed` undefined falls
+ * through to `scale.speed[mode]`; both absent ⇒ the mode prices in canonical
+ * units, C14 row 6 — the speedless-built-in rule). ONE seam: cost.ts and
+ * price.ts keep reading `scale.speed[mode]` verbatim, so C14 rows 4–6's exact
+ * arithmetic and C15's one-currency rule are mechanically untouched — the
+ * registry enters pricing only through this snapshot, taken at loadMap and
+ * refreshed at saveMap (the A-014/A-015 saved-plane doctrine). A map with no
+ * registry speeds gets today's plain shallow clone, byte-for-byte behavior.
+ */
+function savedScaleOf(map: WorldMapData): WorldMapData['scale'] {
+  const declared = map.modes?.filter((d) => d.speed !== undefined) ?? [];
+  if (declared.length === 0) return { ...map.scale };
+  const speed = { ...map.scale.speed };
+  for (const declaration of declared) speed[declaration.id] = declaration.speed!; // registry wins (D78)
+  return { ...map.scale, speed };
+}
 
 // C23: the unnamed-user predicate — the tap-placed label addUserNodeAt assigns
 // is USER STATE, not a name. Kept local: it mirrors snapshot/build.ts's private
@@ -313,15 +336,22 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
     }
 
     // C18 legs: from→to per traversal (dijkstra hands the orientation back),
-    // the priced mode per leg — FX2's walk-then-train shape.
+    // the priced mode per leg — FX2's walk-then-train shape. D78/C23: each leg
+    // also carries the RESOLVED label (always present — the registry's authored
+    // word, else the id itself, which for the bare built-ins IS the word), so
+    // the UI never maps ids to words itself.
     const edgeById = new Map(eff.edges.map((edge) => [edge.id, edge] as const));
-    const legs: RouteLeg[] = result.legs.map((leg) => ({
-      arcId: leg.arcId,
-      from: leg.from,
-      to: leg.to,
-      mode: priceEdge(edgeById.get(leg.arcId)!).mode, // dijkstra only emits arcIds from eff.edges
-      cost: leg.cost,
-    }));
+    const legs: RouteLeg[] = result.legs.map((leg) => {
+      const priced = priceEdge(edgeById.get(leg.arcId)!); // dijkstra only emits arcIds from eff.edges
+      return {
+        arcId: leg.arcId,
+        from: leg.from,
+        to: leg.to,
+        mode: priced.mode,
+        modeLabel: resolveModeLabel(priced.mode, map.modes),
+        cost: leg.cost,
+      };
+    });
     return { ok: result.ok, total: result.total, legs, unit }; // D72
   };
 
@@ -362,6 +392,19 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       // C30: reject-before-mutate — both validators run before any state
       // changes, so an invalid input leaves the prior load untouched.
       const validatedMap = validateWorldMap(map);
+      // D78/C32 — the D58 tolerance shape, written rather than opted into:
+      // validateOverlay's travel-mode check stays strict (its universe is THIS
+      // map's), but the LOAD path degrades an overlay travelMode the loaded
+      // map does not know to 'walk' — chat state saved against another map's
+      // registry must never refuse a load. The gate runs on a one-field shallow
+      // projection (R4 spirit) so reject-before-mutate still holds: the
+      // caller's overlay object is rewritten only after every other check has
+      // passed, and the STORED overlay stays the caller's object (C24).
+      const universe = modeUniverseOf(validatedMap);
+      const degraded = typeof overlay.travelMode !== 'string' || !universe.has(overlay.travelMode);
+      const candidate = degraded ? { ...overlay, travelMode: 'walk' as TravelMode } : overlay;
+      const validatedOverlay = validateOverlay(candidate, validatedMap, { tolerateIneligiblePin: true });
+      if (degraded) overlay.travelMode = 'walk'; // C32 — lands only on a load that passed every gate
       // C27: the pin is chat state, not graph data — a live library edit (C24)
       // can make the pinned node ineligible at any moment, so load neither
       // refuses nor snaps on pin eligibility; the pin rides along and
@@ -369,9 +412,8 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       // by validateOverlay's default mode (the D58 contract) and by
       // setCurrentLocation below. (Normative: M1 verifier FINDING 3 — an
       // overlay pinning a childless district loads; its pin is simply invalid.)
-      const validatedOverlay = validateOverlay(overlay, validatedMap, { tolerateIneligiblePin: true });
       state.map = validatedMap; // C24: the library object itself, never a copy
-      state.overlay = validatedOverlay;
+      state.overlay = degraded ? overlay : validatedOverlay;
       // P2 M1 (F01/D69): deterministic first paint — every fresh load resets
       // the active layer to THIS map's first layer; a stale layer id from a
       // previous map is never inherited (C24). Validators guarantee ≥ 1 layer.
@@ -383,8 +425,10 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       state.savedEdgeIds = new Set(validatedMap.edges.map((e) => e.id));
       // A-015: the pricing seams' scale snapshot — a clone, never the reference
       // (calibrateScale mutates the live object in place; a reference would
-      // alias the draft straight into routing, breaking D75/F45).
-      state.savedScale = { ...validatedMap.scale };
+      // alias the draft straight into routing, breaking D75/F45). D78: the
+      // clone's speed table is the RESOLVED mode-speed map (savedScaleOf —
+      // registry-first, then scale.speed, one seam).
+      state.savedScale = savedScaleOf(validatedMap);
       state.dirty = false; // D75: a fresh load carries no unsaved editor edits
       state.stale = true; // C8: the next materialize()/query rebuilds
     },
@@ -456,13 +500,17 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
     },
 
     setTravelMode: (mode) => {
-      const { overlay } = state;
-      if (overlay === null) throw new Error('[TravelMapper] no map loaded');
-      // C30: validate BEFORE mutating — the same membership validateOverlay
-      // enforces at load (F50); a runtime caller can bypass the type system.
-      if (!TRAVEL_MODES.includes(mode)) {
+      const { map, overlay } = state;
+      if (map === null || overlay === null) throw new Error('[TravelMapper] no map loaded');
+      // C30/D78: validate BEFORE mutating — against the LOADED map's mode
+      // universe (built-ins ∪ registry ids), the same membership
+      // validateOverlay enforces at load (F50); a registry mode ('horse') is
+      // accepted, garbage is refused. A runtime caller can bypass the type
+      // system, so the string check is explicit.
+      const universe = modeUniverseOf(map);
+      if (typeof mode !== 'string' || !universe.has(mode)) {
         throw new Error(
-          `[TravelMapper] setTravelMode: travel mode must be one of: ${TRAVEL_MODES.join(', ')} (got '${String(mode)}')`,
+          `[TravelMapper] setTravelMode: travel mode must be one of: ${[...universe].join(', ')} (got '${String(mode)}')`,
         );
       }
       overlay.travelMode = mode; // D19
@@ -914,7 +962,7 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       // the SAVED plane, so the runtime commands' universes admit their ids.
       state.savedNodeIds = new Set(map.nodes.map((nd) => nd.id));
       state.savedEdgeIds = new Set(map.edges.map((e) => e.id));
-      state.savedScale = { ...map.scale }; // A-015: the saved plane moves — pricing sees the calibrated scale from the next query on
+      state.savedScale = savedScaleOf(map); // A-015: the saved plane moves — pricing sees the calibrated scale from the next query on; D78: the speed table re-resolves over the saved registry
       state.dirty = false;
       state.stale = true; // C8 edit save
     },

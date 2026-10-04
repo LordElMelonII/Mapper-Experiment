@@ -26,6 +26,7 @@ import type {
 } from '../api';
 import { cardinal } from '../geometry/measure';
 import type { EffectiveGraph } from '../model/effective';
+import { resolveModeLabel } from '../model/validate';
 import { minutesPriced } from '../routing/price';
 
 /** C20: the destinations section is capped; the cap dropping an entry is marked. */
@@ -145,7 +146,10 @@ export function buildSnapshot(
       label: other.label,
       direction,
       cost: priced.cost,
-      mode: priced.mode,
+      // D78/C23: the prompt-facing mode word — the RESOLVED label via the ONE
+      // shared resolver (the registry's authored word, else the id itself,
+      // which for the bare built-ins IS the word). A machine id never renders.
+      mode: resolveModeLabel(priced.mode, map.modes),
       // C2: blocked ≠ hidden — the arc stays listed with its reason.
       ...(edge.blocked !== undefined ? { blockedReason: edge.blocked.reason } : {}),
     });
@@ -167,7 +171,11 @@ export function buildSnapshot(
     if (isUnnamedUserNode(fromNode) || isUnnamedUserNode(toNode)) continue;
     const via = first.from === pin.id ? toNode : fromNode;
     if (via === undefined) continue;
-    candidates.push({ label: hub.label, via: via.label, mode: first.mode, cost: route.total });
+    // D78/C23: the destination's mode word is the leg's already-RESOLVED label
+    // (computeRoute resolved it against the same registry through the ONE
+    // shared resolver — no duplicated mapping; the route is the authority on
+    // its own legs' words).
+    candidates.push({ label: hub.label, via: via.label, mode: first.modeLabel, cost: route.total });
   }
   candidates.sort((a, b) => a.cost - b.cost); // stable — node order breaks ties
   const destinationsTruncated = candidates.length > DESTINATIONS_CAP; // C20/D63

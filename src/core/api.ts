@@ -5,7 +5,11 @@
 // prompt-facing structures.
 
 export type NodeKind = 'world' | 'region' | 'city' | 'district' | 'location' | 'hub' | 'waypoint';
-export type TravelMode = 'walk' | 'car' | 'train';
+// D78 (additive amendment): the travel-mode vocabulary is user-extensible — a
+// map may declare modes (WorldMapData.modes) beyond the built-ins, and the
+// built-ins remain the defaults when a map declares none. The `string & {}`
+// intersection keeps built-in autocomplete while admitting any declared id.
+export type TravelMode = 'walk' | 'car' | 'train' | (string & {});
 export type Terrain = 'road' | 'plain' | 'river' | 'swamp' | 'mountain';
 export type NodeOrigin = 'authored' | 'user';   // user nodes live in the chat overlay (D21)
 
@@ -34,6 +38,26 @@ export interface ModeSpec {
   multiplier?: number;                 // relative factor on derived time
 }
 
+/**
+ * D78: one user-declared travel mode (e.g. horse, airship) — the map-level
+ * registry entry, living beside the scale block. `id` is the structural key
+ * edge.modes / scale.speed / overlay.travelMode reference; `label` is the
+ * authored display word (C23 — it, never the id, reaches prompts and panels;
+ * an entry MAY adopt a built-in id to relabel it). `speed` is a conversion
+ * input with EXACTLY the scale.speed[mode] semantic (canonical units per
+ * hour) — a conversion input, never a third route currency: C14 verbatim and
+ * C15's one-currency rule stand. `allowedByDefault` feeds D42's default-allowed
+ * set (quick-connect / draw-arc). `unit` is a display-only authored word
+ * naming the mode's pace ("km/h", "leagues per day").
+ */
+export interface ModeDeclaration {
+  id: string;                          // structural key — may adopt a built-in id to relabel it (D78)
+  label: string;                       // authored display word (C23)
+  unit?: string;                       // display-only pace word
+  speed?: number;                      // conversion input — the scale.speed[mode] semantic
+  allowedByDefault: boolean;           // D42: the default-allowed set
+}
+
 export interface MapEdgeData {
   id: string;
   source: string;                     // leaf-to-leaf; may cross layers (D16)
@@ -60,6 +84,7 @@ export interface WorldMapData {
   };
   nodes: MapNodeData[];
   edges: MapEdgeData[];
+  modes?: ModeDeclaration[];            // D78 — the mode registry; absent ⇒ exactly today: walk/car/train, scale.speed, nothing else
 }
 
 // Per-chat overlay — persisted in chatMetadata, never in the library
@@ -89,6 +114,7 @@ export interface RouteLeg {
   from: string;
   to: string;
   mode: TravelMode;
+  modeLabel: string;                   // D78/C23 (additive amendment, always present): the RESOLVED authored word — the registry label when an entry with that id exists (built-in relabels included), else the id itself; the UI never maps ids to words itself
   cost: number;
   reason?: string;
 }
@@ -107,14 +133,14 @@ export interface SnapshotRoute {
   label: string;
   direction: string;                   // eight-way cardinal (C10); cross-layer arcs report without one
   cost: number;
-  mode: TravelMode;
+  mode: TravelMode;                    // D78/C23: the RESOLVED label — prompt-facing words only (the bare built-ins' ids ARE their words)
   blockedReason?: string;
 }
 
 export interface SnapshotDestination {
   label: string;
   via: string;
-  mode: TravelMode;
+  mode: TravelMode;                    // D78/C23: the RESOLVED label — prompt-facing words only
   cost: number;
 }
 

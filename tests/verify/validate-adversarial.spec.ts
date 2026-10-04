@@ -145,8 +145,10 @@ describe('§6.2 Data slice through loadMap — refuse before mutate, prior load 
     const effectiveBefore = before.effective;
     expect(before.stale).toBe(false);
 
+    // D78/C32: an unknown travelMode no longer refuses a load (loadMap
+    // degrades it to 'walk'), so the refusal defect is a dangling blocked key.
     const badOverlay = clone(overlay);
-    badOverlay.travelMode = 'teleport';
+    badOverlay.blocked['ghost-edge'] = 'no such arc';
     expect(() => f.loadMap(validMap(), badOverlay)).toThrow(MapValidationError);
 
     const after = facadeStateOf(f);

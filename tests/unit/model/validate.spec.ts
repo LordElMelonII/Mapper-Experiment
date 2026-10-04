@@ -448,3 +448,92 @@ describe('pin eligibility (C1/F27, D58)', () => {
     expect([...PIN_ELIGIBLE_KINDS].sort()).toEqual(['hub', 'location', 'waypoint']);
   });
 });
+
+// --- mode registry (D78) ------------------------------------------------------------------------
+
+describe('mode registry (D78)', () => {
+  const horse = { id: 'horse', label: 'Horseback', unit: 'leagues per day', speed: 10, allowedByDefault: false };
+
+  it('accepts a registry beside the scale block: edge.modes and scale.speed may reference the declared ids (D78)', () => {
+    const data = mutated((m) => {
+      m.modes = [horse, { id: 'airship', label: 'Airship', allowedByDefault: true }];
+      m.edges[0].modes = { horse: { allowed: true } };
+      m.scale.speed = { airship: 200 };
+    });
+    expect(validateWorldMap(data)).toEqual(data);
+  });
+
+  it('an entry may adopt a built-in id to relabel it — the label then wins everywhere the id would display (D78/C23)', () => {
+    const data = mutated((m) => {
+      m.modes = [{ id: 'walk', label: 'On Foot', allowedByDefault: true }];
+    });
+    expect(validateWorldMap(data)).toEqual(data);
+  });
+
+  it('rejects a duplicate registry id at the second occurrence (C30/D78)', () => {
+    const issues = mapIssues(mutated((m) => {
+      m.modes = [horse, { ...horse }];
+    }));
+    expect(singlePath(issues)).toBe('modes[1].id');
+    expect(issues[0].message).toBe("duplicate mode id 'horse'");
+  });
+
+  it('rejects an empty label (C30/D78)', () => {
+    const issues = mapIssues(mutated((m) => {
+      m.modes = [{ id: 'horse', label: '', allowedByDefault: true }];
+    }));
+    expect(singlePath(issues)).toBe('modes[0].label');
+  });
+
+  it('rejects a speed that is not a finite number > 0 (C30/D78)', () => {
+    for (const speed of [0, -5, null]) {
+      const issues = mapIssues(mutated((m) => {
+        m.modes = [{ id: 'horse', label: 'Horseback', speed, allowedByDefault: true }];
+      }));
+      expect(singlePath(issues)).toBe('modes[0].speed');
+    }
+  });
+
+  it('rejects a non-boolean allowedByDefault (C30/D78)', () => {
+    const issues = mapIssues(mutated((m) => {
+      m.modes = [{ id: 'horse', label: 'Horseback', allowedByDefault: 'yes' }];
+    }));
+    expect(singlePath(issues)).toBe('modes[0].allowedByDefault');
+  });
+
+  it('unknown registry-id references in edge.modes are C30 rejections listing the key and the universe (D78)', () => {
+    const issues = mapIssues(mutated((m) => {
+      m.modes = [horse];
+      m.edges[0].modes = { balloon: { allowed: true } };
+    }));
+    expect(singlePath(issues)).toBe('edges[0].modes.balloon');
+    expect(issues[0].message).toBe("unknown travel mode 'balloon' — must be one of: walk, car, train, horse");
+  });
+
+  it('scale.speed keys check against the same map-relative universe (D78)', () => {
+    const issues = mapIssues(mutated((m) => {
+      m.modes = [horse];
+      m.scale.speed = { balloon: 3 };
+    }));
+    expect(singlePath(issues)).toBe('scale.speed.balloon');
+    expect(issues[0].message).toContain('walk, car, train, horse');
+  });
+
+  it('absent modes field ⇒ exactly the old universe: the built-in trio, nothing else (D78 no-registry compat)', () => {
+    const issues = mapIssues(mutated((m) => {
+      m.edges[0].modes = { horse: { allowed: true } };
+    }));
+    expect(singlePath(issues)).toBe('edges[0].modes.horse');
+    expect(issues[0].message).toBe("unknown travel mode 'horse' — must be one of: walk, car, train");
+  });
+
+  it('validateOverlay: a registry mode is valid chat state; garbage lists the map universe, strictly (D78)', () => {
+    const map = validateWorldMap(mutated((m) => {
+      m.modes = [horse];
+    }));
+    expect(() => validateOverlay(mutatedOverlay((o) => { o.travelMode = 'horse'; }), map)).not.toThrow();
+    const issues = overlayIssues(mutatedOverlay((o) => { o.travelMode = 'balloon'; }), map);
+    expect(singlePath(issues)).toBe('travelMode');
+    expect(issues[0].message).toBe('must be one of: walk, car, train, horse');
+  });
+});

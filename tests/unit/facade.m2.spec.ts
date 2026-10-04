@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import { createFacade, facadeStateOf } from '../../src/core/facade';
 import { fuyukiMap } from '../../data/worlds/fuyuki';
-import type { ChatMapOverlay, WorldMapData } from '../../src/core/api';
+import type { ChatMapOverlay, ModeDeclaration, TravelMode, WorldMapData } from '../../src/core/api';
 
 // C24: the facade keeps the loaded reference — every suite thaws a fresh JSON
 // clone of the deep-frozen FX1 fixture so tests never interact.
@@ -75,8 +75,8 @@ describe('FX2 — Emiya Residence → Misaki Town (the owner acceptance case)', 
     expect(r.ok).toBe(true);
     expect(r.total).toBe(350);
     expect(r.legs).toEqual([
-      { arcId: 'arc-emiya-residence-fuyuki-station', from: 'emiya-residence', to: 'fuyuki-station', mode: 'walk', cost: 50 },
-      { arcId: 'arc-fuyuki-station-misaki-town', from: 'fuyuki-station', to: 'misaki-town', mode: 'train', cost: 300 },
+      { arcId: 'arc-emiya-residence-fuyuki-station', from: 'emiya-residence', to: 'fuyuki-station', mode: 'walk', modeLabel: 'walk', cost: 50 },
+      { arcId: 'arc-fuyuki-station-misaki-town', from: 'fuyuki-station', to: 'misaki-town', mode: 'train', modeLabel: 'train', cost: 300 },
     ]);
     // C2: the blocked arc is excluded from routing — invisible to the route (C2/FX2).
     expect(JSON.stringify(r)).not.toContain('arc-emiya-residence-fuyuki-bridge');
@@ -129,10 +129,10 @@ describe('setBlocked — chat-scoped blocks that reroute (C2, D20)', () => {
     expect(r.ok).toBe(true);
     expect(r.total).toBe(352); // hand-computed: 12 + 15 + 25 + 300
     expect(r.legs).toEqual([
-      { arcId: 'arc-emiya-residence-shopping-district', from: 'emiya-residence', to: 'shopping-district', mode: 'walk', cost: 12 },
-      { arcId: 'arc-shopping-district-fuyuki-bridge', from: 'shopping-district', to: 'fuyuki-bridge', mode: 'walk', cost: 15 },
-      { arcId: 'arc-fuyuki-bridge-fuyuki-station', from: 'fuyuki-bridge', to: 'fuyuki-station', mode: 'walk', cost: 25 },
-      { arcId: 'arc-fuyuki-station-misaki-town', from: 'fuyuki-station', to: 'misaki-town', mode: 'train', cost: 300 },
+      { arcId: 'arc-emiya-residence-shopping-district', from: 'emiya-residence', to: 'shopping-district', mode: 'walk', modeLabel: 'walk', cost: 12 },
+      { arcId: 'arc-shopping-district-fuyuki-bridge', from: 'shopping-district', to: 'fuyuki-bridge', mode: 'walk', modeLabel: 'walk', cost: 15 },
+      { arcId: 'arc-fuyuki-bridge-fuyuki-station', from: 'fuyuki-bridge', to: 'fuyuki-station', mode: 'walk', modeLabel: 'walk', cost: 25 },
+      { arcId: 'arc-fuyuki-station-misaki-town', from: 'fuyuki-station', to: 'misaki-town', mode: 'train', modeLabel: 'train', cost: 300 },
     ]);
     expect(r.legs.map((l) => l.arcId)).not.toContain('arc-emiya-residence-fuyuki-station'); // blocked arc absent (C2)
   });
@@ -315,5 +315,114 @@ describe('findRoute / setBlocked argument discipline (C30)', () => {
     f.setBlocked('arc-outskirts-einzbern-castle', '  Rockslide  ');
     const { overlay } = facadeStateOf(f);
     expect(overlay?.blocked['arc-outskirts-einzbern-castle']).toBe('  Rockslide  ');
+  });
+});
+
+// --- D78 mode registry — the speed seam and the label resolver (C14, C23) ----------------------
+
+// a—b 100 canonical units apart (unitPerPx 1); the horse-only arc prices through
+// the ONE cost function either in minutes (a resolved speed) or canonically (row 6).
+const registryMap = (
+  registry: ModeDeclaration[],
+  scaleSpeed?: Partial<Record<TravelMode, number>>,
+): WorldMapData => ({
+  schemaVersion: 2,
+  id: 'map-registry',
+  name: 'Registry Demo',
+  layers: [{ id: 'layer-r', name: 'R' }],
+  scale: {
+    unitPerPx: 1,
+    unitLabel: 'km',
+    unitKind: 'distance',
+    ...(scaleSpeed !== undefined ? { speed: scaleSpeed } : {}),
+  },
+  nodes: [
+    { id: 'a', label: 'Alpha Camp', kind: 'location', layer: 'layer-r', position: { x: 0, y: 0 } },
+    { id: 'b', label: 'Beta Ruin', kind: 'hub', layer: 'layer-r', position: { x: 100, y: 0 } },
+  ],
+  edges: [{ id: 'e-ab', source: 'a', target: 'b', modes: { horse: { allowed: true } } }],
+  modes: registry,
+});
+
+const loadRegistry = (map: WorldMapData): { f: ReturnType<typeof createFacade> } => {
+  const overlay: ChatMapOverlay = {
+    mapId: map.id,
+    currentLocationId: 'a',
+    travelMode: 'horse', // D78: a registry mode the loaded map knows
+    userNodes: [],
+    userEdges: [],
+    blocked: {},
+  };
+  const f = createFacade();
+  f.loadMap(map, overlay);
+  return { f };
+};
+
+describe('D78 mode registry — the speed seam and modeLabel (C14, C15, C23, D78)', () => {
+  it('registry speed beats scale.speed at the ONE seam; C14 row 4–5 arithmetic unchanged (100 units / 10 × 60 = 600 min)', () => {
+    const { f } = loadRegistry(registryMap([{ id: 'horse', label: 'Horseback', speed: 10, allowedByDefault: false }], { horse: 5 }));
+    expect(facadeStateOf(f).savedScale!.speed).toEqual({ horse: 10 }); // registry-first at the savedScale snapshot (A-015/D78)
+    const r = f.findRoute('a', 'b', 'horse');
+    expect(r.ok).toBe(true);
+    expect(r.total).toBe(600); // NOT 1200 (scale.speed 5) — the registry wins, then edgeCost verbatim
+    expect(r.unit).toBe('min');
+  });
+
+  it('a registry entry with speed undefined falls through to scale.speed[mode] (D78 resolution rule)', () => {
+    const { f } = loadRegistry(registryMap([{ id: 'horse', label: 'Horseback', allowedByDefault: false }], { horse: 4 }));
+    const r = f.findRoute('a', 'b', 'horse');
+    expect(r.ok).toBe(true);
+    expect(r.total).toBe(1500); // 100 / 4 × 60 — the scale.speed value served
+  });
+
+  it('C14 row 6 for a speedless custom mode: canonical-units pricing, and the labels say so', () => {
+    const { f } = loadRegistry(registryMap([{ id: 'horse', label: 'Horseback', allowedByDefault: false }]));
+    const r = f.findRoute('a', 'b', 'horse');
+    expect(r.ok).toBe(true);
+    expect(r.total).toBe(100); // geometry × unitPerPx — no speed anywhere ⇒ canonical (C14 row 6, C15)
+    expect(r.unit).toBe('km');
+  });
+
+  it('modeLabel resolves through the ONE resolver: custom mode, relabeled built-in, bare built-in (D78/C23)', () => {
+    // custom mode: the authored word, never the id
+    const rCustom = loadRegistry(registryMap([{ id: 'horse', label: 'Horseback', allowedByDefault: false }])).f.findRoute('a', 'b', 'horse');
+    expect(rCustom.legs[0].mode).toBe('horse');
+    expect(rCustom.legs[0].modeLabel).toBe('Horseback');
+
+    // relabeled built-in: an FX1 clone with walk relabeled — FX2 pricing untouched, the label wins
+    const relabeled = fuyuki();
+    relabeled.modes = [{ id: 'walk', label: 'On Foot', allowedByDefault: true }];
+    const overlay: ChatMapOverlay = {
+      mapId: relabeled.id,
+      currentLocationId: 'emiya-residence',
+      travelMode: 'walk',
+      userNodes: [],
+      userEdges: [],
+      blocked: {},
+    };
+    const fRel = createFacade();
+    fRel.loadMap(relabeled, overlay);
+    const rRel = fRel.findRoute('emiya-residence', 'misaki-town');
+    expect(rRel.total).toBe(350); // FX2 unchanged — a relabel is not a price change
+    expect(rRel.legs[0].mode).toBe('walk'); // the frozen id field stays
+    expect(rRel.legs[0].modeLabel).toBe('On Foot'); // the label wins everywhere the id would display
+    expect(rRel.legs[1].modeLabel).toBe('train'); // undeclared ⇒ the id itself IS the authored word
+
+    // bare built-in: FX1 verbatim — modeLabel === mode
+    const { f } = loadFuyuki();
+    const rBare = f.findRoute('emiya-residence', 'misaki-town');
+    expect(rBare.legs.map((l) => [l.mode, l.modeLabel])).toEqual([
+      ['walk', 'walk'],
+      ['train', 'train'],
+    ]);
+  });
+
+  it('the snapshot carries the resolved label: routes[].mode and destinations[].mode are authored words (D78/C23, C22)', () => {
+    // speedless horse ⇒ the canonical currency (C14 row 6): the preferred registry mode prices geometrically
+    const { f } = loadRegistry(registryMap([{ id: 'horse', label: 'Horseback', allowedByDefault: false }]));
+    const snap = f.getSnapshot();
+    expect(snap.routes).toEqual([{ label: 'Beta Ruin', direction: 'E', cost: 100, mode: 'Horseback' }]); // the word, not 'horse'
+    expect(snap.destinations).toEqual([{ label: 'Beta Ruin', via: 'Beta Ruin', mode: 'Horseback', cost: 100 }]);
+    expect(snap.unit).toBe('km'); // the cost-currency label says canonical
   });
 });

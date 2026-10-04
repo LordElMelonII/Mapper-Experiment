@@ -14,6 +14,7 @@
 import type {
   ChatMapOverlay,
   MapNodeData,
+  ModeDeclaration,
   NodeKind,
   NodeOrigin,
   Terrain,
@@ -48,7 +49,7 @@ export class MapValidationError extends Error {
 // --- enum memberships (typed against ../api unions so they cannot drift) ----
 
 const NODE_KINDS: readonly NodeKind[] = ['world', 'region', 'city', 'district', 'location', 'hub', 'waypoint'];
-const TRAVEL_MODES: readonly TravelMode[] = ['walk', 'car', 'train'];
+const TRAVEL_MODES: readonly TravelMode[] = ['walk', 'car', 'train']; // D78: the BUILT-INS — a map's full universe adds its registry ids
 const TERRAINS: readonly Terrain[] = ['road', 'plain', 'river', 'swamp', 'mountain'];
 const TRANSIT_TYPES = ['train', 'port', 'subway'] as const;
 const ORIGINS: readonly NodeOrigin[] = ['authored', 'user'];
@@ -76,6 +77,38 @@ export function isPinEligible(
 ): boolean {
   const node = nodes.find((n) => n.id === id);
   return node !== undefined && PIN_ELIGIBLE_KINDS.has(node.kind) && !nodes.some((n) => n.parent === id);
+}
+
+// --- mode registry (D78) — the ONE universe and the ONE label resolver ------
+
+/**
+ * D78: the map's mode universe — the built-ins ∪ the map's registry ids. The
+ * ids `edge.modes`, `scale.speed` and `overlay.travelMode` may reference; a
+ * map without a registry has exactly the built-in trio (today's universe).
+ * ONE helper so the validator, the facade's setTravelMode guard and loadMap's
+ * degrade can never drift apart (the isPinEligible precedent).
+ */
+export function modeUniverseOf(map: Pick<WorldMapData, 'modes'>): ReadonlySet<string> {
+  const universe = new Set<string>(TRAVEL_MODES);
+  if (map.modes !== undefined) {
+    for (const declaration of map.modes) {
+      if (isNonEmptyString(declaration.id)) universe.add(declaration.id);
+    }
+  }
+  return universe;
+}
+
+/**
+ * D78/C23: the authored display word for a mode id — the registry entry's
+ * label when one exists (a built-in relabel included), else the id itself
+ * (the bare built-ins' ids ARE their authored words). ONE resolver shared by
+ * RouteLeg.modeLabel and the snapshot's prompt-facing mode fields, so the UI
+ * and templates never map ids to words themselves (R1 spirit for authored
+ * words). A registry entry whose label is missing at runtime degrades to the
+ * id (C32) — validators refuse that shape on load, this never throws.
+ */
+export function resolveModeLabel(mode: TravelMode, modes: readonly ModeDeclaration[] | undefined): string {
+  return modes?.find((d) => d.id === mode)?.label ?? mode;
 }
 
 // --- small guards ------------------------------------------------------------
@@ -199,6 +232,8 @@ interface EdgeContext {
   nodeIds: ReadonlySet<string>;
   /** Node ids that are compound parents — never edge endpoints (C1). */
   nonLeafIds: ReadonlySet<string>;
+  /** D78: the mode universe `modes` keys may reference — built-ins ∪ registry ids, map-relative. */
+  modeUniverse: ReadonlySet<string>;
 }
 
 /** Per-edge field rules (§6.2). An edge with `modes: {}` is legal — never traversable (C14 row 2). */
@@ -229,8 +264,12 @@ function checkEdge(issues: ValidationIssue[], edge: Obj, path: string, ctx: Edge
     push(issues, `${path}.modes`, 'must be an object keyed by travel mode');
   } else {
     for (const key of Object.keys(modes)) {
-      if (!oneOf(TRAVEL_MODES, key)) {
-        push(issues, `${path}.modes.${key}`, `unknown travel mode — must be one of: ${TRAVEL_MODES.join(', ')}`);
+      if (!ctx.modeUniverse.has(key)) { // D78: map-relative — built-ins ∪ registry ids (C30, F50)
+        push(
+          issues,
+          `${path}.modes.${key}`,
+          `unknown travel mode '${key}' — must be one of: ${[...ctx.modeUniverse].join(', ')}`,
+        );
         continue;
       }
       const spec = modes[key];
@@ -337,6 +376,45 @@ export function validateWorldMap(data: unknown): WorldMapData {
     });
   }
 
+  // modes — the D78 registry (beside the scale block): user-declared travel
+  // modes. Validated BEFORE scale and edges so their mode-key checks can run
+  // against the map-relative universe (built-ins ∪ registry ids) this collects.
+  // A no-registry map skips the block entirely — its universe is exactly the
+  // built-in trio, today's behavior (D78: "no-registry maps behave exactly as
+  // today").
+  const registryIds = new Set<string>();
+  const modesDecl = data['modes'];
+  if (modesDecl !== undefined) {
+    if (!Array.isArray(modesDecl)) {
+      push(issues, 'modes', 'must be an array of mode declarations');
+    } else {
+      modesDecl.forEach((declaration, i) => {
+        const path = `modes[${i}]`;
+        if (!isObject(declaration)) {
+          push(issues, path, 'must be an object');
+          return;
+        }
+        const id = declaration['id'];
+        if (!isNonEmptyString(id)) {
+          requireNonEmptyString(issues, id, `${path}.id`);
+        } else if (registryIds.has(id)) {
+          push(issues, `${path}.id`, `duplicate mode id '${id}'`); // first occurrence stays in the universe (the duplicate-node precedent)
+        } else {
+          registryIds.add(id);
+        }
+        requireNonEmptyString(issues, declaration['label'], `${path}.label`);
+        if (declaration['unit'] !== undefined) {
+          requireNonEmptyString(issues, declaration['unit'], `${path}.unit`);
+        }
+        optionalNumberAbove(issues, declaration['speed'], `${path}.speed`, 0);
+        if (typeof declaration['allowedByDefault'] !== 'boolean') {
+          push(issues, `${path}.allowedByDefault`, 'must be a boolean');
+        }
+      });
+    }
+  }
+  const modeUniverse = new Set<string>([...TRAVEL_MODES, ...registryIds]); // D78: the map's mode universe
+
   // scale — unitPerPx finite > 0, unitLabel non-empty, unitKind distance|time;
   // terrainMultipliers / speed values, when present, finite > 0 (C11/D45/C14)
   const scale = data['scale'];
@@ -368,8 +446,8 @@ export function validateWorldMap(data: unknown): WorldMapData {
         push(issues, 'scale.speed', 'must be an object');
       } else {
         for (const key of Object.keys(speed)) {
-          if (!oneOf(TRAVEL_MODES, key)) { // F50/C30: union-keyed, same as edge.modes
-            push(issues, `scale.speed.${key}`, `unknown travel mode — must be one of: ${TRAVEL_MODES.join(', ')}`);
+          if (!modeUniverse.has(key)) { // F50/C30/D78: union-keyed, map-relative — same universe as edge.modes
+            push(issues, `scale.speed.${key}`, `unknown travel mode '${key}' — must be one of: ${[...modeUniverse].join(', ')}`);
             continue;
           }
           requireNumberAbove(issues, speed[key], `scale.speed.${key}`, 0);
@@ -497,7 +575,7 @@ export function validateWorldMap(data: unknown): WorldMapData {
       } else {
         requireNonEmptyString(issues, id, `${path}.id`);
       }
-      checkEdge(issues, edge, path, { nodeIds, nonLeafIds });
+      checkEdge(issues, edge, path, { nodeIds, nonLeafIds, modeUniverse });
     });
   }
 
@@ -531,6 +609,7 @@ export function validateOverlay(
   const layerIds = new Set<string>(map.layers.map((l) => l.id));
   const libraryNodeIds = new Set<string>(map.nodes.map((n) => n.id));
   const libraryEdgeIds = new Set<string>(map.edges.map((e) => e.id));
+  const modeUniverse = modeUniverseOf(map); // D78: map-relative — registry modes are valid chat state
   const nonLeafIds = new Set<string>();
   for (const n of map.nodes) {
     if (typeof n.parent === 'string') nonLeafIds.add(n.parent);
@@ -557,8 +636,12 @@ export function validateOverlay(
     );
   }
 
-  if (!oneOf(TRAVEL_MODES, overlay['travelMode'])) {
-    push(issues, 'travelMode', `must be one of: ${TRAVEL_MODES.join(', ')}`);
+  // D78: strict against THIS map's universe (built-ins ∪ registry ids). The
+  // C32/D78 degrade for chat state from another map's registry belongs to the
+  // facade's loadMap, not here (the D58 tolerance shape).
+  const travelMode = overlay['travelMode'];
+  if (typeof travelMode !== 'string' || !modeUniverse.has(travelMode)) {
+    push(issues, 'travelMode', `must be one of: ${[...modeUniverse].join(', ')}`);
   }
 
   if (overlay['statusNote'] !== undefined && typeof overlay['statusNote'] !== 'string') {
@@ -624,7 +707,7 @@ export function validateOverlay(
       } else {
         requireNonEmptyString(issues, id, `${path}.id`);
       }
-      checkEdge(issues, edge, path, { nodeIds: nodeUniverse, nonLeafIds });
+      checkEdge(issues, edge, path, { nodeIds: nodeUniverse, nonLeafIds, modeUniverse });
     });
   }
 

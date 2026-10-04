@@ -51,7 +51,7 @@ describe('D60(a) — the default prefers overlay.travelMode over the cheaper mod
     expect(r.ok).toBe(true);
     expect(r.total).toBe(240); // a price-first implementation would return 60 — this line is the trap
     expect(r.legs).toEqual([
-      { arcId: 'arc-outskirts-einzbern-castle', from: 'outskirts', to: 'einzbern-castle', mode: 'walk', cost: 240 },
+      { arcId: 'arc-outskirts-einzbern-castle', from: 'outskirts', to: 'einzbern-castle', mode: 'walk', modeLabel: 'walk', cost: 240 },
     ]);
   });
 
@@ -139,9 +139,9 @@ describe('D60(b)/C15 as amended by D74 — on a time-kind min scale the canonica
     expect(r.ok).toBe(true); // D74: the minutes run failed (e-bc has no minutes read); the canonical fallback reads authored minutes honestly on this scale
     expect(r.total).toBe(25); // D74: 10 (authored) + 10 (geometric: 10 px × unitPerPx 1) + 5 (authored) — one honest 'min' total, not a mixed currency (C15)
     expect(r.legs).toEqual([
-      { arcId: 'e-ab', from: 'a', to: 'b', mode: 'walk', cost: 10 }, // authored minutes verbatim (C14 row 3, D14) // D74
-      { arcId: 'e-bc', from: 'b', to: 'c', mode: 'walk', cost: 10 }, // geometric via the scale (C14 row 5)
-      { arcId: 'e-cd', from: 'c', to: 'd', mode: 'walk', cost: 5 },
+      { arcId: 'e-ab', from: 'a', to: 'b', mode: 'walk', modeLabel: 'walk', cost: 10 }, // authored minutes verbatim (C14 row 3, D14) // D74
+      { arcId: 'e-bc', from: 'b', to: 'c', mode: 'walk', modeLabel: 'walk', cost: 10 }, // geometric via the scale (C14 row 5)
+      { arcId: 'e-cd', from: 'c', to: 'd', mode: 'walk', modeLabel: 'walk', cost: 5 },
     ]);
     expect(r.unit).toBe('min'); // D72: the canonical label on a time-min scale — both branches label 'min' // D74
     const json = JSON.stringify(r);
@@ -217,7 +217,7 @@ describe('§6.2 — zero-distance nodes route at cost 0, not ∞ (§6.2, C14 row
     expect(r).toEqual({
       ok: true,
       total: 0,
-      legs: [{ arcId: 'e-ab', from: 'a', to: 'b', mode: 'walk', cost: 0 }],
+      legs: [{ arcId: 'e-ab', from: 'a', to: 'b', mode: 'walk', modeLabel: 'walk', cost: 0 }],
       unit: 'km', // D72 — no authoredMinutes anywhere ⇒ the canonical fallback priced this run
     });
     expect(JSON.stringify(r)).not.toContain('Infinity'); // C17
@@ -244,8 +244,8 @@ describe('C6/C18 — FX2 in reverse: bidirectional arcs, travel-ordered legs (C6
     expect(r.ok).toBe(true);
     expect(r.total).toBe(350);
     expect(r.legs).toEqual([
-      { arcId: 'arc-fuyuki-station-misaki-town', from: 'misaki-town', to: 'fuyuki-station', mode: 'train', cost: 300 },
-      { arcId: 'arc-emiya-residence-fuyuki-station', from: 'fuyuki-station', to: 'emiya-residence', mode: 'walk', cost: 50 },
+      { arcId: 'arc-fuyuki-station-misaki-town', from: 'misaki-town', to: 'fuyuki-station', mode: 'train', modeLabel: 'train', cost: 300 },
+      { arcId: 'arc-emiya-residence-fuyuki-station', from: 'fuyuki-station', to: 'emiya-residence', mode: 'walk', modeLabel: 'walk', cost: 50 },
     ]);
   });
 });
