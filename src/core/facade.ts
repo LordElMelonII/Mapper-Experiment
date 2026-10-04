@@ -27,8 +27,13 @@
 // dirty no presence/overlay command binds unsaved library state: the pin and
 // setBlocked's add path refuse field-precisely (C30) and the C7 kNN scans
 // saved candidates only — validateOverlay must never find a chat key that
-// references data the SAVED map lacks (F50). Commands still unimplemented
-// throw their exact TODO markers — never fake data (Task 0 rule).
+// references data the SAVED map lacks (F50). A-015 implements calibrateScale
+// (C13/D44/D45, "measure this arc") with the savedScale pricing seam: the
+// pricing closures read a SAVED scale snapshot (taken at loadMap, refreshed
+// at saveMap — the A-014 doctrine: the saved plane moves only at load/save),
+// so an unsaved calibration never enters routing or the snapshot (D75/F45).
+// Commands still unimplemented throw their exact TODO markers — never fake
+// data (Task 0 rule).
 
 import type {
   ChatMapOverlay,
@@ -76,7 +81,7 @@ export interface MapFacade {
   upsertEdge(edge: MapEdgeData): void;
   removeNode(id: string): void;
   removeEdge(id: string): void;
-  calibrateScale(arcId: string, authoredDistance: number): void;
+  calibrateScale(arcId: string, authoredDistance: number, unit?: { label: string; kind: 'distance' | 'time' }): void; // C13/D44/D45: unitPerPx = authored ÷ the arc's px length; a present unit seeds label+kind (C11's two kinds), absent ⇒ only unitPerPx moves
   saveMap(): void;
   hasUnsavedChanges(): boolean; // D75/F45: additive §9 extension — the unsaved-changes indicator's state lives in the core
   // Queries
@@ -151,6 +156,14 @@ export interface FacadeState {
   // commands never touch them (only saveMap/loadMap move the saved plane).
   savedNodeIds: Set<string>;
   savedEdgeIds: Set<string>;
+  // A-015 (D75): the SAVED scale — what every pricing seam reads. calibrateScale
+  // mutates the live map.scale in place (the editor draft the UI displays, C24);
+  // pricing serves this snapshot until saveMap refreshes it. Same doctrine as
+  // the A-014 id universes: populated at loadMap, refreshed at saveMap only —
+  // materialize() deliberately does NOT refresh it (an overlay command's
+  // rebuild must not leak an unsaved calibration). Shallow clone: calibration
+  // writes only unitPerPx/unitLabel/unitKind (top-level fields).
+  savedScale: WorldMapData['scale'] | null;
   compile?: TemplateCompiler; // D62: injected engine — absent until the host/tests provide one
 }
 
@@ -183,6 +196,7 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
     activeLayer: null, // F01/D69: viewer state — null until the first loadMap
     savedNodeIds: new Set<string>(), // A-014: empty until a loadMap/saveMap populates them
     savedEdgeIds: new Set<string>(),
+    savedScale: null, // A-015: null until the first loadMap snapshots it
     // D62: the template engine is injected (R5) — Handlebars-shaped. Absent
     // until the host (SillyTavern.libs) or the test/harness devDependency
     // provides one; renderTemplate/getPromptBlock refuse field-precisely.
@@ -217,6 +231,7 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
     const { map, overlay, effective } = state;
     if (map === null || overlay === null) throw new Error('[TravelMapper] no map loaded');
     const eff = effective!; // C8 invariant: with map+overlay loaded, ensureFresh has built the graph
+    const savedScale = state.savedScale!; // A-015/D75: pricing reads the SAVED scale — only loadMap/saveMap move it
 
     // C30: field-precise endpoint validation against the effective node set.
     if (!eff.nodes.some((node) => node.id === from)) {
@@ -228,7 +243,7 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
     // Route-to-self (§6.2) — trivially satisfiable. D72: no run happened, so
     // the label is the canonical one (the D65 empty-set precedent: an empty
     // set presents no minutes-derived cost).
-    if (from === to) return { ok: true, total: 0, legs: [], unit: map.scale.unitLabel };
+    if (from === to) return { ok: true, total: 0, legs: [], unit: savedScale.unitLabel };
 
     const positions = new Map(eff.nodes.map((node) => [node.id, node.position] as const));
     const positionOf = (id: string): { x: number; y: number } | undefined => positions.get(id);
@@ -252,7 +267,7 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
     const candidates: readonly TravelMode[] = mode !== undefined ? [mode] : TRAVEL_MODES;
     const preferred = mode !== undefined ? mode : overlay.travelMode;
     const priceIn = (edge: MapEdgeData, currency: CostCurrency): { mode: TravelMode; cost: number } =>
-      priceForSnapshot(edge, currency, candidates, preferred, map.scale, positionOf);
+      priceForSnapshot(edge, currency, candidates, preferred, savedScale, positionOf);
     const run = (currency: CostCurrency) =>
       shortestPath(nodeIds, eff.edges, (edge) => priceIn(edge, currency).cost, from, to);
     let currency: CostCurrency;
@@ -277,7 +292,7 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
     // else the canonical scale label (C15/D60). Forced-currency runs (D65(c))
     // label their forced currency through the same expression, and ok:false
     // carries the last attempted run's label while presenting no costs (C17).
-    const unit = currency === 'minutes' ? 'min' : map.scale.unitLabel;
+    const unit = currency === 'minutes' ? 'min' : savedScale.unitLabel;
 
     if (!result.ok) {
       // C17: translate unreachability into a human reason. Was the graph
@@ -366,6 +381,10 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       // loadMap/saveMap.
       state.savedNodeIds = new Set(validatedMap.nodes.map((nd) => nd.id));
       state.savedEdgeIds = new Set(validatedMap.edges.map((e) => e.id));
+      // A-015: the pricing seams' scale snapshot — a clone, never the reference
+      // (calibrateScale mutates the live object in place; a reference would
+      // alias the draft straight into routing, breaking D75/F45).
+      state.savedScale = { ...validatedMap.scale };
       state.dirty = false; // D75: a fresh load carries no unsaved editor edits
       state.stale = true; // C8: the next materialize()/query rebuilds
     },
@@ -804,7 +823,82 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       state.dirty = true;
     },
 
-    calibrateScale: () => { throw todo('Phase 3', 'calibrateScale'); }, // D44/D75: stays a stub until M2's "measure this arc"
+    // C13/D44 — "measure this arc": unitPerPx = authored distance ÷ the arc's
+    // pixel length (the model-space euclid of its endpoints — canvas
+    // coordinates ARE the model). The arc comes from the MERGED edge set (both
+    // planes' arcs have measurable geometry; the scale is a library property
+    // either way). D44/D45: a present `unit` seeds the label and the kind
+    // (C11's two kinds); an absent one re-measures in the established unit —
+    // only unitPerPx moves. C13's "never silently overwritten" reads at this
+    // seam as D79's explicit-action ruling: the UI offers, this command
+    // executes — there is no overwrite guard beyond C30 validity. The arc
+    // itself is NEVER touched (authored values are a separate upsertEdge
+    // concern the UX issues as its own command) — calibration writes only
+    // scale. D75: the edit applies to the live scale object in place (the
+    // editor draft the UI displays, C24) and marks `dirty`; the pricing seams
+    // keep serving state.savedScale until saveMap (F45 — an unsaved
+    // calibration changes no cost).
+    calibrateScale: (arcId, authoredDistance, unit) => {
+      const { map, overlay } = state;
+      if (map === null || overlay === null) throw new Error('[TravelMapper] no map loaded');
+      const edge = [...map.edges, ...overlay.userEdges].find((e) => e.id === arcId);
+      if (edge === undefined) {
+        throw new Error(`[TravelMapper] calibrateScale: unknown arc id '${arcId}'`);
+      }
+      // Positions resolve from the merged node set — measurement is geometry,
+      // not runtime binding, so unsaved editor nodes are measurable like any
+      // other (unlike the A-014-gated runtime commands).
+      const nodeById = new Map([...map.nodes, ...overlay.userNodes].map((nd) => [nd.id, nd] as const));
+      const positions = [edge.source, edge.target].map((id) => {
+        const position = nodeById.get(id)?.position;
+        if (position === undefined) {
+          throw new Error(
+            `[TravelMapper] calibrateScale: endpoint '${id}' of arc '${arcId}' has no position — an unpositioned endpoint cannot be measured`,
+          );
+        }
+        return position;
+      });
+      // The ONE euclid (C12 — the same measurement cost/price uses, no parallel math).
+      const pxLength = euclid(positions[0], positions[1]);
+      if (pxLength === 0) {
+        throw new Error(
+          `[TravelMapper] calibrateScale: arc '${arcId}' has zero pixel length — coincident endpoints cannot set a scale`,
+        );
+      }
+      if (!Number.isFinite(authoredDistance) || authoredDistance <= 0) {
+        throw new Error(
+          `[TravelMapper] calibrateScale: authoredDistance must be a finite number > 0 (got '${String(authoredDistance)}')`,
+        );
+      }
+      const unitPerPx = authoredDistance / pxLength; // C13 verbatim
+      if (unit !== undefined) {
+        // The promoteUserNode/setBlocked precedent (verifier findings): an
+        // empty or whitespace-only label is the same defect — a blank unit
+        // word would persist into the library and render blank space in
+        // prompt-facing structures (C23 spirit). Valid strings are stored
+        // verbatim, untrimmed. A lying `kind` needs no ad-hoc check — the
+        // C30 clone gate below owns it (the upsertEdge precedent).
+        if (typeof unit.label !== 'string' || unit.label.trim().length === 0) {
+          throw new Error(
+            `[TravelMapper] calibrateScale: unit.label must be a non-empty string (got '${String(unit.label)}')`,
+          );
+        }
+      }
+      // C30/D75: clone-validate-apply — the identical edit, on the clone first.
+      const clone = structuredClone(map);
+      clone.scale.unitPerPx = unitPerPx;
+      if (unit !== undefined) {
+        clone.scale.unitLabel = unit.label; // D44 seeding
+        clone.scale.unitKind = unit.kind; // C11/D45
+      }
+      validateWorldMap(clone); // MapValidationError propagates; nothing touched
+      map.scale.unitPerPx = unitPerPx; // the live draft (C24: in place, never a reassign of state.map)
+      if (unit !== undefined) {
+        map.scale.unitLabel = unit.label;
+        map.scale.unitKind = unit.kind;
+      }
+      state.dirty = true; // D75: dirty, never stale — saveMap is the live trigger
+    },
 
     // F45/C29/D75: explicit save — the only command that takes unsaved editor
     // edits live. C30 final gate: an invalid live map is refused (the error
@@ -820,6 +914,7 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       // the SAVED plane, so the runtime commands' universes admit their ids.
       state.savedNodeIds = new Set(map.nodes.map((nd) => nd.id));
       state.savedEdgeIds = new Set(map.edges.map((e) => e.id));
+      state.savedScale = { ...map.scale }; // A-015: the saved plane moves — pricing sees the calibrated scale from the next query on
       state.dirty = false;
       state.stale = true; // C8 edit save
     },
@@ -839,6 +934,7 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       const { map, overlay, effective } = state;
       if (map === null || overlay === null) throw new Error('[TravelMapper] no map loaded');
       const eff = effective!; // C8 invariant: with map+overlay loaded, ensureFresh has built the graph
+      const savedScale = state.savedScale!; // A-015/D75: the snapshot prices the SAVED scale — an unsaved calibration never enters it
 
       // D60 default pricing context: the chat's travel mode preferred, all
       // modes candidates (getSnapshot takes no mode argument — §9 surface).
@@ -878,7 +974,7 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       const allMinutes =
         liveArcs.length > 0 &&
         liveArcs.every((edge) =>
-          TRAVEL_MODES.some((m) => edge.modes[m]?.allowed === true && minutesPriced(edge, m, map.scale)),
+          TRAVEL_MODES.some((m) => edge.modes[m]?.allowed === true && minutesPriced(edge, m, savedScale)),
         );
       const currency: CostCurrency = allMinutes ? 'minutes' : 'canonical';
 
@@ -895,7 +991,7 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
           currency,
           candidates,
           preferred,
-          map.scale,
+          savedScale,
           positionOf,
         );
         if (Number.isFinite(priced.cost)) return priced;
@@ -910,7 +1006,12 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       // drops like a cross-currency route arc).
       const routeTo = (nodeId: string): RouteResult => computeRoute(pinId!, nodeId, undefined, currency);
 
-      return buildSnapshot(map, overlay, eff, priceEdge, routeTo);
+      // A-015/D75: buildSnapshot reads scale through its `map` parameter
+      // (routesCurrency + the unit labels) — hand it a READ-VIEW over the live
+      // map whose scale is the SAVED snapshot, so the currency decision and the
+      // label stay in lockstep with the closures above. A projection for this
+      // one synchronous call, never a second copy of the truth (R4).
+      return buildSnapshot({ ...map, scale: savedScale }, overlay, eff, priceEdge, routeTo);
     },
     // A-009: render a USER template over the current snapshot (C22). The
     // template content is user data host-stored (D23); the words may be

@@ -4,7 +4,8 @@
 // the waypoint commands (M2); A-008 implemented setCorrective + getSnapshot
 // (M3); A-009 implemented renderTemplate + getPromptBlock (M3); A-013
 // implemented the editor commands upsertNode/upsertEdge/removeNode/removeEdge
-// + saveMap and the additive hasUnsavedChanges (D75); every
+// + saveMap and the additive hasUnsavedChanges (D75); A-015 implemented
+// calibrateScale (C13/D44/D45); every
 // remaining stub still throws its exact TODO marker — no fake
 // data. The surface test below stays verbatim from Task 0.
 import { describe, expect, it } from 'vitest';
@@ -32,7 +33,6 @@ const FACADE_COMMANDS: (keyof MapFacade)[] = [
 const UNIMPLEMENTED: readonly (readonly [keyof MapFacade, string])[] = [
   ['forkMap', 'Phase 3 M4'],
   ['saveForkToLibrary', 'Phase 3 M4'],
-  ['calibrateScale', 'Phase 3'], // D44/D75: stays a stub until M2's "measure this arc"
 ];
 
 // The seven commands A-002 implemented — gone from the TODO list above.
@@ -57,10 +57,11 @@ const M3_RENDER_COMMANDS = ['renderTemplate', 'getPromptBlock'] as const;
 // the TODO list above.
 const P2_M1_COMMANDS = ['setActiveLayer'] as const;
 
-// The five editor commands the Phase 3 M1 packet implemented — gone from the
-// TODO list above. hasUnsavedChanges is the D75 additive §9 extension.
+// The editor commands the Phase 3 packets implemented — gone from the TODO
+// list above. hasUnsavedChanges is the D75 additive §9 extension;
+// calibrateScale is A-015 (C13/D44/D45, "measure this arc").
 const P3_EDITOR_COMMANDS = [
-  'upsertNode', 'upsertEdge', 'removeNode', 'removeEdge', 'saveMap', 'hasUnsavedChanges',
+  'upsertNode', 'upsertEdge', 'removeNode', 'removeEdge', 'calibrateScale', 'saveMap', 'hasUnsavedChanges',
 ] as const;
 
 describe('facade stub (Task 0)', () => {
@@ -126,7 +127,7 @@ describe('facade stub (Task 0)', () => {
     }
   });
 
-  it('the editor commands no longer throw a TODO (A-013/D75)', () => {
+  it('the editor commands no longer throw a TODO (A-013/A-015, D75)', () => {
     const facade = createFacade();
     for (const command of P3_EDITOR_COMMANDS) {
       const fn = facade[command] as () => unknown;

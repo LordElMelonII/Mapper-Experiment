@@ -406,12 +406,13 @@ describe('dirty/stale/save semantics (F45, C8, C29, D75)', () => {
 // --- lifecycle discipline -------------------------------------------------------------------------
 
 describe('no map loaded ⇒ every editor command throws the standard message (§9 discipline)', () => {
-  it('all five refuse before anything else; hasUnsavedChanges degrades to false', () => {
+  it('all six refuse before anything else; hasUnsavedChanges degrades to false', () => {
     const f = createFacade();
     expect(() => f.upsertNode(nodeDraft())).toThrow('[TravelMapper] no map loaded');
     expect(() => f.upsertEdge(edgeDraft())).toThrow('[TravelMapper] no map loaded');
     expect(() => f.removeNode('x')).toThrow('[TravelMapper] no map loaded');
     expect(() => f.removeEdge('x')).toThrow('[TravelMapper] no map loaded');
+    expect(() => f.calibrateScale('arc-x', 5)).toThrow('[TravelMapper] no map loaded');
     expect(() => f.saveMap()).toThrow('[TravelMapper] no map loaded');
     expect(f.hasUnsavedChanges()).toBe(false);
   });
@@ -558,5 +559,177 @@ describe('A-014 saved-plane universes — lifecycle (F45/D75)', () => {
       overlay.userEdges.some((e) => (e.source === wp2 && e.target === wp) || (e.target === wp2 && e.source === wp)),
     ).toBe(true);
     expectStillValid(map, overlay); // F50: both planes still validate with the new block
+  });
+});
+
+// --- A-015: calibrateScale — "measure this arc" (C13/D44/D45/D75) ---------------------------------
+//
+// C13: unitPerPx = authored distance ÷ the arc's pixel length (the endpoints'
+// model-space euclid — canvas coordinates ARE the model). D44/D45: a present
+// unit seeds the label and the kind (C11's two kinds); an absent unit
+// re-measures in the established unit. D75: the edit lands on the LIVE scale
+// object (the editor draft the UI displays, C24) and marks dirty — the
+// pricing seams serve the SAVED scale snapshot until saveMap (F45: an unsaved
+// calibration changes no cost).
+
+describe('calibrateScale — the C13 formula on an FX1 arc (C13, D44, D75)', () => {
+  it("unitPerPx = authored ÷ px length; the arc's authored values are NEVER touched; dirty, never stale", () => {
+    const { f, map, overlay } = load(fuyuki());
+    // emiya-residence (100,250) ↔ matou-residence (60,210): px = hypot(40,40) = 40√2 (C12)
+    f.calibrateScale('arc-emiya-residence-matou-residence', 40);
+    expect(map.scale.unitPerPx).toBeCloseTo(40 / (40 * Math.SQRT2), 12); // C13 verbatim ⇒ 1/√2
+    expect(map.scale.unitLabel).toBe('min'); // D44: no unit ⇒ the established label stands
+    expect(map.scale.unitKind).toBe('time');
+    expect(f.hasUnsavedChanges()).toBe(true); // D75
+    expect(facadeStateOf(f).stale).toBe(false); // editor commands never set stale (D75)
+    // Calibration writes ONLY scale — the arc's authored values are a separate
+    // upsertEdge concern the UX issues as its own command.
+    const arc = map.edges.find((e) => e.id === 'arc-emiya-residence-matou-residence')!;
+    expect(arc.modes.walk?.authoredMinutes).toBe(22); // FX1's authored value, byte-identical
+    expectStillValid(map, overlay);
+  });
+
+  it('unit seeding: a present unit sets label AND kind — the distance kind, then the time kind (C11/D44/D45)', () => {
+    const { f, map, overlay } = load(fuyuki());
+    const px = 40 * Math.SQRT2; // emiya ↔ matou
+    f.calibrateScale('arc-emiya-residence-matou-residence', 3, { label: 'km', kind: 'distance' });
+    expect(map.scale.unitLabel).toBe('km');
+    expect(map.scale.unitKind).toBe('distance'); // C11: the canonical unit may be either kind (D45)
+    expect(map.scale.unitPerPx).toBeCloseTo(3 / px, 12);
+    f.calibrateScale('arc-emiya-residence-matou-residence', 6, { label: 'min', kind: 'time' });
+    expect(map.scale.unitLabel).toBe('min');
+    expect(map.scale.unitKind).toBe('time');
+    expect(map.scale.unitPerPx).toBeCloseTo(6 / px, 12);
+    expectStillValid(map, overlay);
+  });
+
+  it('a label-absent call updates only unitPerPx — re-measurement in the established unit (D44)', () => {
+    const { f, map, overlay } = load(fuyuki());
+    f.calibrateScale('arc-emiya-residence-matou-residence', 3, { label: 'km', kind: 'distance' });
+    f.calibrateScale('arc-emiya-residence-matou-residence', 60); // no unit
+    expect(map.scale.unitPerPx).toBeCloseTo(60 / (40 * Math.SQRT2), 12);
+    expect(map.scale.unitLabel).toBe('km'); // stands
+    expect(map.scale.unitKind).toBe('distance'); // stands
+    expectStillValid(map, overlay);
+  });
+
+  it('an overlay we- arc measures like a library one — merged-set lookup (D44, C24)', () => {
+    const { f, map, overlay } = load(fuyuki());
+    f.addUserNodeAt('layer-fuyuki', { x: 100, y: 260 }); // 10 px south of emiya (C7 kNN: emiya, matou, shopping)
+    const wp = overlay.userNodes[0];
+    const we = overlay.userEdges.find(
+      (e) => (e.source === wp.id && e.target === 'emiya-residence') || (e.target === wp.id && e.source === 'emiya-residence'),
+    )!;
+    expect(we.id).toMatch(/^we-/);
+    expect(map.edges.some((e) => e.id === we.id)).toBe(false); // NOT a library edge — the merged set found it
+    f.calibrateScale(we.id, 5); // wp(100,260) ↔ emiya(100,250): 10 px ⇒ 0.5
+    expect(map.scale.unitPerPx).toBeCloseTo(0.5, 12);
+    expect(f.hasUnsavedChanges()).toBe(true);
+    expectStillValid(map, overlay);
+  });
+});
+
+describe('calibrateScale — refusals leave state untouched (C30, D75)', () => {
+  it("unknown arc id — field-precise, nothing moved, dirty untouched", () => {
+    const { f, map, overlay } = load(fuyuki());
+    const before = JSON.stringify([map, overlay]);
+    expect(() => f.calibrateScale('arc-ghost', 5)).toThrow(
+      "[TravelMapper] calibrateScale: unknown arc id 'arc-ghost'",
+    );
+    expect(JSON.stringify([map, overlay])).toBe(before); // C30
+    expect(f.hasUnsavedChanges()).toBe(false); // a refusal never flips dirty (D75)
+  });
+
+  it('a positionless endpoint cannot be measured — valid data (a PUT that clears position), field-precise refusal', () => {
+    const { f, map, overlay } = load(fuyuki());
+    f.upsertNode({
+      id: 'einzbern-castle', label: 'Einzbern Castle', kind: 'location', layer: 'layer-fuyuki',
+      position: undefined, parent: undefined, aliases: undefined, transit: undefined, description: undefined, origin: 'authored',
+    }); // D75 PUT: position cleared — still valid data
+    expect(map.nodes.find((nd) => nd.id === 'einzbern-castle')!.position).toBeUndefined();
+    const before = JSON.stringify([map, overlay]);
+    expect(() => f.calibrateScale('arc-outskirts-einzbern-castle', 5)).toThrow(
+      /endpoint 'einzbern-castle' of arc 'arc-outskirts-einzbern-castle' has no position/,
+    );
+    expect(JSON.stringify([map, overlay])).toBe(before); // C30 — the refusal adds nothing beyond the upsert
+  });
+
+  it('zero pixel length — coincident endpoints cannot set a scale (§6.2)', () => {
+    const { f, map, overlay } = load(fuyuki());
+    f.upsertNode(nodeDraft({ label: 'Coincident Spot', position: { x: 30, y: 360 } })); // exactly outskirts' position
+    const twin = lastOf(map.nodes);
+    f.upsertEdge(edgeDraft({ source: 'outskirts', target: twin.id }));
+    const arc = lastOf(map.edges);
+    const before = JSON.stringify([map, overlay]);
+    expect(() => f.calibrateScale(arc.id, 5)).toThrow(/zero pixel length/);
+    expect(JSON.stringify([map, overlay])).toBe(before); // C30
+    expect(map.scale.unitPerPx).toBe(0.2); // FX1's scale untouched
+  });
+
+  it('non-positive and non-finite authoredDistance — field-precise, state untouched', () => {
+    const { f, map, overlay } = load(fuyuki());
+    const before = JSON.stringify([map, overlay]);
+    for (const bad of [0, -5, NaN, Infinity]) {
+      expect(() => f.calibrateScale('arc-emiya-residence-matou-residence', bad)).toThrow(
+        /authoredDistance must be a finite number > 0/,
+      );
+    }
+    expect(JSON.stringify([map, overlay])).toBe(before); // C30
+    expect(f.hasUnsavedChanges()).toBe(false);
+  });
+
+  it('an empty (or whitespace-only) unit label — field-precise, state untouched (C30)', () => {
+    const { f, map, overlay } = load(fuyuki());
+    const before = JSON.stringify([map, overlay]);
+    expect(() => f.calibrateScale('arc-emiya-residence-matou-residence', 5, { label: '', kind: 'distance' })).toThrow(
+      /unit\.label must be a non-empty string/,
+    );
+    expect(() => f.calibrateScale('arc-emiya-residence-matou-residence', 5, { label: '   ', kind: 'time' })).toThrow(
+      /unit\.label must be a non-empty string/,
+    );
+    expect(JSON.stringify([map, overlay])).toBe(before); // C30
+    expect(map.scale.unitLabel).toBe('min'); // FX1's label stands
+  });
+
+  it('C30 clone gate: an overflowing unitPerPx (∞) is refused field-precisely, nothing applied', () => {
+    const { f, map, overlay } = load(fuyuki());
+    f.upsertNode(nodeDraft({ label: 'Micro A', position: { x: 0, y: 0 } }));
+    const a = lastOf(map.nodes);
+    f.upsertNode(nodeDraft({ label: 'Micro B', position: { x: 5e-301, y: 0 } }));
+    const b = lastOf(map.nodes);
+    f.upsertEdge(edgeDraft({ source: a.id, target: b.id }));
+    const arc = lastOf(map.edges);
+    const before = JSON.stringify([map, overlay]);
+    const err = issuesOf(() => f.calibrateScale(arc.id, 1e308)); // 1e308 ÷ 5e-301 overflows to ∞
+    expect(err.issues.some((i) => i.path === 'scale.unitPerPx')).toBe(true);
+    expect(JSON.stringify([map, overlay])).toBe(before); // C30 — the gate refused before any apply
+  });
+});
+
+describe('calibrateScale — D75 saved-scale pricing (F45, C8, D75)', () => {
+  it('unsaved calibration changes no cost; saveMap re-prices and re-optimizes the same query', () => {
+    const { f, map, overlay } = load(fuyuki());
+    f.addUserNodeAt('layer-fuyuki', { x: 100, y: 260 }); // wp 10 px south of emiya; kNN: emiya, matou, shopping (C7)
+    const wp = overlay.userNodes[0].id;
+    const t0 = f.findRoute(wp, 'matou-residence');
+    expect(t0.total).toBeCloseTo(Math.hypot(100 - 60, 260 - 210) * 0.2, 9); // the direct we- leg: geometry × FX1's scale (C14 row 5)
+    expect(t0.legs).toHaveLength(1);
+    expect(t0.legs[0].arcId).toMatch(/^we-/);
+    f.calibrateScale('arc-emiya-residence-matou-residence', 40); // unitPerPx: 0.2 → 1/√2 ≈ 0.7071
+    expect(f.hasUnsavedChanges()).toBe(true);
+    expect(facadeStateOf(f).stale).toBe(false); // dirty, never stale (D75)
+    const t1 = f.findRoute(wp, 'matou-residence');
+    expect(t1.total).toBe(t0.total); // byte-identical — the SAVED scale still prices (F45/D75)
+    f.saveMap(); // the explicit save takes the calibration live (C8 edit save)
+    expect(f.hasUnsavedChanges()).toBe(false);
+    const t2 = f.findRoute(wp, 'matou-residence');
+    // Re-priced AND re-optimized under the new scale: the direct we- leg (≈45.28)
+    // now loses to wp→emiya (10 px × 1/√2 ≈ 7.07) + the authored 22 (C14 row 3).
+    expect(t2.total).toBeCloseTo(10 * Math.SQRT1_2 + 22, 9);
+    const weToEmiya = overlay.userEdges.find(
+      (e) => (e.source === wp && e.target === 'emiya-residence') || (e.target === wp && e.source === 'emiya-residence'),
+    )!;
+    expect(t2.legs.map((l) => l.arcId)).toEqual([weToEmiya.id, 'arc-emiya-residence-matou-residence']);
+    expectStillValid(map, overlay);
   });
 });
