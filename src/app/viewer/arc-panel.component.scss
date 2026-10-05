@@ -138,3 +138,227 @@
   color: #9aa7b8;
   font-size: 0.8125rem;
 }
+
+// ---------------------------------------------------------------------------
+// PKG B-123 — the editor-gated editing sections (§5 Phase 3 M2). Component-
+// scoped chrome only (D7: zero global leakage). Every control keeps the
+// 44px floor and the 16px/1rem font so iOS Safari never focus-zooms (D53);
+// touch-action: manipulation kills double-tap zoom on all of it.
+// ---------------------------------------------------------------------------
+
+// The draft body's section wrapper — a bordered block separating editor
+// chrome from the always-present view body.
+.tme-edit-block,
+.tme-measure {
+  margin-top: 0.625rem;
+  padding: 0.625rem;
+  border: 1px solid rgba(174, 189, 211, 0.3);
+  border-radius: 8px;
+  background: rgba(13, 15, 19, 0.6);
+}
+
+.tme-section-title {
+  margin: 0 0 0.25rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+// Per-mode rows: checkbox + authored word + minutes — one row ≥ 44px tall,
+// wrap-safe at 375px (D53).
+.tme-mode-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.tme-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+// The allowed toggle (C14 row 2): a 44×44 native checkbox, gold accent —
+// tap-forward, honest about size (F52).
+.tme-mode-allowed {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  accent-color: #ffd166; // the established gold accent
+  touch-action: manipulation;
+}
+
+// The mode's authored word is the resolver's label — tapping it toggles the
+// checkbox (the label wraps the target), so the whole left side is tappable.
+.tme-mode-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  color: #e6ebf2;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+// The authored-minutes input (C14 row 3): ≥ 44px, 1rem font (no focus zoom).
+.tme-mode-minutes {
+  flex: 1 1 auto;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 0.625rem;
+  border: 1px solid rgba(174, 189, 211, 0.4);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #e6ebf2;
+  font:
+    400 1rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  touch-action: manipulation;
+}
+
+// Select controls share the input chrome (F52 sizing, no focus zoom).
+.tme-select {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 0.5rem;
+  border: 1px solid rgba(174, 189, 211, 0.4);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #e6ebf2;
+  font:
+    400 1rem/1.4 system-ui,
+    -apple-system,
+    sans-serif;
+  touch-action: manipulation;
+}
+
+// Curve control-point rows — the alias-row precedent (B-117), one point per
+// row: a numeric text input + a 44px remove, plus the add button.
+.tme-curve {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.tme-curve-row {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.tme-curve-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tme-curve-remove {
+  flex: 0 0 auto;
+  min-width: 44px; // F52
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font:
+    600 1rem/1 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.tme-curve-add {
+  align-self: flex-start;
+  min-width: 44px; // F52
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+// Apply — the commit (gold primary, the established accent); Remove — the
+// destructive red family.
+.tme-apply-button {
+  border-color: #ffd166;
+  color: #ffd166;
+}
+
+.tme-remove-button {
+  border-color: rgba(201, 86, 78, 0.7);
+  color: #e08a84;
+}
+
+// C30 field-precise refusals — the B-117 errors pattern, one line per issue:
+// the field path (small, muted) then the core's message verbatim. Shared by
+// the draft and measure sections.
+.tme-errors {
+  margin-top: 0.625rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid rgba(201, 86, 78, 0.5);
+  border-radius: 8px;
+  background: rgba(201, 86, 78, 0.12);
+}
+
+.tme-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.375rem;
+  margin: 0;
+  color: #e08a84;
+}
+
+.tme-error-path {
+  color: #9aa7b8;
+  font-size: 0.75rem;
+}
+
+// The blockArc catch's refusal (B-123): one red line under the chat toggle —
+// blocking an UNSAVED drawn arc is refused field-precisely, never thrown.
+.tme-block-refusal {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid rgba(201, 86, 78, 0.5);
+  border-radius: 8px;
+  background: rgba(201, 86, 78, 0.12);
+  color: #e08a84;
+}
+
+// The measure section's scale readout (R1: core numbers verbatim) and its
+// honest note (pricing serves the SAVED scale until saveMap — A-015/D75).
+.tme-scale {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.5rem;
+  margin: 0.25rem 0;
+  font-weight: 600;
+}
+
+.tme-scale-kind {
+  color: #9aa7b8;
+  font-weight: 400;
+  font-size: 0.8125rem;
+}
+
+.tme-scale-note {
+  margin: 0 0 0.25rem;
+  color: #9aa7b8;
+  font-size: 0.8125rem;
+}

@@ -1,18 +1,116 @@
-// src/app/viewer/arc-panel.component.ts — PKG B-106: the arc panel (ruling 3).
-// Rendered by the viewer ONLY while an edge is selected (ruling 1); shows the
-// arc's endpoints/modes/blocked state verbatim off the live references
+// src/app/viewer/arc-panel.component.ts — PKG B-106: the arc panel (ruling 3),
+// extended by PKG B-123 (§5 Phase 3 M2 — the editing sections): the panel
+// renders endpoints/modes/blocked state verbatim off the live references
 // (ArcInfo — authored labels, authored mode words, D20 merged block state)
-// and hosts the chat-scoped blocked toggle: a single-line reason input +
-// Block, and Lift wherever the facade contract allows lifting (overlay blocks
-// only — an authored block displays its reason with Lift disabled and a
-// static note). R1: no number is computed or displayed here; R2: Block/Lift
-// go through GraphService's facade commands, never the facade from the
-// template; R3: events in → signals out → this template. OnPush + zoneless
-// (D2): taps and input keystrokes are discrete — the only writes are signal
-// writes. F52/D53: every control is a >= 44px tap target, touch-action
-// manipulation, no hover-only affordances.
-import { Component, computed, inject, signal } from '@angular/core';
-import { GraphService } from '../graph/graph.service';
+// and hosts the chat-scoped blocked toggle (F14/C2/D20, both modes). In
+// EDITOR mode (graph.editorMode() — the B-117/Q29 property-panel regime; view
+// mode keeps exactly the B-106 body) it gains the §5 M2 editing sections:
+//   - per-mode rows over the map's WHOLE mode universe (arcModesOf): an
+//     allowed checkbox + an authored-minutes input (C14 rows 2–3; the label
+//     is the ONE core resolver's authored word — the UI never maps ids to
+//     words itself). The `multiplier` field is OUT of M2 scope: rows never
+//     edit it and never drop it (the commit copies the live spec verbatim).
+//   - terrain select (C12), authored-distance input (D14), curve
+//     control-point rows (B-111 — the AUTHORED list edited verbatim: add /
+//     remove / retype; no math, ever — R1).
+//   - the "measure this arc" section (F44/F20/D44): value + unit word + kind
+//     select + Apply ⇒ facade.calibrateScale (A-015) with a non-empty word,
+//     or unit-absent (re-measure in the established unit, D44). The scale
+//     readout is graph.scaleNow — core numbers verbatim (R1); a measurement
+//     writes SCALE, never the arc (the arc does NOT become drafted), while
+//     `dirty` lights and pricing serves the SAVED scale until saveMap — the
+//     section says so.
+//   - Remove (D42's deferred refine/dedup surface): facade.removeEdge; an
+//     overlay block dies with the arc (F50); no confirm dialog (F46 — the
+//     draft state makes accidental removals recoverable by redrawing).
+// The B-117 draft discipline (C29/R2): every control is a CONTROLLED input
+// (signal in/out) bound to an arc panel-LOCAL draft — never the live
+// MapEdgeData; ONE draft commit per Apply (a full-replace upsertEdge PUT with
+// the arc's KNOWN id, D75); an un-Applyed draft is abandoned on selection
+// change (nothing was promised: no dirty, no drafted visual). Untouched rows
+// commit the live spec verbatim — a round-trip of the packet's "never drop
+// what the panel does not own" for multipliers and absent keys.
+// C30: refusals surface user-visibly (the field-precise issues list, the
+// connectRefusal/nodeEditRefusal pattern) — the draft refusal under the edit
+// body, the measure refusal under its section, and the B-123 blockArc catch
+// under the chat toggle (blocking an UNSAVED drawn arc no longer throws
+// uncaught). Honest disabled states: Apply disables while any touched text
+// is unparseable, the measure Apply while the value is not a number.
+// R1: no number here is computed or displayed except the core's own scale
+// readout; R2: everything goes through GraphService's facade commands; R3:
+// events in → signals out → this template. Zoneless (D2): taps, keystrokes
+// and select changes are discrete — the only writes are signal writes. The
+// seed/commit effect runs per discrete selection or editor-mode change.
+// F52/D53: every control ≥ 44px, touch-action manipulation, no hover-only
+// affordances.
+import {
+  Component,
+  computed,
+  effect,
+  inject,
+  signal,
+} from '@angular/core';
+import type { MapEdgeData, ModeSpec, Terrain, TravelMode } from '../../core/api';
+import { GraphService, type NodeEditIssue } from '../graph/graph.service';
+
+/** The five TERRAINS with their C23 select words — api.ts's union, verbatim. */
+const TERRAIN_OPTIONS: readonly { id: Terrain; name: string }[] = [
+  { id: 'road', name: 'Road' },
+  { id: 'plain', name: 'Plain' },
+  { id: 'river', name: 'River' },
+  { id: 'swamp', name: 'Swamp' },
+  { id: 'mountain', name: 'Mountain' },
+];
+
+/** The two C11 unit kinds with their select words. */
+const UNIT_KIND_OPTIONS: readonly { id: 'distance' | 'time'; name: string }[] = [
+  { id: 'distance', name: 'Distance' },
+  { id: 'time', name: 'Time' },
+];
+
+/**
+ * One editable mode row (C29/R2: the draft's local copy). `touched` flags are
+ * set by EVERY input event of their control — the commit writes a spec only
+ * for touched rows and copies the live spec verbatim (multiplier included,
+ * out of M2 scope) for untouched ones, so a full-replace commit never drops
+ * data the author did not edit.
+ */
+interface ModeDraftRow {
+  readonly id: TravelMode;
+  /** The authored display word (the ONE core resolver's label, seeded once — C23/R1: the UI never maps ids to words). */
+  readonly label: string;
+  allowed: boolean;
+  allowedTouched: boolean;
+  /** The authored-minutes input text — '' when none (clearing is a write). */
+  minutes: string;
+  minutesTouched: boolean;
+}
+
+/**
+ * The local ARC DRAFT (C29/R2): plain copies of the panel-editable fields,
+ * seeded from the live arc and committed ONLY on Apply (one full-replace
+ * `upsertEdge` — the packet's one-draft-commit-per-Apply rule). `terrain` ''
+ * means none (the explicit none; a commit sends undefined to clear). The
+ * curve rows are ONE CONTROL POINT per row (verbatim authored strings).
+ */
+interface ArcDraft {
+  readonly id: string;
+  readonly modes: ModeDraftRow[];
+  terrain: string;
+  terrainTouched: boolean;
+  distance: string;
+  distanceTouched: boolean;
+  curve: string[];
+  curveTouched: boolean;
+}
+
+/** Parse authored text as a finite number, or null when not one (input handling, not computation — R1). */
+function asFiniteNumber(text: string): number | null {
+  const t = text.trim();
+  if (t === '') return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
 
 @Component({
   selector: 'tme-arc-panel',
@@ -22,29 +120,137 @@ import { GraphService } from '../graph/graph.service';
 export class ArcPanelComponent {
   protected readonly graph = inject(GraphService);
 
+  /** C23 select words for the terrain/unit-kind controls (plain data). */
+  protected readonly terrains = TERRAIN_OPTIONS;
+  protected readonly unitKinds = UNIT_KIND_OPTIONS;
+
   /**
    * The selected arc's data (ruling 3): graphRevision is a dependency so a
    * Block/Lift re-reads arcInfo without edgeSelection moving — the reason
-   * line flips to the overlay's restated text, Lift enables, live. Null only
-   * if the id no longer resolves (map swap races) — the @if hides the body.
+   * line flips to the overlay's restated text, Lift enables, live.
+   * B-123: editorRevision joins as a dependency (a commit/calibration/removal
+   * bumps it) so the whole view body re-reads after the panel's own commands
+   * too. Null only if the id no longer resolves (map swap races) — the @if
+   * hides the body.
    */
   protected readonly arc = computed(() => {
     void this.graph.graphRevision(); // dependency: block/lift re-reads (B-106 ruling 4)
+    void this.graph.editorRevision(); // B-123: the panel's own commands re-read
     const sel = this.graph.edgeSelection();
     return sel === null ? null : this.graph.arcInfo(sel.id);
   });
 
   /**
-   * The reason input's value — a controlled input ([value] + signal write on
-   * every input event; R3: the handler READS the DOM event, writes a signal,
-   * never writes the DOM). Trimmed to '' on submit: the facade's C30 contract
-   * refuses empty reasons, and the UI stays honest by disabling Block while
-   * the trimmed value is empty (§6.2 spirit — the facade is the authority).
+   * B-123: the arc panel-LOCAL draft (C29/R2) — null whenever the editing
+   * sections must not render: view mode, no selection, a NON-library arc
+   * (overlay `we-` edges are chat state with no editor command — the B-116
+   * waypoint precedent; arcModesOf answers null for them). The MEASURE
+   * section is deliberately independent of the draft: calibrateScale takes
+   * the MERGED arc set (A-015), so an overlay arc measures like any other.
    */
-  protected readonly reason = signal('');
+  private readonly draft = signal<ArcDraft | null>(null);
 
-  /** The Block button's honest state: enabled iff the trimmed reason is non-empty. */
-  protected readonly canBlock = computed(() => this.reason().trim().length > 0);
+  /** The draft Apply's last C30 refusal — the collected field-precise issues. */
+  protected readonly refusals = signal<readonly NodeEditIssue[]>([]);
+
+  /** The measure Apply's last C30 refusal — same pattern, own section. */
+  protected readonly measureRefusals = signal<readonly NodeEditIssue[]>([]);
+
+  // --- The measure section's controlled inputs (F44/F20/D44) ---------------
+
+  /** The "real-world distance" input's text — '' while untouched. */
+  protected readonly measureValue = signal('');
+  /** The unit word input's text — '' ⇒ re-measure in the established unit (D44). */
+  protected readonly measureUnit = signal('');
+  /** The kind select's value — seeded to the established kind at draft seed. */
+  protected readonly measureKind = signal<'distance' | 'time'>('distance');
+
+  /**
+   * F44/F20: the scale readout's source — the service's `scaleNow` (core
+   * numbers verbatim, R1) surfaced for the template.
+   */
+  protected readonly scale = this.graph.scaleNow;
+
+  /** B-123: the blockArc catch's refusal, rendered under the chat toggle. */
+  protected readonly blockRefusal = this.graph.arcBlockRefusal;
+
+  // --- Draft mechanics (B-117 pattern) --------------------------------------
+
+  constructor() {
+    // The draft lifecycle (C29 draft-then-commit): keyed on the selection and
+    // the editor mode — both change only through discrete taps (D2). A
+    // selection change or the editor exit re-seeds (an un-Applyed draft is
+    // abandoned — the packet's one-commit-per-Apply rule; nothing was
+    // written, so nothing is lost). graphRevision is deliberately NOT a
+    // dependency: a Block/Lift while editing must not wipe the draft.
+    effect(() => {
+      const editor = this.graph.editorMode();
+      const sel = this.graph.edgeSelection();
+      if (!editor || sel === null) {
+        this.seedDraft(null);
+        return;
+      }
+      // B-123: leaving the arc clears the block-catch refusal with it (the
+      // stale message must not follow another arc).
+      this.graph.clearArcBlockRefusal();
+      this.seedDraft(sel.id);
+    });
+  }
+
+  /**
+   * The draft's dirty state — any touched control. Nothing touched means
+   * Apply is a no-op (the B-116 no-move precedent: an untouched draft commits
+   * nothing and never flags the map dirty).
+   */
+  protected readonly draftDirty = computed((): boolean => {
+    const d = this.draft();
+    if (d === null) return false;
+    return (
+      d.modes.some((row) => row.allowedTouched || row.minutesTouched) ||
+      d.terrainTouched ||
+      d.distanceTouched ||
+      d.curveTouched
+    );
+  });
+
+  /**
+   * The draft's parse validity — every TOUCHED numeric text must be a finite
+   * number (the honest disabled state: unparseable text disables Apply; a
+   * valid-but-invalid value — e.g. negative minutes — is applied and its C30
+   * refusal surfaces field-precise, the facade stays the authority).
+   */
+  protected readonly draftValid = computed((): boolean => {
+    const d = this.draft();
+    if (d === null) return true;
+    for (const row of d.modes) {
+      if (row.minutesTouched && row.minutes.trim() !== '' && asFiniteNumber(row.minutes) === null) {
+        return false;
+      }
+    }
+    if (d.distanceTouched && d.distance.trim() !== '' && asFiniteNumber(d.distance) === null) {
+      return false;
+    }
+    for (const point of d.curve) {
+      if (asFiniteNumber(point) === null) return false;
+    }
+    return true;
+  });
+
+  /** The Apply button's honest state: dirty + parse-valid (B-117 discipline). */
+  protected readonly canApply = computed(() => this.draftDirty() && this.draftValid());
+
+  /** The measure Apply's honest state: the value must parse (D44's apply-what-parses). */
+  protected readonly canMeasure = computed(() => asFiniteNumber(this.measureValue()) !== null);
+
+  /** F20 seeding made visible: the seeded label stands when the word is empty. */
+  protected readonly establishedUnitNote = computed((): string | null => {
+    if (this.measureUnit().trim() !== '') return null;
+    const s = this.scale();
+    if (s === null) return null;
+    return `No unit word — re-measures in the established unit (${s.unitLabel} ${s.unitKind}).`;
+  });
+
+  // --- The reason input (B-106, unchanged) -----------------------------------
 
   /** R3: the input event handler — a DOM read, then the signal write. */
   protected onReasonInput(event: Event): void {
@@ -53,16 +259,16 @@ export class ArcPanelComponent {
 
   /**
    * F14/C2: block with a reason through the service (R2). Only reachable
-   * while canBlock() holds (button disabled otherwise), so the facade's C30
-   * throw is structurally out of reach. Clears the input after: the block is
-   * now displayed from the live overlay, and re-stating starts fresh.
+   * while canBlock() holds. B-123: blockArc now answers false on its caught
+   * C30 refusal (an UNSAVED drawn arc — the A-014 gate); the input is kept
+   * so the author can retry after saving, and the message renders above.
    */
   protected block(): void {
     const sel = this.graph.edgeSelection();
     const reason = this.reason().trim();
     if (sel === null || reason.length === 0) return;
-    this.graph.blockArc(sel.id, reason);
-    this.reason.set('');
+    const blocked = this.graph.blockArc(sel.id, reason);
+    if (blocked) this.reason.set('');
   }
 
   /**
@@ -76,4 +282,254 @@ export class ArcPanelComponent {
     if (sel === null) return;
     this.graph.liftBlock(sel.id);
   }
+
+  // --- Editor draft handlers (R3: DOM read → signal write, never DOM write) ---
+
+  protected onAllowedToggle(row: ModeDraftRow, event: Event): void {
+    const value = (event.target as HTMLInputElement).checked;
+    this.updateDraft((d) => ({
+      ...d,
+      modes: d.modes.map((r) =>
+        r.id === row.id ? { ...r, allowed: value, allowedTouched: true } : r,
+      ),
+    }));
+  }
+
+  protected onMinutesInput(row: ModeDraftRow, event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.updateDraft((d) => ({
+      ...d,
+      modes: d.modes.map((r) =>
+        r.id === row.id ? { ...r, minutes: value, minutesTouched: true } : r,
+      ),
+    }));
+  }
+
+  protected onTerrainChange(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+    // Only '' or the five offered terrains pass — a DOM lie must not draft one.
+    if (value !== '' && !TERRAIN_OPTIONS.some((option) => option.id === value)) return;
+    this.updateDraft((d) => ({ ...d, terrain: value, terrainTouched: true }));
+  }
+
+  protected onDistanceInput(event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.updateDraft((d) => ({ ...d, distance: value, distanceTouched: true }));
+  }
+
+  /** One control point per row — AUTHORED strings edited verbatim (R1). */
+  protected onCurveInput(index: number, event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.updateDraft((d) => ({
+      ...d,
+      curve: d.curve.map((p, i) => (i === index ? value : p)),
+      curveTouched: true,
+    }));
+  }
+
+  protected addCurvePoint(): void {
+    this.updateDraft((d) => ({ ...d, curve: [...d.curve, ''], curveTouched: true }));
+  }
+
+  protected removeCurvePoint(index: number): void {
+    this.updateDraft((d) => ({
+      ...d,
+      curve: d.curve.filter((_, i) => i !== index),
+      curveTouched: true,
+    }));
+  }
+
+  /**
+   * B-123 (D75/D77): the ONE draft commit per Apply — a full-replace
+   * `upsertEdge` PUT with the arc's KNOWN id (the whole draft; untouched
+   * specs verbatim). A C30 refusal renders field-precise with the draft
+   * intact; on success the panel re-seeds from the committed values (the
+   * B-117 reseed precedent) and the canvasside draft treatment lights (B-121).
+   */
+  protected applyDraft(): void {
+    const d = this.draft();
+    if (d === null || !this.canApply()) return;
+    const live = this.graph.edgeDataById(d.id);
+    if (live === null) {
+      // The arc is gone from the library plane — nothing to save, no command
+      // to issue; drop the draft (near-unreachable degrade, C32).
+      this.refusals.set([]);
+      this.draft.set(null);
+      return;
+    }
+    const modes: MapEdgeData['modes'] = {};
+    for (const row of d.modes) {
+      const liveSpec = live.modes[row.id];
+      if (!row.allowedTouched && !row.minutesTouched) {
+        // Untouched ⇒ the live spec verbatim — a full-replace commit never
+        // drops what the panel does not own (multiplier included — out of
+        // M2 scope, never edited, never dropped; B-123 packet ruling).
+        if (liveSpec !== undefined) {
+          const preserved: ModeSpec = { ...liveSpec };
+          modes[row.id] = preserved;
+        }
+        continue;
+      }
+      const minutes = row.minutesTouched
+        ? row.minutes.trim() === ''
+          ? undefined
+          : asFiniteNumber(row.minutes) ?? undefined
+        : liveSpec?.authoredMinutes;
+      const allowed = row.allowedTouched ? row.allowed : (liveSpec?.allowed ?? false);
+      const spec: ModeSpec = { allowed };
+      if (minutes !== undefined && Number.isFinite(minutes)) spec.authoredMinutes = minutes;
+      if (liveSpec?.multiplier !== undefined) spec.multiplier = liveSpec.multiplier;
+      modes[row.id] = spec;
+    }
+    const terrain = d.terrainTouched
+      ? d.terrain === ''
+        ? undefined
+        : (d.terrain as Terrain)
+      : live.terrain;
+    const authoredDistance = d.distanceTouched
+      ? (d.distance.trim() === '' ? undefined : asFiniteNumber(d.distance) ?? undefined)
+      : live.authoredDistance;
+    const curve = d.curveTouched
+      ? (d.curve.length === 0
+          ? undefined
+          : { distances: d.curve.map((point) => asFiniteNumber(point) as number) })
+      : live.curve;
+    const refused = this.graph.commitArcDraft({
+      ...live,
+      modes,
+      ...(terrain !== undefined ? { terrain } : {}),
+      ...(authoredDistance !== undefined ? { authoredDistance } : {}),
+      ...(curve !== undefined ? { curve } : {}),
+    });
+    if (refused !== null) {
+      this.refusals.set(refused.issues);
+      return; // C30: draft intact, panel open, issues rendered
+    }
+    this.refusals.set([]);
+    this.seedDraft(d.id); // re-seed off the committed values — the seed stays honest
+  }
+
+  /**
+   * F46 delete-and-redo: DIRECT, no confirm dialog (D42's refine/dedup — a
+   * redundant parallel arc dies here; the draft state makes accidental
+   * removals recoverable by redrawing). A C30 refusal keeps the draft open
+   * with the field-precise report; on success the service cleared the edge
+   * selection (the removeNode precedent) and the panel closes.
+   */
+  protected removeArc(): void {
+    const d = this.draft();
+    if (d === null) return;
+    const refused = this.graph.removeArc(d.id);
+    if (refused !== null) {
+      this.refusals.set(refused.issues);
+      return;
+    }
+    this.refusals.set([]);
+  }
+
+  // --- Measure handlers (F44/F20/D44) ----------------------------------------
+
+  protected onMeasureValueInput(event: Event): void {
+    this.measureValue.set((event.target as HTMLInputElement).value);
+  }
+
+  protected onMeasureUnitInput(event: Event): void {
+    this.measureUnit.set((event.target as HTMLInputElement).value);
+  }
+
+  protected onMeasureKindChange(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+    if (value === 'distance' || value === 'time') this.measureKind.set(value);
+  }
+
+  /**
+   * B-123 (F44/D44): apply the measurement THROUGH the service (R2) —
+   * `calibrateScale(arcId, value, { label, kind })` with a non-empty word,
+   * or unit-absent when the word is empty/whitespace (re-measure in the
+   * established unit — D44). A C30 refusal renders field-precise and the
+   * state is untouched; on success only the SCALE moved (the arc is not
+   * drafted) — the readout renders the seeded label next tick. A negative or
+   * zero value PARSES, so Apply stays enabled and the facade refuses — the
+   * UI never silences the core's own message.
+   */
+  protected applyMeasure(): void {
+    const sel = this.graph.edgeSelection();
+    if (sel === null || !this.canMeasure()) return;
+    const value = asFiniteNumber(this.measureValue());
+    if (value === null) return;
+    const label = this.measureUnit().trim();
+    const refused = this.graph.measureArc(
+      sel.id,
+      value,
+      label === '' ? undefined : { label, kind: this.measureKind() },
+    );
+    if (refused !== null) {
+      this.measureRefusals.set(refused.issues);
+      return;
+    }
+    this.measureRefusals.set([]);
+  }
+
+  // --- Draft seeding ----------------------------------------------------------
+
+  /** The updateDraft helper — a null-safe draft write (a keystroke racing a
+   *  re-seed degrades to a no-op, C32 spirit). */
+  private updateDraft(fn: (d: ArcDraft) => ArcDraft): void {
+    this.draft.update((d) => (d === null ? d : fn(d)));
+  }
+
+  /**
+   * Seed a LOCAL draft copy from the live references (C29/R2 — the live
+   * MapEdgeData is never bound; arcModesOf answers null for non-library
+   * arcs, closing the draft there). Clears the section refusals; the
+   * measure kind re-seeds to the established kind so a first measurement
+   * touches nothing surprising. Null clears the draft and the panels'
+   * editor state.
+   */
+  private seedDraft(id: string | null): void {
+    if (id === null) {
+      this.draft.set(null);
+      this.refusals.set([]);
+      return;
+    }
+    const rows = this.graph.arcModesOf(id);
+    const info = this.graph.arcInfo(id);
+    if (rows === null || info === null) {
+      this.draft.set(null);
+      this.refusals.set([]);
+      return;
+    }
+    this.refusals.set([]);
+    const scale = this.scale();
+    this.measureKind.set(scale?.unitKind === 'time' ? 'time' : 'distance');
+    this.draft.set({
+      id, // the arc's KNOWN id — immutable, carried verbatim (D75 PUT)
+      modes: rows.map((row) => ({
+        id: row.id,
+        label: row.label, // the resolver's authored word, seeded once (C23/R1)
+        allowed: row.allowed,
+        allowedTouched: false,
+        minutes: row.authoredMinutes === null ? '' : String(row.authoredMinutes),
+        minutesTouched: false,
+      })),
+      terrain: info.terrain ?? '',
+      terrainTouched: false,
+      distance: info.authoredDistance === null ? '' : String(info.authoredDistance),
+      distanceTouched: false,
+      curve: info.curveDistances === null ? [] : info.curveDistances.map((n) => String(n)),
+      curveTouched: false,
+    });
+  }
+
+  /**
+   * The reason input's value — a controlled input ([value] + signal write on
+   * every input event; R3: the handler READS the DOM event, writes a signal,
+   * never writes the DOM). Trimmed to '' on submit: the facade's C30 contract
+   * refuses empty reasons, and the UI stays honest by disabling Block while
+   * the trimmed value is empty (§6.2 spirit — the facade is the authority).
+   */
+  protected readonly reason = signal('');
+
+  /** The Block button's honest state: enabled iff the trimmed reason is non-empty. */
+  protected readonly canBlock = computed(() => this.reason().trim().length > 0);
 }

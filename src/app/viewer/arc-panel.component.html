@@ -2,7 +2,16 @@
      ArcInfo (authored + overlay data, verbatim — R1/R4) and the chat-scoped
      blocked toggle (F14/C2/D20). Rendered by the viewer only while an edge is
      selected (ruling 1); every control >= 44px, no hover affordances
-     (F52/D53). -->
+     (F52/D53). PKG B-123 (§5 Phase 3 M2): in EDITOR mode the panel gains the
+     editing sections — per-mode allowed toggles + authored minutes (C14 rows
+     2–3), terrain (C12), authored distance (D14), curve control points
+     (B-111), the "measure this arc" calibration (F44/F20/D44) and arc Remove
+     (D42) — bound to the component's LOCAL draft (C29/R2), committed on ONE
+     Apply as a full-replace upsertEdge (D75); C30 refusals render
+     field-precise in their sections, never console-only. The draft body is
+     library-plane only (overlay `we-` arcs have no editor command — the
+     B-116 waypoint precedent); the measure section serves the MERGED set
+     (A-015). -->
 <section class="tme-arc" data-testid="tme-arc-panel" aria-label="Arc">
   <h2 class="tme-title">Arc</h2>
 
@@ -72,5 +81,229 @@
       <!-- No block at all: no Lift row — nothing to lift (ruling 3: "Lift
            shown when an OVERLAY block exists"). -->
     </div>
+
+    <!-- B-123: the blockArc catch's refusal — blocking an UNSAVED drawn arc
+         (the A-014 saved-plane gate) surfaces field-precise here (never an
+         uncaught console error); cleared on the next successful action and
+         when the panel leaves the arc. -->
+    @if (blockRefusal(); as message) {
+      <p class="tme-block-refusal" data-testid="tme-arc-block-refusal" role="alert">{{ message }}</p>
+    }
+
+    <!-- ---- PKG B-123: the DRAFT SECTIONS (editor mode + library plane) ---- -->
+    @if (graph.editorMode() && info.library && draft(); as d) {
+      <section class="tme-edit-block" data-testid="tme-arc-editor" aria-label="Edit arc">
+        <h3 class="tme-section-title">Edit arc</h3>
+
+        <!-- Per-mode rows over the map's WHOLE mode universe (arcModesOf):
+             the authored word (the ONE core resolver's label) + the allowed
+             checkbox (C14 row 2) + the authored-minutes input (C14 row 3).
+             The multiplier field is out of M2 scope — never rendered, never
+             edited, and copied verbatim on commit. -->
+        <span class="tme-field-label">Modes</span>
+        <div class="tme-mode-rows" role="group" aria-label="Allowed modes">
+          @for (row of d.modes; track row.id) {
+            <div class="tme-mode-row" [attr.data-testid]="'tme-arc-row-' + row.id">
+              <input
+                class="tme-mode-allowed"
+                type="checkbox"
+                [attr.id]="'tme-arc-allowed-' + row.id"
+                [attr.data-testid]="'tme-arc-allowed-' + row.id"
+                [checked]="row.allowed"
+                (change)="onAllowedToggle(row, $event)"
+              />
+              <label
+                class="tme-mode-name"
+                [attr.for]="'tme-arc-allowed-' + row.id"
+                [attr.data-testid]="'tme-arc-mode-row-' + row.id"
+              >{{ row.label }}</label>
+              <input
+                class="tme-mode-minutes"
+                type="text"
+                inputmode="decimal"
+                autocomplete="off"
+                placeholder="min"
+                aria-label="Authored minutes for {{ row.label }}"
+                [attr.data-testid]="'tme-arc-minutes-' + row.id"
+                [value]="row.minutes"
+                (input)="onMinutesInput(row, $event)"
+              />
+            </div>
+          }
+        </div>
+
+        <!-- Terrain: an edge-level authored field (C12's multiplier path). -->
+        <label class="tme-field-label" for="tme-arc-terrain">Terrain</label>
+        <select id="tme-arc-terrain" class="tme-select" data-testid="tme-arc-terrain" (change)="onTerrainChange($event)">
+          <option value="" [selected]="d.terrain === ''">None</option>
+          @for (option of terrains; track option.id) {
+            <option [value]="option.id" [selected]="d.terrain === option.id">{{ option.name }}</option>
+          }
+        </select>
+
+        <!-- Authored distance: geometry overridden, verbatim (D14). -->
+        <label class="tme-field-label" for="tme-arc-distance">Authored distance</label>
+        <input
+          id="tme-arc-distance"
+          class="tme-reason-input"
+          type="text"
+          inputmode="decimal"
+          autocomplete="off"
+          placeholder="authored straight-line length"
+          data-testid="tme-arc-distance"
+          [value]="d.distance"
+          (input)="onDistanceInput($event)"
+        />
+
+        <!-- Curve: the AUTHORED control-point list edited verbatim — one
+             point per row, add/remove/retype; no math, ever (R1). -->
+        <span class="tme-field-label" id="tme-curve-label">Curve control points</span>
+        <div class="tme-curve" role="group" aria-labelledby="tme-curve-label">
+          @for (point of d.curve; track $index) {
+            <div class="tme-curve-row" data-testid="tme-arc-curve-row">
+              <input
+                class="tme-reason-input tme-curve-input"
+                type="text"
+                inputmode="decimal"
+                autocomplete="off"
+                [attr.aria-label]="'Curve control point ' + ($index + 1)"
+                data-testid="tme-arc-curve-input"
+                [value]="point"
+                (input)="onCurveInput($index, $event)"
+              />
+              <button
+                type="button"
+                class="tme-curve-remove"
+                data-testid="tme-arc-curve-remove"
+                [attr.aria-label]="'Remove curve control point ' + ($index + 1)"
+                (click)="removeCurvePoint($index)"
+              >
+                ×
+              </button>
+            </div>
+          }
+          <button type="button" class="tme-curve-add" data-testid="tme-arc-curve-add" (click)="addCurvePoint()">
+            Add control point
+          </button>
+        </div>
+
+        <!-- C30: the draft Apply's field-precise refusals — user-visibly
+             rendered (never console-only); the draft stays open, untouched. -->
+        @if (refusals().length > 0) {
+          <div class="tme-errors" data-testid="tme-arc-draft-errors" role="alert" aria-label="The map refused this edit">
+            @for (issue of refusals(); track $index) {
+              <p class="tme-error" data-testid="tme-arc-draft-error">
+                @if (issue.path !== '') {
+                  <span class="tme-error-path">{{ issue.path }}</span>
+                }
+                <span>{{ issue.message }}</span>
+              </p>
+            }
+          </div>
+        }
+
+        <!-- ONE draft commit per Apply (D75): the whole draft as ONE
+             full-replace upsertEdge PUT with the arc's KNOWN id. Apply
+             disables itself while untouched or while any touched text is
+             unparseable (the honest disabled state). -->
+        <div class="tme-actions">
+          <button
+            type="button"
+            class="tme-button tme-apply-button"
+            data-testid="tme-arc-apply"
+            [disabled]="!canApply()"
+            (click)="applyDraft()"
+          >
+            Apply
+          </button>
+          <!-- F46/D42: remove the arc — direct, no confirm dialog; an
+               overlay block on it dies with it (F50). -->
+          <button type="button" class="tme-button tme-remove-button" data-testid="tme-arc-remove" (click)="removeArc()">
+            Remove
+          </button>
+        </div>
+      </section>
+    }
+
+    <!-- ---- PKG B-123: MEASURE THIS ARC (editor mode, any selected arc) ---- -->
+    @if (graph.editorMode()) {
+      <section class="tme-measure" data-testid="tme-arc-measure" aria-label="Measure this arc">
+        <h3 class="tme-section-title">Measure this arc</h3>
+
+        @if (scale(); as s) {
+          <!-- The readout — the core's scale verbatim (R1). After a
+               measurement it shows the SEEDED label (F20 seeding made
+               visible); the honest note names what pricing does about it. -->
+          <p class="tme-scale" data-testid="tme-arc-scale">
+            <span data-testid="tme-arc-scale-value">1 px = {{ s.unitPerPx }} {{ s.unitLabel }}</span>
+            <span class="tme-scale-kind" data-testid="tme-arc-scale-kind">({{ s.unitKind }})</span>
+          </p>
+          <p class="tme-scale-note" data-testid="tme-arc-scale-note">
+            Routing keeps pricing with the saved scale until the map is saved.
+          </p>
+        }
+
+        <label class="tme-field-label" for="tme-arc-measure-value">Real-world length</label>
+        <input
+          id="tme-arc-measure-value"
+          class="tme-reason-input"
+          type="text"
+          inputmode="decimal"
+          autocomplete="off"
+          placeholder="authored length of this arc"
+          data-testid="tme-arc-measure-value"
+          [value]="measureValue()"
+          (input)="onMeasureValueInput($event)"
+        />
+
+        <label class="tme-field-label" for="tme-arc-measure-unit">Unit word</label>
+        <input
+          id="tme-arc-measure-unit"
+          class="tme-reason-input"
+          type="text"
+          autocomplete="off"
+          placeholder="e.g. km — empty re-measures in the established unit"
+          data-testid="tme-arc-measure-unit"
+          [value]="measureUnit()"
+          (input)="onMeasureUnitInput($event)"
+        />
+        @if (establishedUnitNote(); as note) {
+          <p class="tme-scale-note">{{ note }}</p>
+        }
+
+        <label class="tme-field-label" for="tme-arc-measure-kind">Unit kind</label>
+        <select id="tme-arc-measure-kind" class="tme-select" data-testid="tme-arc-measure-kind" (change)="onMeasureKindChange($event)">
+          @for (option of unitKinds; track option.id) {
+            <option [value]="option.id" [selected]="measureKind() === option.id">{{ option.name }}</option>
+          }
+        </select>
+
+        <!-- C30: the measure Apply's refusals — field-precise, state untouched. -->
+        @if (measureRefusals().length > 0) {
+          <div class="tme-errors" data-testid="tme-arc-measure-errors" role="alert" aria-label="The map refused this measurement">
+            @for (issue of measureRefusals(); track $index) {
+              <p class="tme-error" data-testid="tme-arc-measure-error">
+                @if (issue.path !== '') {
+                  <span class="tme-error-path">{{ issue.path }}</span>
+                }
+                <span>{{ issue.message }}</span>
+              </p>
+            }
+          </div>
+        }
+
+        <div class="tme-actions">
+          <button
+            type="button"
+            class="tme-button tme-apply-button"
+            data-testid="tme-arc-measure-apply"
+            [disabled]="!canMeasure()"
+            (click)="applyMeasure()"
+          >
+            Measure
+          </button>
+        </div>
+      </section>
+    }
   }
 </section>

@@ -110,6 +110,34 @@
 // drawArcFeedback with the pending pick KEPT (degrade, never throw — C32
 // spirit). Waypoints and badges are never picks (an authored arc's
 // endpoints are library nodes): a waypoint/badge tap keeps the pick.
+// B-123 (§5 Phase 3 M2 — the arc panel's editing sections): the panel gains
+// the per-mode toggles + authored minutes, terrain, authored distance, curve
+// control points, the "measure this arc" scale calibration, and arc Remove —
+// editor-gated per the B-117/Q29 regime. Reads: `arcInfo` gains terrain/
+// authoredDistance/curve verbatim (R4) plus the `library` plane gate
+// (upsertEdge/removeEdge REPLACE is the library plane, D75; overlay `we-`
+// arcs are chat state with no editor command — the B-116 waypoint
+// precedent — so the draft sections never render for one), and
+// `arcModesOf(id)` rows the map's WHOLE mode universe (built-ins ∪ registry
+// ids) with the ONE core label resolver (A-016; R1 spirit for authored
+// words — the UI never maps ids to words itself), each row reading the
+// arc's own spec verbatim (an absent key rows as not-allowed — C14 row 2's
+// honest display). Commands: `commitArcDraft` (the panel's full-replace
+// `upsertEdge` PUT with the KNOWN id — one commit per Apply; a C30 refusal
+// surfaced field-precise), `measureArc` (the A-015 `calibrateScale`
+// passthrough — writes SCALE, never the arc), `removeArc`
+// (`facade.removeEdge`; the removed id LEAVES the B-121 log via
+// forgetUnsaved — that seam's named caller; an overlay block dies with the
+// arc, F50) — every successful commit records at the B-121 seam ("every
+// editor command records here") and marks only `dirty` (F45/D75: the save
+// dock lights; routing and the snapshot serve the SAVED graph until
+// saveMap). `blockArc` now CATCHES the facade's C30 refusal (blocking an
+// UNSAVED drawn arc — the A-014 saved-plane gate; B-121's found-not-fixed)
+// and surfaces it field-precise through `arcBlockRefusal`, never an
+// uncaught throw. The live scale is read verbatim through `scaleNow` (R1 —
+// the measure section's readout shows the core's numbers; the
+// editorRevision dependency re-renders it after an in-place calibration,
+// C24).
 // The ONE cytoscape instance (D3): created headless
 // in the constructor, `mount()`/`unmount()` on demand — computation works with
 // the UI closed. Zoneless (D2): the service writes signals; the ONLY canvas
@@ -139,11 +167,12 @@ import type {
   MapSnapshot,
   NodeKind,
   RouteResult,
+  Terrain,
   TravelMode,
   WorldMapData,
 } from '../../core/api';
 import type { MapFacade } from '../../core/facade';
-import { MapValidationError, isPinEligible } from '../../core/model/validate';
+import { MapValidationError, isPinEligible, resolveModeLabel } from '../../core/model/validate';
 import { buildCrossLayerBadges, buildLayerElements, crossLayerAnchors } from './layer-elements';
 
 /** Switcher label: the id the facade validates + the C23 human name. */
@@ -178,6 +207,43 @@ export interface ArcInfo {
   readonly authored: boolean;
   /** D20: a chat-scoped block (overlay.blocked[edgeId]). */
   readonly overlay: boolean;
+  /**
+   * B-123 (R4 verbatim): the arc's authored terrain — null when unset (C12:
+   * the multiplier via scale.terrainMultipliers applies only when authored).
+   */
+  readonly terrain: Terrain | null;
+  /** B-123 (R4 verbatim): the arc's authored distance override — null when unset (D14). */
+  readonly authoredDistance: number | null;
+  /** B-123 (R4 verbatim): the authored curve control-point list — null when unset (B-111). */
+  readonly curveDistances: readonly number[] | null;
+  /**
+   * B-123: the arc's EDITOR plane (the library) — upsertEdge/removeEdge
+   * REPLACE are library-plane commands (D75); overlay `we-` arcs are chat
+   * state with no editor command (the B-116 waypoint precedent), so the
+   * panel's draft sections never render for one. A `calibrateScale`
+   * measurement, by contrast, takes the MERGED set (A-015) — the measure
+   * section is offered regardless of the plane.
+   */
+  readonly library: boolean;
+}
+
+/**
+ * B-123 (D78/C23): one per-mode EDIT row of the arc panel — the map's mode
+ * universe (built-ins ∪ registry ids, insertion order), each rowed with its
+ * RESOLVED authored label (the ONE core resolver — `resolveModeLabel`; the
+ * UI never maps ids to words itself, R1 spirit for authored words) and the
+ * arc's own spec read verbatim. An arc LACKING the key rows as
+ * `allowed: false` + `authoredMinutes: null` — C14 row 2's honest display
+ * ("not allowed"), priced ∞ per row 2 until the author allows it.
+ */
+export interface ArcModeRow {
+  readonly id: TravelMode;
+  /** The authored display word (a built-in's id IS its word; registry relabels win). */
+  readonly label: string;
+  /** The arc's spec: `allowed === true` ⇔ the arc's key says so — absent key ⇒ false. */
+  readonly allowed: boolean;
+  /** The arc's authored minutes — null when the key (or the field) is absent. */
+  readonly authoredMinutes: number | null;
 }
 
 /**
@@ -761,9 +827,12 @@ export class GraphService implements OnDestroy {
    * saveMap, and by loadMap — the ONLY recompute triggers of `unsavedChanges`
    * (no timers, D2: the facade's dirty flag is core state, not a signal, so
    * the computed polls it on this revision counter, the graphRevision
-   * precedent).
+   * precedent). B-123: the counter is PUBLIC now — the arc panel's computed
+   * reads it as the recompute dependency for post-command re-reads (the
+   * editorRevision precedent set by the route panel's graphRevision dep),
+   * and scaleNow mirrors it for the in-place calibration.
    */
-  private readonly editorRevision = signal(0);
+  readonly editorRevision = signal(0);
 
   /**
    * B-116 (F45/D75): the unsaved-changes indicator's state — the core's
@@ -841,6 +910,15 @@ export class GraphService implements OnDestroy {
    * arcInfo after a block/lift without edgeSelection moving.
    */
   readonly graphRevision = signal(0);
+
+  /**
+   * B-123: the blockArc C30 catch's refusal — the field-precise message the
+   * arc panel renders (the save-refusal pattern, user-visible and never
+   * console-only). Written only when a Block is REFUSED (nothing was
+   * mutated); cleared by the next successful block/lift and when the panel
+   * leaves the arc (clearArcBlockRefusal). null when nothing failed.
+   */
+  readonly arcBlockRefusal = signal<string | null>(null);
 
   /**
    * B-105 (ruling 3): mirror of `overlay.travelMode` — the mode switch's
@@ -1236,19 +1314,53 @@ export class GraphService implements OnDestroy {
   }
 
   /**
-   * B-106 (ruling 4): chat-scoped block with a reason (F14/D20). R2: the ONLY
-   * mutation is the facade command — setBlocked(edgeId, reason) validates
-   * (C30 non-empty reason, unknown edge id) and writes overlay.blocked. Then
-   * the revision bump re-routes the sidebar (route computed dependency), the
-   * rebuild re-projects the dashed class (buildLayerElements reads the merge)
-   * and the snapshot refresh re-lists pin-incident blocked arcs (C19).
-   * The panel's Block button is disabled on an empty reason, so the facade's
-   * C30 throw is unreachable from this path — the facade stays the authority
-   * (§6.2), the UI is honest about it.
+   * B-106 (ruling 4), extended by B-123: chat-scoped block with a reason
+   * (F14/D20). R2: the ONLY mutation is the facade command —
+   * setBlocked(edgeId, reason) validates (C30 non-empty reason, unknown edge
+   * id) and writes overlay.blocked. Then the revision bump re-routes the
+   * sidebar (route computed dependency), the rebuild re-projects the dashed
+   * class (buildLayerElements reads the merge) and the snapshot refresh
+   * re-lists pin-incident blocked arcs (C19). The panel's Block button is
+   * disabled on an empty reason, so the C30 empty-reason throw is
+   * structurally out of reach HOWEVER — the OTHER C30 refusals of the ADD
+   * path are NOT: the A-014 saved-plane gate refuses an UNSAVED library arc
+   * ("unsaved — save the map first"), exactly the freshly drawn arc of
+   * B-122 — B-121 found this throwing UNCAUGHT (a console error), and this
+   * packet's inheritance fixes it: the refusal is caught, surfaces
+   * field-precise through `arcBlockRefusal` (the save-refusal pattern: the
+   * arc panel renders it), NOTHING is mutated (C30 reject-before-mutate)
+   * and the method answers false so the caller keeps its input. Never a raw
+   * throw.
+   *
+   * @returns true when the block landed (signal bump; the input is
+   *   consumed), false when refused (nothing touched; `arcBlockRefusal`
+   *   carries the field-precise message until cleared).
    */
-  blockArc(edgeId: string, reason: string): void {
-    this.facade?.setBlocked(edgeId, reason);
+  blockArc(edgeId: string, reason: string): boolean {
+    const facade = this.facade;
+    if (facade === null) {
+      this.arcBlockRefusal.set('No map is loaded.');
+      return false;
+    }
+    try {
+      facade.setBlocked(edgeId, reason);
+    } catch (error) {
+      this.arcBlockRefusal.set(error instanceof Error ? error.message : String(error));
+      return false; // C30 refusal: nothing happened — the overlay entry is untouched
+    }
+    this.arcBlockRefusal.set(null);
     this.afterGraphMutation();
+    return true;
+  }
+
+  /**
+   * B-123: clear the block-catch refusal — the panel calls it when the
+   * selection changes (the stale message must not follow another arc) and
+   * after a successful Block/Lift re-render made it moot. A pure signal
+   * write (R3).
+   */
+  clearArcBlockRefusal(): void {
+    this.arcBlockRefusal.set(null);
   }
 
   /**
@@ -1574,6 +1686,101 @@ export class GraphService implements OnDestroy {
     this.rebuildElements();
     this.editorRevision.update((n) => n + 1);
     if (this.selection()?.id === id) this.selection.set(null);
+    return null;
+  }
+
+  // --- Arc editing (PKG B-123, §5 Phase 3 M2 — D75/D77/D44/D42/F44/F46/F45) ---
+  //
+  // The arc panel's editor-gated command paths, the B-117 blocks transposed:
+  // the panel drafts LOCALLY (C29/R2) and commits on ONE Apply as a
+  // full-replace `upsertEdge` PUT with the arc's KNOWN id; a C30 refusal
+  // comes back as the collected field-precise NodeEditRefusal the panel
+  // renders — never a throw, nothing touched (reject-before-mutate). Every
+  // successful command records at the B-121 seam ("every editor command
+  // records here") and marks only `dirty` (F45/D75: the edits RENDER — the
+  // projection reads the live map — but routing and the snapshot serve the
+  // SAVED graph until saveMap; no graphRevision bump, no snapshot refresh;
+  // the editorRevision bump lights the save dock and re-renders the panel's
+  // live reads through scaleNow/arc).
+
+  /**
+   * B-123 (D75/D77): commit the arc panel's draft — the ONLY mutation is the
+   * facade command `upsertEdge` FULL-REPLACE (the arc's KNOWN id, every
+   * authored field kept or cleared: the component builds the whole object —
+   * modes from the per-mode rows, terrain, authoredDistance, curve — and
+   * `blocked`/source/target/fare ride the live spread untouched). A C30
+   * refusal comes back field-precise and NOTHING is touched (reject-before-
+   * mutate — the panel keeps its draft and renders the issues). On success
+   * the arc is drafted (B-121's seam), the projection re-reads the fresh
+   * object (curve classes follow the authored data — D7 computes nothing),
+   * and the revision bump lights the F45 dock.
+   */
+  commitArcDraft(edge: MapEdgeData): NodeEditRefusal | null {
+    const facade = this.facade;
+    if (facade === null) return { issues: [{ path: '', message: 'No map is loaded.' }] };
+    try {
+      facade.upsertEdge(edge);
+    } catch (error) {
+      return nodeEditRefusal(error);
+    }
+    this.recordUnsaved(edge.id); // B-121 (D77): every editor command records here — the panel's editing IS the drafted state
+    this.rebuildElements(); // one cy.batch (B-112): the projection re-reads the fresh object
+    this.editorRevision.update((n) => n + 1); // F45: the dock lights
+    return null;
+  }
+
+  /**
+   * B-123 (F44/F20/D44/C13): the measure section's command — a pure
+   * `calibrateScale` passthrough (R2). A mode-signature unit ({ label,
+   * kind }) seeds the unit word and kind (D44); an ABSENT unit re-measures
+   * in the established unit (the label stands). A C30 refusal comes back
+   * field-precise (an unmeasurable arc, a non-positive value, an empty
+   * label), NOTHING is touched and `dirty` keeps its state. On success the
+   * calibration marks only `dirty` (A-015's D75 semantics) — hence the
+   * editorRevision bump (the dock lights; the panel's scaleNow readout
+   * re-renders) — and NEVER touches the arc: no recordUnsaved, no rebuild,
+   * the arc does not become drafted by a measurement.
+   */
+  measureArc(
+    arcId: string,
+    authoredDistance: number,
+    unit?: { label: string; kind: 'distance' | 'time' },
+  ): NodeEditRefusal | null {
+    const facade = this.facade;
+    if (facade === null) return { issues: [{ path: '', message: 'No map is loaded.' }] };
+    try {
+      facade.calibrateScale(arcId, authoredDistance, unit);
+    } catch (error) {
+      return nodeEditRefusal(error);
+    }
+    this.editorRevision.update((n) => n + 1); // F45: the dock lights; the readout re-renders (in-place scale write, C24)
+    return null;
+  }
+
+  /**
+   * B-123 (D42's deferred refine/dedup surface + F50): remove the arc —
+   * DIRECT, no confirm dialog (delete-and-redo is the F46 workflow; the
+   * draft state makes accidental removals recoverable by redrawing). R2:
+   * the ONLY mutation is the facade command removeEdge (the library plane —
+   * the facade refuses unknown ids field-precisely; the panel gates the
+   * button to library arcs anyway). On success the removed id LEAVES the
+   * B-121 log (forgetUnsaved — this caller is named at that seam), an
+   * overlay block on the arc dies with it (the facade's own delete, F50),
+   * the projection re-reads, and — the removeNode precedent — the selection
+   * is CLEARED when the removed arc WAS the selection, so the panel closes.
+   */
+  removeArc(id: string): NodeEditRefusal | null {
+    const facade = this.facade;
+    if (facade === null) return { issues: [{ path: '', message: 'No map is loaded.' }] };
+    try {
+      facade.removeEdge(id);
+    } catch (error) {
+      return nodeEditRefusal(error);
+    }
+    this.forgetUnsaved(id); // B-121 (D77): a removed id leaves the log
+    this.rebuildElements();
+    this.editorRevision.update((n) => n + 1); // F45: the dock lights
+    if (this.edgeSelection()?.id === id) this.edgeSelection.set(null); // the panel closes with the arc
     return null;
   }
 
@@ -1915,12 +2122,16 @@ export class GraphService implements OnDestroy {
    * sources, never math). The displayed reason is the overlay's when both
    * exist ("adds or restates only", the facade contract). Unknown id ⇒ null
    * (degrade, never throw — C32 spirit; the panel hides).
+   * B-123: the arc's own terrain/authoredDistance/curve fields join verbatim
+   * (R4 presence reads, never copies) and `library` settles the EDITOR
+   * plane (only map.edges arcs are draftable — the overlay lookup second).
    */
   arcInfo(edgeId: string): ArcInfo | null {
     const map = this.map();
-    const edge: MapEdgeData | undefined =
-      map?.edges.find((candidate) => candidate.id === edgeId) ??
-      this.overlay?.userEdges.find((candidate) => candidate.id === edgeId);
+    let edge: MapEdgeData | undefined = map?.edges.find((candidate) => candidate.id === edgeId);
+    if (edge === undefined) {
+      edge = this.overlay?.userEdges.find((candidate) => candidate.id === edgeId);
+    }
     if (edge === undefined) return null;
     const overlayReason = this.overlay?.blocked[edgeId]; // undefined when absent
     const authoredReason = edge.blocked?.reason; // undefined when absent
@@ -1933,7 +2144,68 @@ export class GraphService implements OnDestroy {
       blockedReason: overlayReason ?? authoredReason ?? null,
       authored: authoredReason !== undefined,
       overlay: overlayReason !== undefined,
+      terrain: edge.terrain ?? null,
+      authoredDistance: edge.authoredDistance ?? null,
+      curveDistances: edge.curve === undefined ? null : [...edge.curve.distances],
+      library: map?.edges.some((candidate) => candidate.id === edgeId) ?? false,
     };
+  }
+
+  /**
+   * B-123 (D78/C23): the per-mode EDIT rows for one arc — the map's WHOLE
+   * mode universe (built-ins ∪ registry ids, insertion order: walk, car,
+   * train, then the registry's declaration order) each rowed with the ONE
+   * core resolver's label and the arc's own spec verbatim (an absent key
+   * rows as not-allowed — C14 row 2's honest display). Library arcs only:
+   * the draft sections edit the library plane (arcInfo's `library` gate);
+   * an unknown/non-library id answers null (degrade, never throw — C32
+   * spirit). A lookup, never a copy (R4) — the panel drafts LOCAL copies
+   * (C29/R2).
+   */
+  arcModesOf(arcId: string): readonly ArcModeRow[] | null {
+    const map = this.map();
+    const edge = map?.edges.find((candidate) => candidate.id === arcId);
+    if (map === null || edge === undefined) return null;
+    const ids: TravelMode[] = [];
+    const seen = new Set<string>();
+    for (const id of [...BUILT_IN_MODES, ...(map.modes ?? []).map((decl) => decl.id)]) {
+      if (seen.has(id)) continue; // a replica mode of an id built-in: one row ever
+      seen.add(id);
+      ids.push(id);
+    }
+    return ids.map((id) => ({
+      id,
+      label: resolveModeLabel(id, map.modes), // A-016's ONE resolver — authored words, never UI-mapped
+      allowed: edge.modes[id]?.allowed === true,
+      authoredMinutes: edge.modes[id]?.authoredMinutes ?? null,
+    }));
+  }
+
+  /**
+   * B-123 (R1/D44): the live scale — the measure section's readout source.
+   * A number shown to the user MUST come from the core: this exposes the
+   * core's own scale block verbatim (R4). An in-place `calibrateScale`
+   * mutates the object's fields (C24 — state.map is never reassigned), so
+   * the editorRevision signal (bumped by every editor command) is the
+   * recompute dependency; the values themselves stay the core's.
+   * A-015's D75 honesty note: pricing serves the SAVED scale until saveMap —
+   * this readout is the live DRAFT truth, and the panel says so.
+   */
+  readonly scaleNow = computed<WorldMapData['scale'] | null>(() => {
+    void this.editorRevision(); // dependency: an in-place calibration re-reads (C24)
+    return this.map()?.scale ?? null;
+  });
+
+  /**
+   * B-123 (R4): live lookup of one LIBRARY arc by id — `arcModesOf`'s twin
+   * (the nodeDataById precedent). The draft's full-replace commit spreads
+   * this live reference (`...edge` — the B-117 commitDraft precedent: a
+   * lookup, never a copy; the panel builds the fresh commit object it
+   * sends). Overlay `we-` arcs and unknown ids answer null — no editor
+   * command exists for the chat plane (D75/B-116).
+   */
+  edgeDataById(id: string): MapEdgeData | null {
+    return this.map()?.edges.find((candidate) => candidate.id === id) ?? null;
   }
 
   /**
@@ -2174,17 +2446,25 @@ export class GraphService implements OnDestroy {
   }
 
   /**
-   * B-118: the AUTHORED fields of one LIBRARY edge for e2e — the D42-default
-   * assertions (source/target/all-modes-allowed) off the live map reference
-   * (quick-connect arcs land in `map.edges` via upsertEdge). A plain copy
-   * for the wire; read-only, no mutation path (R2/R4 hold). Overlay edges and
-   * unknown ids answer null.
+   * B-118 (extended by B-123): the AUTHORED fields of one LIBRARY edge for
+   * e2e — the D42-default assertions (source/target/all-modes-allowed) and,
+   * since B-123's arc-editing panels, the editing-plane fields the panel
+   * commits (terrain, authoredDistance, curve distances) off the live map
+   * reference (quick-connect and edit arcs land in `map.edges` via
+   * upsertEdge). A plain copy for the wire; read-only, no mutation path
+   * (R2/R4 hold). Overlay edges and unknown ids answer null.
    */
   testEdgeData(id: string): {
     id: string;
     source: string;
     target: string;
     modes: string[];
+    /** B-123: the authored terrain, or null when unset (C12). */
+    terrain: string | null;
+    /** B-123: the authored distance override, or null when unset (D14). */
+    authoredDistance: number | null;
+    /** B-123: the authored curve control-point distances, or null when unset. */
+    curveDistances: number[] | null;
   } | null {
     const edge = this.map()?.edges.find((candidate) => candidate.id === id);
     if (edge === undefined) return null;
@@ -2195,7 +2475,34 @@ export class GraphService implements OnDestroy {
       modes: (Object.keys(edge.modes) as TravelMode[]).filter(
         (mode) => edge.modes[mode]?.allowed === true,
       ),
+      terrain: edge.terrain ?? null,
+      authoredDistance: edge.authoredDistance ?? null,
+      curveDistances: edge.curve === undefined ? null : [...edge.curve.distances],
     };
+  }
+
+  /**
+   * B-123: the per-mode EDIT rows of one arc (`arcModesOf`) — the map's mode
+   * universe with the resolver's labels and the arc's own spec state, the
+   * D78/C23 display seam for e2e. Unknown id answers null (degrade, C32
+   * spirit). Read-only (R2/R4 hold).
+   */
+  testArcModesOf(id: string): { id: string; label: string; allowed: boolean; authoredMinutes: number | null }[] | null {
+    const rows = this.arcModesOf(id);
+    if (rows === null) return null;
+    return rows.map((row) => ({ id: row.id, label: row.label, allowed: row.allowed, authoredMinutes: row.authoredMinutes }));
+  }
+
+  /**
+   * B-123 (R1/D44): the live scale's verbatim numbers — the measure section's
+   * readout seam (an in-place calibration mutates these fields, C24, so the
+   * read is always the live draft truth). Null before loadMap. Read-only
+   * (R2/R4 hold).
+   */
+  testScaleInfo(): { unitPerPx: number; unitLabel: string; unitKind: string } | null {
+    const scale = this.map()?.scale;
+    if (scale === undefined) return null;
+    return { unitPerPx: scale.unitPerPx, unitLabel: scale.unitLabel, unitKind: scale.unitKind };
   }
 
   /**

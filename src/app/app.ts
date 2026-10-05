@@ -77,8 +77,23 @@ interface TmeE2EHook {
   /** B-122: the draw-arc banner's current message, or null. */
   drawArcFeedback(): string | null;
   /** B-118: authored fields of one library edge (source/target/allowed modes),
-   *  or null — the D42-default assertion seam for created arcs. */
-  edgeData(id: string): { id: string; source: string; target: string; modes: string[] } | null;
+   *  or null — the D42-default assertion seam for created arcs. B-123: the
+   *  editing-plane fields the arc panel commits (terrain, authoredDistance,
+   *  curve distances) joined the shape. */
+  edgeData(id: string): {
+    id: string;
+    source: string;
+    target: string;
+    modes: string[];
+    terrain: string | null;
+    authoredDistance: number | null;
+    curveDistances: number[] | null;
+  } | null;
+  /** B-123: the per-mode EDIT rows of one arc (arcModesOf — the D78/C23 seam),
+   *  or null; the map's mode universe with the resolver's labels. */
+  arcModes(id: string): { id: string; label: string; allowed: boolean; authoredMinutes: number | null }[] | null;
+  /** B-123 (R1/D44): the live scale's verbatim numbers — the measure readout seam. */
+  scaleInfo(): { unitPerPx: number; unitLabel: string; unitKind: string } | null;
   /** B-118: the live route's leg arc ids, or null — the F45 discriminator seam. */
   routeLegArcIds(): string[] | null;
   /** B-121 (D77): the edit log's ids — the draft visual's state seam. */
@@ -120,6 +135,15 @@ export class App {
       // B-111: the harness-only curve demo edge rides the COPY (see
       // CURVE_DEMO_EDGE above) — the frozen FX1 file stays untouched (D69).
       edges: [...fuyukiMap.edges, CURVE_DEMO_EDGE],
+      // B-123: the scale block is a SHALLOW COPY for the same B-110 doctrine —
+      // A-015's calibrateScale mutates scale.unitPerPx/unitLabel/unitKind IN
+      // PLACE (C24 — the stored library reference), and a deep-frozen fixture
+      // scale would make every "measure this arc" refusal-throw
+      // ("Cannot assign to read only property"). The real host hands loadMap
+      // fresh-parsed, extensible state; the harness mirrors that. The nested
+      // terrainMultipliers stay the frozen authored ones — pricing reads them,
+      // no facade command writes them.
+      scale: { ...fuyukiMap.scale },
       layers: fuyukiMap.layers.map((layer) =>
         layer.id === 'layer-fuyuki'
           ? { ...layer, background: { assetId: 'assets/harness-bg-fuyuki.png' } }
@@ -170,6 +194,8 @@ export class App {
       drawArcSourceId: () => this.graphService.testDrawArcSourceId(),
       drawArcFeedback: () => this.graphService.testDrawArcFeedback(),
       edgeData: (id: string) => this.graphService.testEdgeData(id),
+      arcModes: (id: string) => this.graphService.testArcModesOf(id),
+      scaleInfo: () => this.graphService.testScaleInfo(),
       routeLegArcIds: () => this.graphService.testRouteLegArcIds(),
       draftedIds: () => this.graphService.testDraftedIds(),
       nodeBorderColor: (id: string) => this.graphService.testNodeBorderColor(id),
