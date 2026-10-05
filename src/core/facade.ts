@@ -933,10 +933,19 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
         // word would persist into the library and render blank space in
         // prompt-facing structures (C23 spirit). Valid strings are stored
         // verbatim, untrimmed. A lying `kind` needs no ad-hoc check — the
-        // C30 clone gate below owns it (the upsertEdge precedent).
-        if (typeof unit.label !== 'string' || unit.label.trim().length === 0) {
+        // C30 clone gate below owns it (the upsertEdge precedent). A
+        // non-object `unit` (a JS caller lying past the optional type —
+        // null included) refuses field-precisely here, the same
+        // runtime-guard discipline as setStatusNote/setBlocked (C30; the
+        // P3 M2 verifier's hardening finding).
+        if (
+          unit === null ||
+          typeof unit !== 'object' ||
+          typeof (unit as { label?: unknown }).label !== 'string' ||
+          ((unit as { label: string }).label.trim().length === 0)
+        ) {
           throw new Error(
-            `[TravelMapper] calibrateScale: unit.label must be a non-empty string (got '${String(unit.label)}')`,
+            `[TravelMapper] calibrateScale: unit.label must be a non-empty string (got '${String(unit)}')`,
           );
         }
       }
