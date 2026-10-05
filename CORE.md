@@ -66,7 +66,7 @@ All queries (routing, snapshot, template rendering) run against the **effective 
 
 - **C16 — Optimality.** Route results must be optimal for the active cost function. Because cross-layer arcs have no meaningful geometry, Euclidean heuristics are inadmissible when they exist: use plain Dijkstra, or A\* with the heuristic zeroed on cross-layer arcs.
 - **C17 — Unreachability.** No finite path ⇒ `ok: false` plus a human-readable reason (disconnected, or all candidate arcs blocked/disallowed). The value ∞ never appears in any output.
-- **C18 — Route shape.** `{ ok, total, legs[], unit }`; each leg carries arc id, from, to, mode, cost, and optional blocked/detour reason; `unit` is the currency the total/legs are stated in — `'min'` when the run priced minutes, else `scale.unitLabel`, the same rule `MapSnapshot.unit` follows (D72; deterministic on every branch, `ok:false` included). Legs are the unit of UI display and of template loops.
+- **C18 — Route shape.** `{ ok, total, legs[], unit }`; each leg carries arc id, from, to, mode (the id), modeLabel (the resolved authored word — D78/C23: the registry label when an entry with that id exists, built-in relabels included, else the id itself, which for bare built-ins IS the word), cost, and optional blocked/detour reason; `unit` is the currency the total/legs are stated in — `'min'` when the run priced minutes, else `scale.unitLabel`, the same rule `MapSnapshot.unit` follows (D72; deterministic on every branch, `ok:false` included). Legs are the unit of UI display and of template loops.
 
 ---
 
@@ -75,7 +75,7 @@ All queries (routing, snapshot, template rendering) run against the **effective 
 - **C19 — Neighborhood.** The snapshot's route section lists exactly the arcs incident to the pin within its layer, plus cross-layer arcs at the pin. There is no same-district sibling awareness (D36).
 - **C20 — Destinations.** Shortest paths from the pin to a curated destination set (hubs by default), capped (12 entries), with truncation marked.
 - **C21 — Text matching.** Matching free text to nodes uses word-boundary, case-insensitive matching over names ∪ aliases. A failed match produces a nearest-suggestions corrective string (D26). The pure matching function lives in the core; only its orchestration (subscribing to events, showing popups) lives in the host layer.
-- **C22 — Snapshot is data; the template is words.** The snapshot is a plain serializable object. Rendering to the prompt block goes through the user's template with a fixed variable contract: `location`, `region`, `layer`, `statusNote`, `routes[]`, `destinations[]`, `truncated` (C20's cap dropped entries — D63), `unit`, `corrective`. The renderer is core (context assembly, C23 exclusion, C32 fallback); the template *content* is user data; the template **engine** is an injected Handlebars-shaped capability per D62/R5 (host: SillyTavern.libs; tests/harness: devDependency — never bundled). The ONE `unit` labels the whole snapshot (D65): every presented cost — routes and destinations alike — is stated in it; uniformity is per snapshot, not per leg.
+- **C22 — Snapshot is data; the template is words.** The snapshot is a plain serializable object. Rendering to the prompt block goes through the user's template with a fixed variable contract: `location`, `region`, `layer`, `statusNote`, `routes[]`, `destinations[]` (both carry resolved mode labels per D78 — authored words, never raw ids, C23), `truncated` (C20's cap dropped entries — D63), `unit`, `corrective`. The renderer is core (context assembly, C23 exclusion, C32 fallback); the template *content* is user data; the template **engine** is an injected Handlebars-shaped capability per D62/R5 (host: SillyTavern.libs; tests/harness: devDependency — never bundled). The ONE `unit` labels the whole snapshot (D65): every presented cost — routes and destinations alike — is stated in it; uniformity is per snapshot, not per leg.
 - **C23 — No machine names.** Unnamed user nodes are excluded from every prompt-facing structure. `waypoint_3` must never reach an LLM.
 
 ---
@@ -125,7 +125,7 @@ All queries (routing, snapshot, template rendering) run against the **effective 
 Map lifecycle    loadMap · materialize · forkMap · saveForkToLibrary · validateImport · migrateData
 Presence         setCurrentLocation · setStatusNote · setTravelMode · setCorrective (D63)
 Overlay edits    setBlocked · addUserNodeAt · removeUserNode · promoteUserNode
-Editor commands  upsertNode · upsertEdge · removeNode · removeEdge · calibrateScale · saveMap · hasUnsavedChanges (D75 — the F45 dirty flag's core-side read; the editor-command semantics are register row D75)
+Editor commands  upsertNode · upsertEdge · removeNode · removeEdge · calibrateScale(arcId, authoredDistance, unit?) — the optional unit (D44/D45) seeds `scale.unitLabel`/`unitKind` when present; absent ⇒ re-measure in the established unit · saveMap · hasUnsavedChanges (D75 — the F45 dirty flag's core-side read; the editor-command semantics are register row D75)
 Queries          findRoute · getSnapshot · renderTemplate · getPromptBlock
 Viewer state     setActiveLayer (facade-held viewer state; validated against the loaded map, reset to its first layer on every loadMap — D69; the snapshot's `layer` stays pin-derived, unaffected)
 ```

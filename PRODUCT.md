@@ -23,7 +23,7 @@ Target host: SillyTavern. The prime directive: **the user is the authority.** Th
 | **Node** | A place. Kinds: world, region, city, district, location, hub, user node. |
 | **Hub** | A location with transit metadata (station, port, subway stop) — the natural endpoint of cross-layer arcs. |
 | **Arc** | A direct travel connection between two nodes: allowed modes, optional authored cost, terrain, blocked state. |
-| **Mode** | walk / car / train. |
+| **Mode** | A means of travel. Built-ins: walk / car / train; a map may declare its own registry of modes (horse, airship — each with its own word, unit, and pace) and relabel the built-ins (D78). |
 | **Pin** | The party's current location, always on a leaf node. |
 | **Status note** | Freeform presence text for "between places" or vague presence. |
 | **Block** | A chat-scoped mark on an arc: impassable, with a reason. |
@@ -53,11 +53,11 @@ F-numbers are stable feature IDs. The roadmap and test plan cite them.
 - **F07 Kinds & nesting** — places organize into containers (districts inside cities inside regions); containers label and group, they never carry the pin and never connect to arcs.
 - **F08 Names & aliases** — a display name plus alternate spellings; aliases feed message matching (F31, F38).
 - **F09 Hubs & transit metadata** — a node may declare itself a station/port/stop with a line name.
-- **F10 User nodes (waypoints)** — placed at runtime by tapping empty canvas; persist for the chat; promotable into the map under a proper name. Unnamed user nodes never reach the LLM (D21).
+- **F10 User nodes (waypoints)** — placed at runtime in editor mode with the Waypoint tool by tapping empty canvas; view mode never places anything (D76). Persist for the chat; promotable into the map under a proper name. Unnamed user nodes never reach the LLM (D21).
 
 ### C. Arcs
 
-- **F11 Travel modes** — per-arc allowed modes: car-only roads, walk-only paths, rail.
+- **F11 Travel modes** — per-arc allowed modes: car-only roads, walk-only paths, rail; a map's mode registry extends the vocabulary and relabels it (D78).
 - **F12 Authored cost — distance *or* time** — an arc may carry an authored straight-line distance (any distance unit) or an authored journey time (any time unit). Authored values always win over geometry (D14, D44, D45).
 - **F13 Terrain multipliers** — optional per-terrain factors (road, plain, river, swamp, mountain) applied to derived costs.
 - **F14 Blocked routes** — an arc can be impassable with a reason; excluded from routing, still drawn (dashed), and still reported to the LLM with its reason (D20).
@@ -78,7 +78,7 @@ F-numbers are stable feature IDs. The roadmap and test plan cite them.
 - **F23 Multi-modal shortest route** — between any two nodes, across layers, honoring modes, blocks, and authored costs; results carry per-leg detail (mode, cost, blocked reason).
 - **F24 Unreachable reporting** — no finite route yields a human-readable reason, never a raw "infinity".
 - **F25 Destination awareness** — the prompt block can include a compact list of known far destinations with best-mode costs, routed through hubs (D25).
-- **F26 Runtime detours** — blocked volcano pass? Tap to place a user node; routes recompute through it (F10).
+- **F26 Runtime detours** — blocked volcano pass? Enter the editor, pick the Waypoint tool, tap the gap: routes recompute through the placed user node (F10). The detour flow gains one deliberate tap (D76).
 
 ### F. Presence & travel
 
