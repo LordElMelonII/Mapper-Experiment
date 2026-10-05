@@ -72,6 +72,10 @@ interface TmeE2EHook {
   connectMode(): boolean;
   /** B-118: the quick-connect pick set, in pick order. */
   pickedNodeIds(): string[];
+  /** B-122: the pending draw-arc source's id, or null. */
+  drawArcSourceId(): string | null;
+  /** B-122: the draw-arc banner's current message, or null. */
+  drawArcFeedback(): string | null;
   /** B-118: authored fields of one library edge (source/target/allowed modes),
    *  or null — the D42-default assertion seam for created arcs. */
   edgeData(id: string): { id: string; source: string; target: string; modes: string[] } | null;
@@ -163,6 +167,8 @@ export class App {
       nodeData: (id: string) => this.graphService.testNodeData(id),
       connectMode: () => this.graphService.testConnectMode(),
       pickedNodeIds: () => this.graphService.testPickedNodeIds(),
+      drawArcSourceId: () => this.graphService.testDrawArcSourceId(),
+      drawArcFeedback: () => this.graphService.testDrawArcFeedback(),
       edgeData: (id: string) => this.graphService.testEdgeData(id),
       routeLegArcIds: () => this.graphService.testRouteLegArcIds(),
       draftedIds: () => this.graphService.testDraftedIds(),

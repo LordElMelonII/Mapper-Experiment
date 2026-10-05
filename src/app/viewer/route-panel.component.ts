@@ -60,6 +60,17 @@ export class RoutePanelComponent {
       if (sel !== null && this.graph.editorMode() && this.graph.nodeDataById(sel.id) !== null) {
         return null;
       }
+      // B-122 (D53): in editor mode an EDGE selection belongs to the arc
+      // panel — the same B-117 rationale, extended: the sheet stays collapsed
+      // so the editing stage keeps its height. Found live by
+      // draw-arc.e2e-spec: a draw-arc commit selects the new arc, and the
+      // expanded sheet + the arc panel collapse the phone stage to ~150px,
+      // where the fitted map lands underneath the fixed chrome stack (the
+      // exact B-106 finding) and the next draw tap hits the save dock.
+      // View-mode behavior is unchanged (B-114 verbatim).
+      if (this.graph.editorMode() && this.graph.edgeSelection() !== null) {
+        return null;
+      }
       return sel?.id ?? this.graph.edgeSelection()?.id ?? null;
     },
     computation: (source) => source !== null,

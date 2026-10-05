@@ -84,13 +84,15 @@
     <!-- B-120 (D76/F52/D53): the editor's segmented TOOL control — what an
          editor-mode background/compound-box tap places: Node (default, the
          B-116 authored-node behavior) or Waypoint (the B-109 chat-waypoint
-         semantics, kNN and all). Editor chrome only (view mode never renders
-         it — view mode is purely navigational, nothing is ever placed); one
-         >= 44px segment per tool; the pressed state (aria-pressed + the gold
-         tme-active class bound to the editorTool signal, R3) makes the
-         active placement kind visible — no invisible affordance (D53).
-         Plain words (C23); touch alone operates it. Extensible: draw-arc
-         joins the same control as a third segment in B-122. -->
+         semantics, kNN and all). B-122 (§5 M2): the third segment Arc — leaf
+         taps pick arc endpoints (tap source, tap target) and the background
+         tap places NOTHING while it is active (the tool owns the gesture).
+         Editor chrome only (view mode never renders it — view mode is purely
+         navigational, nothing is ever placed); one >= 44px segment per tool;
+         the pressed state (aria-pressed + the gold tme-active class bound to
+         the editorTool signal, R3) makes the active placement kind visible —
+         no invisible affordance (D53). Plain words (C23); touch alone
+         operates it. -->
     @if (graph.editorMode()) {
       <div class="tme-tools" role="group" aria-label="Editor tools" data-testid="tme-editor-tools">
         <button
@@ -113,7 +115,28 @@
         >
           Waypoint
         </button>
+        <button
+          type="button"
+          class="tme-tool"
+          data-testid="tme-tool-arc"
+          [class.tme-active]="graph.editorTool() === 'arc'"
+          [attr.aria-pressed]="graph.editorTool() === 'arc' ? 'true' : 'false'"
+          (click)="setEditorTool('arc')"
+        >
+          Arc
+        </button>
       </div>
+    }
+
+    <!-- B-122 (F17/C3 + C23): the draw-arc refusal banner — why the last
+         Arc-tool tap refused (the cross-layer fence), plain words, rendered
+         only while the Arc tool is active and a refusal stands. A status
+         message, not a control: pointer-events none so a dismissive
+         background tap still reaches the canvas (and cancels the pick). -->
+    @if (graph.editorMode() && graph.editorTool() === 'arc' && graph.drawArcFeedback(); as feedback) {
+      <p class="tme-draw-feedback" data-testid="tme-draw-feedback" role="status">
+        {{ feedback }}
+      </p>
     }
 
     <!-- B-116 (F45/D75): the save dock — the F45 unsaved-changes indicator

@@ -92,6 +92,24 @@
 // refusal leaves it intact. Unsaved ≠ invisible: the edits RENDER (the
 // projection reads the live map) but are visibly-not-yet-saved until
 // saveMap (F45/D75).
+// B-122 (§5 Phase 3 M2 draw-arc + D76/D77/D78/D42): the third editor tool
+// 'arc' — an editor-mode tap on an authored LEAF of the active layer is a
+// PICK, never a selection (the tme-connect-pick accent pattern, the distinct
+// `tme-draw-pick` class); the second tap on a DIFFERENT eligible leaf commits
+// ONE facade.upsertEdge (id: '' — C5/D75) with the map's D78 default-allowed
+// mode set (defaultArcModes: built-ins unless a registry entry adopting the
+// id opts out, plus every allowedByDefault registry entry — on a no-registry
+// map exactly the D42 quick-connect defaults), records the arc at the B-121
+// seam, selects it (the arc panel opens), and NEVER fits (B-120). The tool
+// STAYS on across commits (consecutive arcs). Escape hatches: tapping the
+// source cancels; a background or compound-box tap cancels (with the Arc
+// tool active the editor background tap is NEVER a placement — the tool owns
+// the gesture); a tool switch or editor exit clears the pick. Same-layer
+// only: F17/C3 fence cross-layer arc CREATION out of M2 — a pick that would
+// commit cross-layer (a mid-pick layer switch) is refused visibly through
+// drawArcFeedback with the pending pick KEPT (degrade, never throw — C32
+// spirit). Waypoints and badges are never picks (an authored arc's
+// endpoints are library nodes): a waypoint/badge tap keeps the pick.
 // The ONE cytoscape instance (D3): created headless
 // in the constructor, `mount()`/`unmount()` on demand — computation works with
 // the UI closed. Zoneless (D2): the service writes signals; the ONLY canvas
@@ -136,10 +154,12 @@ export interface LayerLabel {
 
 /**
  * B-120 (D76): the editor's placement tools — which kind an editor-mode
- * background/compound-box tap places. Extensible for B-122's draw-arc (a
- * third member joins; the tap handlers switch over it then).
+ * background/compound-box tap places. B-122 (§5 Phase 3 M2): the third
+ * member 'arc' — with it active the background/compound-box tap places
+ * NOTHING (the gesture cancels the pending pick instead); leaf taps become
+ * draw-arc PICKS (see handleDrawArcTap).
  */
-export type EditorTool = 'node' | 'waypoint';
+export type EditorTool = 'node' | 'waypoint' | 'arc';
 
 /**
  * B-106 (ruling 3): what the arc panel renders for one arc — authored/overlay
@@ -265,6 +285,27 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
     // Projected by the same signal-driven effect as tme-selected (R3) and
     // re-projected inside every rebuild batch (B-112).
     selector: 'node.tme-connect-pick',
+    style: {
+      'border-width': 3,
+      'border-color': '#4db6ac',
+      'border-style': 'dashed',
+    },
+  },
+  {
+    // B-122 (draw-arc pick): the pending draw SOURCE's accent — the SAME
+    // dashed-teal accent language as tme-connect-pick (the packet's "reuse
+    // the ACCENT pattern" ruling) under a DISTINCT class, never
+    // `tme-selected`: the draw-arc source is picked as an arc endpoint, not
+    // selected for editing (the F46 boundary ruling, B-118's twin). Declared
+    // AFTER node.tme-connect-pick per the B-111 no-specificity cascade: the
+    // two pick accents can never coexist (connect mode owns every node tap
+    // while on, and its exit clears its picks — see the tap handler order),
+    // so there is no accent it must yield to; like tme-connect-pick it
+    // follows the pin/selected/draft entries because the OPERATIVE transient
+    // accent owns the border while a pick is pending. No `text-opacity` and
+    // no `min-zoomed-font-size` (the B-107/B-113 gotchas): the cull entries
+    // are untouched.
+    selector: 'node.tme-draw-pick',
     style: {
       'border-width': 3,
       'border-color': '#4db6ac',
@@ -477,6 +518,23 @@ const CONNECT_EDGE_MODES: MapEdgeData['modes'] = {
 };
 
 /**
+ * B-122 (D78): the BUILT-IN travel-mode ids — the same private trio as the
+ * core's TRAVEL_MODES (src/core/model/validate.ts:52, not exported; the
+ * CONNECT_EDGE_MODES precedent of naming them here). defaultArcModes' seed
+ * list only; registry derivation does the rest.
+ */
+const BUILT_IN_MODES: readonly TravelMode[] = ['walk', 'car', 'train'];
+
+/**
+ * B-122 (F17/C3 fence + C23 plain words): the cross-layer refusal — M2
+ * draws SAME-layer arcs only (cross-layer creation is the M3/M4 layer &
+ * library UX's home). Surfaced user-visibly through the draw-arc banner
+ * with the pending pick KEPT (the author re-aims); never a throw (C32).
+ */
+const DRAW_ARC_CROSS_LAYER =
+  'Arcs connect places on one layer — the picked start is on another layer.';
+
+/**
  * B-118 (C23 plain words): the connect banner's tap feedback. One generic
  * line for every unpickable tap — a container, a node with children, a
  * foreign-layer node (data guard; the projection only shows the active
@@ -600,8 +658,10 @@ export class GraphService implements OnDestroy {
    * now editor+tool-gated. FRONTEND viewer state, in-memory only, the
    * B-119 panelFloating class (the facade carries no command for it): reset
    * to 'node' on every enterEditor; exitEditor KEEPS the choice (the reset
-   * happens at the next entry). Draw-arc joins this control in B-122 — the
-   * type grows a third member then, nothing here changes.
+   * happens at the next entry). B-122: the third member 'arc' joined — with
+   * it active the background/compound-box tap places NOTHING (the gesture
+   * cancels the pending pick instead) and leaf taps are draw-arc PICKS (see
+   * handleDrawArcTap); the reset/default semantics are unchanged.
    */
   readonly editorTool = signal<EditorTool>('node');
 
@@ -648,6 +708,27 @@ export class GraphService implements OnDestroy {
    * commit/cancel.
    */
   readonly connectRefusal = signal<NodeEditRefusal | null>(null);
+
+  /**
+   * B-122 (draw-arc): the PENDING SOURCE — the node id of the arc's first
+   * tapped endpoint, or null while the tool waits for its first pick. A
+   * signal (the connectPicks discipline): the pick accent is a projection of
+   * it inside projectSelectionClasses (R3 — the constructor's class effect
+   * re-runs per pick change, and every rebuild re-projects it), never a
+   * stray style write. Kept across a layer switch (a mid-pick switch is the
+   * F17/C3 fence's refusal path, not a cancel); cleared by the commit, a
+   * source/background/compound-box tap cancel, a tool switch, editor exit
+   * and map load.
+   */
+  readonly drawArcSourceId = signal<string | null>(null);
+
+  /**
+   * B-122 (C23): why the last draw-arc tap refused — today exactly the
+   * F17/C3 cross-layer fence line. Rendered by the viewer's draw-arc banner
+   * (the connectFeedback precedent: user-visible, never console-only);
+   * cleared by the next successful pick/commit and every pick cancel.
+   */
+  readonly drawArcFeedback = signal<string | null>(null);
 
   // --- Panel regime (PKG B-119, Q29 / §8 item 3 — the property panel) ------
 
@@ -880,6 +961,17 @@ export class GraphService implements OnDestroy {
         this.handleConnectTap(node);
         return;
       }
+      // B-122 (§5 M2 draw-arc): with the Arc tool active an editor-mode node
+      // tap is a PICK or a commit, NEVER a selection (F46 boundary ruling —
+      // the quick-connect precedent) — the branch sits ABOVE the badge and
+      // parent paths so a badge tap is a no-op that keeps the pick (badges
+      // are never endpoints) and a compound-box tap cancels it. View mode
+      // keeps today's behavior byte-identical (the tool renders only in the
+      // editor, D76).
+      if (this.editorMode() && this.editorTool() === 'arc') {
+        this.handleDrawArcTap(node);
+        return;
+      }
       // B-108 (finding 1.1): the badge pseudo-node IS the cross-layer arc's
       // only canvas surface (C3; F14/C2 have no same-layer carve-out) — a
       // badge tap selects the ARC with exactly an edge tap's semantics:
@@ -958,6 +1050,13 @@ export class GraphService implements OnDestroy {
         // panel). The banner's Done/Cancel own the exit.
         if (this.connectMode()) return;
         if (this.editorMode()) {
+          // B-122: with the Arc tool active the editor background tap is
+          // NEVER a placement — the tool owns the gesture; it cancels the
+          // pending pick (a no-op when none is pending, C32 spirit).
+          if (this.editorTool() === 'arc') {
+            this.clearDrawPick();
+            return;
+          }
           if (this.editorTool() === 'waypoint') this.placeWaypointAt(event.position);
           else this.placeNodeAt(event.position);
           return;
@@ -1059,6 +1158,7 @@ export class GraphService implements OnDestroy {
     this.travelMode.set(overlay.travelMode);
     this.selection.set(null);
     this.edgeSelection.set(null);
+    this.clearDrawPick(); // B-122: a pending pick is the same class of stale state — cleared with the selections
     // B-116 (D75): a fresh load carries no unsaved editor edits (the facade
     // clears its dirty flag in loadMap) — recompute the F45 bar and drop any
     // stale save refusal from the previous session.
@@ -1268,16 +1368,19 @@ export class GraphService implements OnDestroy {
   exitEditor(): void {
     this.editorMode.set(false);
     this.cy.autoungrabify(true);
+    this.clearDrawPick(); // B-122: the editor exit clears the pending pick
   }
 
   /**
    * B-120 (D76): the segmented tool control's write path — the template's
    * only writer (R3). Meaningful in editor mode (the control renders only
    * there); harmless anytime, and the value is never remembered across
-   * sessions (enterEditor resets it).
+   * sessions (enterEditor resets it). B-122: switching tools clears any
+   * pending draw-arc pick — the pick belongs to the Arc tool alone.
    */
   setEditorTool(tool: EditorTool): void {
     this.editorTool.set(tool);
+    this.clearDrawPick();
   }
 
   /**
@@ -1609,6 +1712,161 @@ export class GraphService implements OnDestroy {
     });
   }
 
+  // --- Draw-arc (PKG B-122, §5 Phase 3 M2 — D42/D78/F17/C3/F46/F45) -----------
+
+  /**
+   * B-122: clear the pending pick (and its feedback) — the ONE cancel seam
+   * for every escape hatch: the source tap, the background/compound-box tap,
+   * a tool switch, the editor exit and the map load. Signal writes only; the
+   * class effect re-projects the accent off the null pick (R3).
+   */
+  private clearDrawPick(): void {
+    this.drawArcSourceId.set(null);
+    this.drawArcFeedback.set(null);
+  }
+
+  /**
+   * B-122 (the gesture, one per mode — D53): route an Arc-tool node tap.
+   * Eligibility is the B-118 precedent restricted to the LIBRARY plane (an
+   * authored arc's endpoints are library nodes — MapEdgeData.source/target):
+   * `map.nodes`, active layer, `isPinEligible` (kind ∈ {location, hub,
+   * waypoint} AND childless — exactly the C1 leaf rule validateWorldMap
+   * enforces on edge endpoints, so a commit can never be refused on it).
+   * Branches, in order:
+   *   - badge pseudo-node: not an endpoint — a no-op that KEEPS the pick;
+   *   - compound parent (the box, B-120's no-op branch): CANCEL the pick;
+   *   - the pending source itself: CANCEL the pick;
+   *   - a waypoint or any non-eligible/foreign-layer leaf: a no-op that
+   *     KEEPS the pick (degrade, never throw — C32 spirit);
+   *   - eligible leaf + no pending source: SET the pick (stale feedback
+   *     clears — the connectFeedback precedent);
+   *   - eligible leaf + an ORPHANED source (removed mid-pick): CANCEL the
+   *     stale pick — never the fence message (it would be false);
+   *   - eligible leaf + pending source on a DIFFERENT layer (the only
+   *     physical cross-layer shape is a mid-pick layer switch — the
+   *     projection only ever shows the active layer's leaves): F17/C3
+   *     fence — REFUSE visibly through drawArcFeedback, pick KEPT (the
+   *     author re-aims);
+   *   - eligible leaf + same-layer source: COMMIT (commitDrawArc).
+   * F46: no selection is ever written here — picks are arc endpoints, not
+   * editing selections.
+   */
+  private handleDrawArcTap(node: NodeSingular): void {
+    const map = this.map();
+    const layerId = this.activeLayer();
+    if (map === null || layerId === null) return; // degrade before loadMap (C32 spirit)
+    if (node.hasClass('tme-badge')) return; // a badge is never an endpoint — pick kept
+    if (node.isParent()) {
+      this.clearDrawPick(); // the compound box: cancel (the B-120 no-op branch)
+      return;
+    }
+    const id = node.id();
+    const authored = map.nodes.find((nd) => nd.id === id);
+    if (authored === undefined) return; // a waypoint (wp-) is not a pick — pick kept
+    if (id === this.drawArcSourceId()) {
+      this.clearDrawPick(); // the source tap cancels its own pick
+      return;
+    }
+    // The ONE eligible rule (B-118 precedent over the library plane). The
+    // layer guard is a data guard — the projection only shows active-layer
+    // leaves, so it cannot fire for a real tap.
+    if (!isPinEligible(id, map.nodes) || authored.layer !== layerId) return;
+    const sourceId = this.drawArcSourceId();
+    if (sourceId === null) {
+      this.drawArcFeedback.set(null);
+      this.drawArcSourceId.set(id);
+      return;
+    }
+    const source = map.nodes.find((nd) => nd.id === sourceId);
+    if (source === undefined) {
+      // The pending source was REMOVED mid-pick (the B-117 delete seam can
+      // still reach it through the property panel's stale selection) — the
+      // pick is orphaned: cancel it. NOT the fence refusal (that message
+      // would be false — C23 spirit); the next tap starts a fresh pick.
+      this.clearDrawPick();
+      return;
+    }
+    if (source.layer !== authored.layer) {
+      // F17/C3: cross-layer arc CREATION is fenced out of M2 — refuse
+      // visibly, keep the pick (never a throw, C32).
+      this.drawArcFeedback.set(DRAW_ARC_CROSS_LAYER);
+      return;
+    }
+    this.commitDrawArc(sourceId, id);
+  }
+
+  /**
+   * B-122 (D42/D78): the map's default-allowed mode set for a drawn arc —
+   * every BUILT-IN unless a registry entry adopting that id sets
+   * `allowedByDefault: false`, plus every registry entry with
+   * `allowedByDefault: true` (an adopting true entry is already in). On a
+   * no-registry map (FX1 today) this is exactly CONNECT_EDGE_MODES — all
+   * three built-ins allowed, geometry-priced via C14 row 5. One service-side
+   * derivation; B-124 later points quick-connect at the SAME private (this
+   * packet does not migrate it). A registry that opts out of everything
+   * yields `modes: {}` — legal (never traversable) and refineable in the arc
+   * panel (B-123).
+   */
+  private defaultArcModes(): MapEdgeData['modes'] {
+    const registry = this.map()?.modes ?? [];
+    const modes: MapEdgeData['modes'] = {};
+    const adopted = new Map(registry.map((declaration) => [declaration.id, declaration] as const));
+    for (const id of BUILT_IN_MODES) {
+      const declaration = adopted.get(id);
+      if (declaration === undefined || declaration.allowedByDefault) {
+        modes[id] = { allowed: true };
+      }
+    }
+    for (const declaration of registry) {
+      if (declaration.allowedByDefault && modes[declaration.id] === undefined) {
+        modes[declaration.id] = { allowed: true };
+      }
+    }
+    return modes;
+  }
+
+  /**
+   * B-122 (the commit): ONE `facade.upsertEdge` with `id: ''` (the engine
+   * assigns `arc-<n>` — C5/D75) — parallel arcs stay possible (C4: no dedup,
+   * the D42 ruling; drawing the same pair twice commits a sibling). The new
+   * arc's id is discovered by the C5/D75 projection DELTA (the doneConnect
+   * seam: a single create can only add one edge). F45/D75: the command marks
+   * only `dirty` — the arc RENDERS (the rebuild re-reads the live map, one
+   * cy.batch — B-112; NO fit, B-120) but routing and the snapshot serve the
+   * SAVED graph until saveMap, so no graphRevision bump and no snapshot
+   * refresh. Then the B-121 seam records the arc, the pick clears (the TOOL
+   * stays on — consecutive arcs), and the new arc is SELECTED through the
+   * existing edgeSelection signal so the arc panel opens on it (B-106 mutual
+   * exclusion: the node selection clears — an edge tap's exact semantics).
+   * A C30 refusal is unreachable by construction (eligible leaves, same
+   * layer, registry-derived modes) but degrades to the banner, never a
+   * throw (C32).
+   */
+  private commitDrawArc(source: string, target: string): void {
+    const facade = this.facade;
+    if (facade === null) return; // no core to commit into — pick kept (C32 spirit)
+    const beforeEdgeIds = this.projectedEdgeIds;
+    try {
+      facade.upsertEdge({ id: '', source, target, modes: this.defaultArcModes() });
+    } catch (error) {
+      this.drawArcFeedback.set(error instanceof Error ? error.message : String(error));
+      return;
+    }
+    this.rebuildElements();
+    let createdId: string | null = null;
+    for (const id of this.projectedEdgeIds) {
+      if (!beforeEdgeIds.has(id)) {
+        createdId = id;
+        break;
+      }
+    }
+    if (createdId !== null) this.recordUnsaved(createdId); // B-121 (D77): every editor command records here
+    this.clearDrawPick();
+    this.selection.set(null); // B-106 mutual exclusion
+    if (createdId !== null) this.edgeSelection.set({ id: createdId }); // the arc panel opens on the new arc
+    this.editorRevision.update((n) => n + 1); // F45: the dock lights
+  }
+
   /**
    * B-116 (F45/C29/D75): the save bar's Save — the facade's explicit save,
    * the only command that takes unsaved editor edits live (C8's edit save
@@ -1892,6 +2150,22 @@ export class GraphService implements OnDestroy {
   }
 
   /**
+   * B-122: the pending draw-arc source's id, or null (the testPickedNodeIds
+   * precedent — read-only, no mutation path, so R2/R4 hold).
+   */
+  testDrawArcSourceId(): string | null {
+    return this.drawArcSourceId();
+  }
+
+  /**
+   * B-122: the draw-arc banner's current message, or null (read-only; the
+   * cross-layer refusal's visibility seam).
+   */
+  testDrawArcFeedback(): string | null {
+    return this.drawArcFeedback();
+  }
+
+  /**
    * B-118: the current quick-connect pick set in pick order (Set iteration
    * is insertion order). Read-only (R2/R4 hold).
    */
@@ -2126,6 +2400,7 @@ export class GraphService implements OnDestroy {
     const sel = this.selection();
     const edgeSel = this.edgeSelection();
     const picks = this.connectPicks(); // B-118: signal read = effect dependency
+    const drawSource = this.drawArcSourceId(); // B-122: signal read = effect dependency
     this.cy.nodes().removeClass('tme-selected');
     if (sel !== null) this.cy.getElementById(sel.id).addClass('tme-selected');
     this.cy.edges().removeClass('tme-edge-selected');
@@ -2134,6 +2409,11 @@ export class GraphService implements OnDestroy {
     // pick is an arc endpoint, not an editing selection.
     this.cy.nodes().removeClass('tme-connect-pick');
     for (const id of picks) this.cy.getElementById(id).addClass('tme-connect-pick');
+    // B-122 (F46): the draw pick's DISTINCT accent — the same never-selected
+    // rule, the same one-function projection for the effect and every
+    // rebuild batch (the paths can never diverge).
+    this.cy.nodes().removeClass('tme-draw-pick');
+    if (drawSource !== null) this.cy.getElementById(drawSource).addClass('tme-draw-pick');
   }
 
   private refreshSnapshot(): void {
