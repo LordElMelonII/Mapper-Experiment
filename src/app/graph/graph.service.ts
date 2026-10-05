@@ -68,13 +68,17 @@
 // Phase 4) with the maximized-default reset on editor entry. All clamp /
 // drag DOM math lives in the panel component (the consumer); the service
 // holds the two signals and nothing else.
-// B-120 (R21 rulings 1 + D76): viewport stability + editor-only placement.
-// (1) fitView belongs to mount(), notifyResize() and selectLayer() ONLY —
-// rebuildElements NEVER fits, so an edit (place/move/property-commit), a
-// block/lift, a mode switch or a map load leaves zoom and pan untouched
-// (the cull machinery follows: cullZoom is recomputed only by real fits, and
-// a rebuild re-applies the cull class from `labelCulled` — an edit while
-// culled stays culled, B-113 ruling 4's stated intent now exactly true).
+// B-120 (R21 rulings 1 + D76; fit-site list refined by D81): viewport
+// stability + editor-only placement. (1) fitView belongs to mount(),
+// selectLayer() and ENVIRONMENTAL notifyResize() ONLY (D81: a panel-driven
+// resize on the wide layout never fits — zoom and pan are preserved, with a
+// pan-only selection rescue clamp; every resize on the narrow layout keeps
+// the B-106 refit) — rebuildElements NEVER fits, so an edit
+// (place/move/property-commit), a block/lift, a mode switch or a map load
+// leaves zoom and pan untouched (the cull machinery follows: cullZoom is
+// recomputed only by real fits, and a rebuild re-applies the cull class
+// from `labelCulled` — an edit while culled stays culled, B-113 ruling 4's
+// stated intent now exactly true).
 // (2) D76: view mode is purely navigational — tap selects, drag pans, pinch
 // zooms, NOTHING is ever placed (a background tap clears both selections
 // only; a compound-box tap is a deliberate no-op). Placement of every kind
@@ -2340,13 +2344,22 @@ export class GraphService implements OnDestroy {
 
   /**
    * Charter lifecycle: the host's ResizeObserver funnels container resizes
-   * here. B-106: a resized stage also RE-FITS the view — the stage's fixed
+   * here. B-106 + D81: resizes split by class. An ENVIRONMENTAL resize (the
+   * browser viewport itself changed — window resize, orientation change) and
+   * every resize on the NARROW layout keep B-106's refit — the stage's fixed
    * chrome (header top, layer switcher bottom-left) overlays the canvas, so
    * content fitted for a taller stage can otherwise end up underneath that
    * chrome once a panel opens at phone width, untappable (found live by the
-   * arc-panel phone e2e: the castle node landed under a layer button). The
-   * refit keeps the whole layer visible AND tappable at any stage size; it
-   * writes no signals (D2 — outside Angular, like mount()'s fit).
+   * arc-panel phone e2e: the castle node landed under a layer button); the
+   * refit keeps the whole layer visible AND tappable at any stage size. A
+   * PANEL-DRIVEN resize on the WIDE layout (D81: the container changed while
+   * the viewport did not — the arc/property panel columns, a future ST
+   * drawer) PRESERVES the viewport instead: zoom untouched, pan untouched —
+   * zero compensation (the stage anchors at its left edge, so the selection
+   * is pixel-stable; only the freed band clips) — with a pan-only selection
+   * rescue clamp when the selection's rendered box would sit outside the
+   * canvas or under interactive chrome. Either path writes no signals (D2 —
+   * outside Angular, like mount()'s fit).
    *
    * B-113 (ruling 5): the cull check re-runs after the re-fit — idempotent.
    * Verification finding (B-111 precedent, file:line): a programmatic
