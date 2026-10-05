@@ -125,6 +125,20 @@ export class ArcPanelComponent {
   protected readonly unitKinds = UNIT_KIND_OPTIONS;
 
   /**
+   * B-124 (D78/C23): the read-only allowed-mode chips' display word — the
+   * core-resolved label via the service's `modeRows` (the ONE resolver's
+   * words; the UI looks a word up, it never maps an id itself, R1 spirit
+   * for authored words). A registry relabel renders ('Carriage'); on a
+   * no-registry map the id IS the word, so the rendering is byte-identical
+   * to the pre-B-124 trio. Unknown id ⇒ the id (degrade, never throw —
+   * C32 spirit).
+   */
+  protected modeWord(id: TravelMode): string {
+    const row = this.graph.modeRows().find((candidate) => candidate.id === id);
+    return row?.label ?? id;
+  }
+
+  /**
    * The selected arc's data (ruling 3): graphRevision is a dependency so a
    * Block/Lift re-reads arcInfo without edgeSelection moving — the reason
    * line flips to the overlay's restated text, Lift enables, live.

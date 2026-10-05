@@ -20,11 +20,12 @@
          authored strings, never ids. -->
     <p class="tme-endpoints" data-testid="tme-arc-endpoints">{{ info.sourceLabel }} ↔ {{ info.targetLabel }}</p>
 
-    <!-- Allowed modes in authored key order — the authored mode words
-         themselves (display words, not UI logic). -->
+    <!-- Allowed modes in authored key order — the RESOLVED authored words
+         (the ONE core resolver's labels via modeWord; the id stays the
+         testid key). On a no-registry map the id IS the word (B-124). -->
     <p class="tme-modes" data-testid="tme-arc-modes">
       @for (mode of info.modes; track mode) {
-        <span class="tme-mode-word" [attr.data-testid]="'tme-arc-mode-' + mode">{{ mode }}</span>
+        <span class="tme-mode-word" [attr.data-testid]="'tme-arc-mode-' + mode">{{ modeWord(mode) }}</span>
       }
     </p>
 

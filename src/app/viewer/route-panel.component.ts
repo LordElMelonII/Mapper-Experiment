@@ -82,15 +82,14 @@ export class RoutePanelComponent {
   }
 
   /**
-   * F32/D19 (ruling 3): the three overlay preference modes — there is no
-   * 'auto'; D60(a) already prefers overlay.travelMode per arc and falls back
-   * to the cheapest allowed mode in the route's currency.
+   * B-124 (D78/C23): the mode switch rows are the SERVICE's `modeRows` — the
+   * loaded map's mode universe rowed with the ONE core resolver's words (no
+   * hardcoded trio; the UI never maps ids to words, R1 spirit). F32/D19
+   * still holds: there is no 'auto' — D60(a) prefers overlay.travelMode per
+   * arc and falls back to the cheapest allowed mode in the route's currency.
+   * The component renders the rows verbatim and hands every row id straight
+   * back through setMode (the facade's setTravelMode validates it, C30).
    */
-  protected readonly modes: readonly { id: TravelMode; name: string }[] = [
-    { id: 'walk', name: 'Walk' },
-    { id: 'car', name: 'Car' },
-    { id: 'train', name: 'Train' },
-  ];
 
   /**
    * C2/C19 (the M1 deferral): the pin-incident blocked arcs — label + reason
@@ -171,7 +170,13 @@ export class RoutePanelComponent {
     this.graph.removeWaypoint(wp.id);
   }
 
-  /** Ruling 3: one tap path for every project (F52/D53) — the facade command. */
+  /**
+   * Ruling 3: one tap path for every project (F52/D53) — the facade command,
+   * with the row id passed through untouched (B-124: ids are the stable
+   * keys; the facade's setTravelMode validates against the loaded map's
+   * universe, C30 — a refusal surfaces through the service's
+   * travelModeRefusal, rendered below the switch).
+   */
   protected setMode(mode: TravelMode): void {
     this.graph.setTravelModePreference(mode);
   }

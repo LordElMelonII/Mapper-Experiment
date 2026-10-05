@@ -87,7 +87,7 @@
                puts the unit on the total line, once). -->
           <ol class="tme-legs" data-testid="tme-legs">
             @for (leg of route.legs; track leg.arcId) {
-              <li data-testid="tme-leg">{{ graph.labelOf(leg.from) }} → {{ graph.labelOf(leg.to) }} · {{ leg.mode }} · {{ leg.cost }}</li>
+              <li data-testid="tme-leg">{{ graph.labelOf(leg.from) }} → {{ graph.labelOf(leg.to) }} · {{ leg.modeLabel }} · {{ leg.cost }}</li>
             }
           </ol>
           <p class="tme-total" data-testid="tme-total">{{ route.total }} {{ route.unit }}</p>
@@ -101,11 +101,15 @@
       <p class="tme-state" data-testid="tme-hint">Tap a node on the map to route there from the pin.</p>
     }
 
-    <!-- Ruling 3 (F32/D19): the travel-mode preference — three tappable modes,
-         no 'auto'. The active button mirrors the service signal; a tap goes
-         through the facade (R2) and the route computed re-prices (D60(a)). -->
+    <!-- B-124 (F32/D19, D78/C23): the travel-mode preference — the map's mode
+         universe as map-driven rows (the ONE core resolver's words, bound
+         verbatim; no hardcoded trio, no UI id-to-word mapping). The active
+         button mirrors the service signal (an id comparison — ids are the
+         stable keys); a tap goes through the facade (R2) and the route
+         computed re-prices (D60(a)). The group wraps, so a registry map's
+         longer list never forces horizontal scroll (D53). -->
     <div class="tme-modes" role="group" aria-label="Travel mode preference">
-      @for (mode of modes; track mode.id) {
+      @for (mode of graph.modeRows(); track mode.id) {
         <button
           type="button"
           class="tme-mode"
@@ -114,10 +118,19 @@
           [attr.data-testid]="'tme-mode-' + mode.id"
           (click)="setMode(mode.id)"
         >
-          {{ mode.name }}
+          {{ mode.label }}
         </button>
       }
     </div>
+
+    <!-- B-124 (C30/C32): the switch's degrade-path refusal — the facade's
+         setTravelMode validates every row id against the loaded map's
+         universe (the same map the rows render), so this is unreachable in
+         normal flow; the surface exists so a refusal is user-visible, never
+         an uncaught console throw. -->
+    @if (graph.travelModeRefusal(); as refusal) {
+      <p class="tme-mode-refusal" role="alert" data-testid="tme-mode-refusal">{{ refusal }}</p>
+    }
 
     <!-- C2/C19 — the M1 deferral, discharged: every pin-incident blocked arc
          with its authored/overlay reason, verbatim (never hidden, never a

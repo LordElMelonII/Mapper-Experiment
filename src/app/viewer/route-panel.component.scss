@@ -203,9 +203,15 @@
   color: #e08a84;
 }
 
-// Ruling 3: the mode switch — three buttons, each a >= 44px tap target
-// (F52/D53), touch-action: manipulation so double-taps never zoom the chrome
-// (§6.2). No hover-only affordances: active state is signal-driven, visible.
+// B-124: the mode switch — the map's mode universe as rows (no hardcoded
+// trio), each a >= 44px tap target (F52/D53), touch-action: manipulation so
+// double-taps never zoom the chrome (§6.2). The group wraps, so a registry
+// map's longer list grows DOWN, never sideways (D53's no-horizontal-scroll
+// bar). No hover-only affordances: active state is signal-driven, visible.
+// text-transform is presentation only (chrome, D7): the template binds the
+// ONE core resolver's words verbatim — capitalizing them for display keeps
+// the no-registry rendering byte-identical to the retired hardcoded trio
+// ('walk' → 'Walk') without any id-to-word mapping in code.
 .tme-modes {
   display: flex;
   flex-wrap: wrap;
@@ -227,11 +233,19 @@
     sans-serif;
   cursor: pointer;
   touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+  text-transform: capitalize; // B-124: presentation of the resolver's word — see the block comment
 }
 
 .tme-mode.tme-active {
   border-color: #ffd166;
   color: #ffd166;
+}
+
+// B-124 (C30/C32): the switch's degrade-path refusal — user-visible (the
+// arcBlockRefusal pattern), styled with the established alert-red key.
+.tme-mode-refusal {
+  margin: -0.375rem 0 0.75rem;
+  color: #e08a84;
 }
 
 // C2: blocked arcs are never hidden — mirrored here as panel rows with their

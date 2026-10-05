@@ -2,12 +2,31 @@
 // Fuyuki/Misaki demo map) through the facade and renders the M1 viewer.
 // Dev-harness-only: the shipped extension entry is src/st/entry.ts, which
 // never imports this file.
+//
+// PKG B-124 — HARNESS-ONLY REGISTRY DEMO MAP: the map-driven mode surfaces
+// (the route panel's switch, quick-connect's committed mode set) are only
+// e2e-testable against a map that DECLARES a mode registry (D78). Boot with
+// `?map=registry-demo` (e.g. http://localhost:4200/?map=registry-demo) to
+// load REGISTRY_DEMO below INSTEAD of FX1 — a small two-layer world whose
+// registry declares a registry mode ('horse' → 'Horseback', D42
+// allowedByDefault) and a RELABELED, default-opted-out built-in ('car' →
+// 'Carriage', allowedByDefault: false), plus one registry-only arc (horse
+// its only allowed mode — prices in default runs only because A-016b
+// widened the default candidate scan to the map's mode universe). The
+// DEFAULT boot path (no param, any other value) is byte-identical to the
+// pre-B-124 harness: FX1, the curve demo edge, the harness background.
+// The demo map is IN-FILE data following the api.ts shape — validateWorldMap
+// accepts it at loadMap (the D69 display-copy precedent: harness-only
+// display content, the FX fixtures stay untouched, D70).
 import { Component, inject } from '@angular/core';
 import { GraphService } from './graph/graph.service';
 import { MapViewerComponent } from './viewer/map-viewer.component';
 import { createFacade } from '../core/facade';
-import type { ChatMapOverlay, MapEdgeData } from '../core/api';
+import type { ChatMapOverlay, MapEdgeData, WorldMapData } from '../core/api';
 import { fuyukiMap } from '../../data/worlds/fuyuki';
+
+/** B-124: the `map` URL param value that boots the registry demo instead of FX1. */
+const REGISTRY_DEMO_PARAM = 'registry-demo';
 
 /**
  * B-111 — the ONE harness-only demo edge (the D69 display-copy precedent:
@@ -36,6 +55,113 @@ const CURVE_DEMO_EDGE: MapEdgeData = {
   modes: { walk: { allowed: false } },
   curve: { distances: [40, -30] },
 };
+
+/**
+ * B-124 — the harness-only REGISTRY DEMO map (see the header comment; the
+ * FX fixtures stay untouched, D69/D70). A FRESH literal per call (the
+ * displayMap doctrine: the real host hands loadMap fresh-parsed, extensible
+ * state — facade commands mutate the stored map IN PLACE, C24, so nothing
+ * here may be frozen or shared across constructions). Facts the e2e cells
+ * pin (all arithmetic float-exact):
+ *   - registry: `horse` → 'Horseback' (speed 6 — the resolved saved speed
+ *     map takes registry entries first, so the arc below prices in MINUTES
+ *     via C14 rows 5–6: units/speed×60), `car` → 'Carriage' with
+ *     `allowedByDefault: false` (the D78 default-allowed derivation drops it
+ *     — quick-connect/draw-arc commits carry NO 'car');
+ *   - scale.speed carries the one BUILT-IN entry (`train: 6`) — inert here,
+ *     structural proof that a scale.speed built-in and a registry mode
+ *     coexist in one map's universe;
+ *   - `arc-vale-gate-high-pasture` is A-016b's REGISTRY-ONLY arc: horse is
+ *     its ONLY allowed mode, no authored minutes — 240 px × 0.125 = 30
+ *     leagues, 30/6 × 60 = 300 min exactly. High Pasture is reachable ONLY
+ *     through it, so the default run's route through the registry-only arc
+ *     is structural, not price-comparison luck;
+ *   - the walk arc carries authored minutes (C14 row 3 — verbatim, no
+ *     multipliers), so every route runs in the minutes currency (C15);
+ *   - every leaf sits in the map's TOP half (y ≤ 240) — the fitted phone
+ *     view never places a node under the stage's bottom-corner chrome
+ *     (the tool control / layer switcher), the B-106 overlay class of
+ *     problem, so touch taps land on nodes at both viewports (D53).
+ */
+function registryDemoMap(): WorldMapData {
+  return {
+    schemaVersion: 2,
+    id: 'vale-coast-registry-demo',
+    name: 'Vale & Coast (Registry Demo)',
+    layers: [
+      { id: 'layer-vale', name: 'Green Vale' },
+      { id: 'layer-coast', name: 'Coast' },
+    ],
+    scale: {
+      unitPerPx: 0.125, // 1 px = 1/8 league (binary-exact: ×240 px = 30)
+      unitLabel: 'league',
+      unitKind: 'distance',
+      speed: { train: 6 }, // the built-in speed entry (canonical units per hour)
+    },
+    modes: [
+      { id: 'horse', label: 'Horseback', unit: 'leagues per hour', speed: 6, allowedByDefault: true },
+      { id: 'car', label: 'Carriage', allowedByDefault: false },
+    ],
+    nodes: [
+      { id: 'vale-gate', label: 'Vale Gate', kind: 'location', layer: 'layer-vale', position: { x: 100, y: 100 } },
+      { id: 'high-pasture', label: 'High Pasture', kind: 'location', layer: 'layer-vale', position: { x: 340, y: 100 } },
+      // top-half placement (see the comment block above) — clear of the
+      // bottom-corner chrome at the phone fit
+      { id: 'old-mill', label: 'Old Mill', kind: 'location', layer: 'layer-vale', position: { x: 220, y: 240 } },
+      // the second layer's leaf — two-layer shape, no cross-layer arc needed
+      { id: 'coast-lighthouse', label: 'Lighthouse', kind: 'location', layer: 'layer-coast', position: { x: 200, y: 200 } },
+    ],
+    edges: [
+      // THE registry-only arc (A-016b): horse only, and the ONLY way into
+      // High Pasture — unreachable in default runs before the default scan
+      // widened to the map's mode universe (A-016b).
+      {
+        id: 'arc-vale-gate-high-pasture',
+        source: 'vale-gate',
+        target: 'high-pasture',
+        modes: { horse: { allowed: true } },
+      },
+      { id: 'arc-vale-gate-old-mill', source: 'vale-gate', target: 'old-mill', modes: { walk: { allowed: true, authoredMinutes: 30 } } },
+    ],
+  };
+}
+
+/**
+ * The DEFAULT boot map (D69 harness ruling): the FX1 display copy — a
+ * per-layer copy that adds a harness-only placeholder background to
+ * layer-fuyuki. The node/edge ARRAYS are shallow copies because the FX1
+ * fixture is deep-frozen (D70) while B-110's promoteUserNode mutates
+ * map.nodes/map.edges IN PLACE (C24 — the stored library reference): the
+ * real host hands loadMap fresh-parsed, extensible state, and the harness
+ * mirrors that. The element objects stay the frozen authored ones — promote
+ * derives a NEW node object (C26), nothing mutates them. The facade
+ * validates and stores this object; the service gets the SAME reference
+ * (C24 — one truth, R4). D70: the app layer may import data/ fixtures
+ * display-only (lint-boundaries allows the 'data' pseudo-layer for 'app').
+ */
+function fuyukiDisplayMap(): WorldMapData {
+  return {
+    ...fuyukiMap,
+    nodes: [...fuyukiMap.nodes],
+    // B-111: the harness-only curve demo edge rides the COPY (see
+    // CURVE_DEMO_EDGE above) — the frozen FX1 file stays untouched (D69).
+    edges: [...fuyukiMap.edges, CURVE_DEMO_EDGE],
+    // B-123: the scale block is a SHALLOW COPY for the same B-110 doctrine —
+    // A-015's calibrateScale mutates scale.unitPerPx/unitLabel/unitKind IN
+    // PLACE (C24 — the stored library reference), and a deep-frozen fixture
+    // scale would make every "measure this arc" refusal-throw
+    // ("Cannot assign to read only property"). The real host hands loadMap
+    // fresh-parsed, extensible state; the harness mirrors that. The nested
+    // terrainMultipliers stay the frozen authored ones — pricing reads them,
+    // no facade command writes them.
+    scale: { ...fuyukiMap.scale },
+    layers: fuyukiMap.layers.map((layer) =>
+      layer.id === 'layer-fuyuki'
+        ? { ...layer, background: { assetId: 'assets/harness-bg-fuyuki.png' } }
+        : layer,
+    ),
+  };
+}
 
 /** Shape of the dev-harness-only e2e seam installed below (D53 phone e2e). */
 interface TmeE2EHook {
@@ -92,6 +218,9 @@ interface TmeE2EHook {
   /** B-123: the per-mode EDIT rows of one arc (arcModesOf — the D78/C23 seam),
    *  or null; the map's mode universe with the resolver's labels. */
   arcModes(id: string): { id: string; label: string; allowed: boolean; authoredMinutes: number | null }[] | null;
+  /** B-124: the route panel's switch rows (modeRows — the D78/C23 seam):
+   *  the map's mode universe with the resolver's labels, or [] pre-load. */
+  modeRows(): { id: string; label: string }[];
   /** B-123 (R1/D44): the live scale's verbatim numbers — the measure readout seam. */
   scaleInfo(): { unitPerPx: number; unitLabel: string; unitKind: string } | null;
   /** B-118: the live route's leg arc ids, or null — the F45 discriminator seam. */
@@ -118,49 +247,34 @@ export class App {
   constructor() {
     const facade = createFacade();
 
-    // D69 (harness ruling): the display map is a per-layer copy that adds a
-    // harness-only placeholder background to layer-fuyuki. The node/edge
-    // ARRAYS are shallow copies because the FX1 fixture is deep-frozen (D70)
-    // while B-110's promoteUserNode mutates map.nodes/map.edges IN PLACE
-    // (C24 — the stored library reference): the real host hands loadMap
-    // fresh-parsed, extensible state, and the harness mirrors that. The
-    // element objects stay the frozen authored ones — promote derives a NEW
-    // node object (C26), nothing mutates them. The facade validates and
-    // stores this object; the service gets the SAME reference (C24 — one
-    // truth, R4). D70: the app layer may import data/ fixtures display-only
-    // (lint-boundaries allows the 'data' pseudo-layer for 'app').
-    const displayMap = {
-      ...fuyukiMap,
-      nodes: [...fuyukiMap.nodes],
-      // B-111: the harness-only curve demo edge rides the COPY (see
-      // CURVE_DEMO_EDGE above) — the frozen FX1 file stays untouched (D69).
-      edges: [...fuyukiMap.edges, CURVE_DEMO_EDGE],
-      // B-123: the scale block is a SHALLOW COPY for the same B-110 doctrine —
-      // A-015's calibrateScale mutates scale.unitPerPx/unitLabel/unitKind IN
-      // PLACE (C24 — the stored library reference), and a deep-frozen fixture
-      // scale would make every "measure this arc" refusal-throw
-      // ("Cannot assign to read only property"). The real host hands loadMap
-      // fresh-parsed, extensible state; the harness mirrors that. The nested
-      // terrainMultipliers stay the frozen authored ones — pricing reads them,
-      // no facade command writes them.
-      scale: { ...fuyukiMap.scale },
-      layers: fuyukiMap.layers.map((layer) =>
-        layer.id === 'layer-fuyuki'
-          ? { ...layer, background: { assetId: 'assets/harness-bg-fuyuki.png' } }
-          : layer,
-      ),
-    };
+    // B-124: `?map=registry-demo` boots the harness-only registry demo map
+    // INSTEAD of FX1 (see the header comment) — the DEFAULT boot path (no
+    // param, any other value) stays byte-identical: fuyukiDisplayMap().
+    const demoRequested =
+      new URLSearchParams(window.location.search).get('map') === REGISTRY_DEMO_PARAM;
+    const displayMap = demoRequested ? registryDemoMap() : fuyukiDisplayMap();
 
     // A fresh chat overlay (the state C persists per chat, Phase 4): pin on
-    // Emiya Residence, walking, no user nodes/edges/blocks.
-    const overlay: ChatMapOverlay = {
-      mapId: 'fuyuki-misaki',
-      currentLocationId: 'emiya-residence',
-      travelMode: 'walk',
-      userNodes: [],
-      userEdges: [],
-      blocked: {},
-    };
+    // the map's start leaf, walking, no user nodes/edges/blocks. The demo's
+    // overlay rides its own map id and pin (the mode universe it validates
+    // against is the demo registry's — D78).
+    const overlay: ChatMapOverlay = demoRequested
+      ? {
+          mapId: 'vale-coast-registry-demo',
+          currentLocationId: 'vale-gate',
+          travelMode: 'walk',
+          userNodes: [],
+          userEdges: [],
+          blocked: {},
+        }
+      : {
+          mapId: 'fuyuki-misaki',
+          currentLocationId: 'emiya-residence',
+          travelMode: 'walk',
+          userNodes: [],
+          userEdges: [],
+          blocked: {},
+        };
 
     facade.loadMap(displayMap, overlay); // R2: the facade owns the map lifecycle
     this.graphService.loadMap(displayMap, overlay, facade); // R4: same references
@@ -195,6 +309,7 @@ export class App {
       drawArcFeedback: () => this.graphService.testDrawArcFeedback(),
       edgeData: (id: string) => this.graphService.testEdgeData(id),
       arcModes: (id: string) => this.graphService.testArcModesOf(id),
+      modeRows: () => this.graphService.testModeRows(),
       scaleInfo: () => this.graphService.testScaleInfo(),
       routeLegArcIds: () => this.graphService.testRouteLegArcIds(),
       draftedIds: () => this.graphService.testDraftedIds(),

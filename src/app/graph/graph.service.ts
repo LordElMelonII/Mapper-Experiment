@@ -138,6 +138,19 @@
 // the measure section's readout shows the core's numbers; the
 // editorRevision dependency re-renders it after an in-place calibration,
 // C24).
+// B-124 (D78/D42 — the map-driven mode surfaces): the two hardcoded
+// mode-vocabulary surfaces read the map now. (1) The route panel's switch
+// renders `modeRows` — the map's mode universe (built-ins ∪ registry ids,
+// insertion order, the arcModesOf discipline) rowed with the ONE core
+// resolver's words (`resolveModeLabel`; the UI never maps ids to words, R1
+// spirit) — on a no-registry map exactly the built-in trio. (2) doneConnect
+// commits `defaultArcModes()` — the SAME private derivation draw-arc commits
+// (one D42 default-allowed set) — replacing the hardcoded CONNECT_EDGE_MODES
+// trio; on a no-registry map the committed modes are byte-identical to it. A
+// C30 refusal of the facade's setTravelMode (the degrade path — every
+// rendered id is valid by construction, but the surface must exist) is
+// caught and surfaced user-visibly through `travelModeRefusal` (the
+// saveError/arcBlockRefusal pattern), never an uncaught throw (C32).
 // The ONE cytoscape instance (D3): created headless
 // in the constructor, `mount()`/`unmount()` on demand — computation works with
 // the UI closed. Zoneless (D2): the service writes signals; the ONLY canvas
@@ -572,18 +585,6 @@ export interface NodeEditRefusal {
 }
 
 /**
- * B-118 (D42 contract, verbatim): the modes of every quick-connect arc —
- * ALL modes allowed, no authored distance/time, no terrain, not blocked.
- * Geometry prices the arc via C14 row 5 (F19 geometry-first); the author
- * refines in M2's arc editing (F41 — this packet creates ONLY default arcs).
- */
-const CONNECT_EDGE_MODES: MapEdgeData['modes'] = {
-  walk: { allowed: true },
-  car: { allowed: true },
-  train: { allowed: true },
-};
-
-/**
  * B-122 (D78): the BUILT-IN travel-mode ids — the same private trio as the
  * core's TRAVEL_MODES (src/core/model/validate.ts:52, not exported; the
  * CONNECT_EDGE_MODES precedent of naming them here). defaultArcModes' seed
@@ -927,6 +928,60 @@ export class GraphService implements OnDestroy {
    * facade command (R2 — the service itself never mutates the overlay).
    */
   readonly travelMode = signal<TravelMode>('walk');
+
+  /**
+   * B-124 (B-105 ruling 3, D78/C23): the route panel's mode switch ROWS —
+   * the loaded map's mode universe (built-ins ∪ registry ids, insertion
+   * order — the arcModesOf discipline, via modeUniverseIds) rowed with the
+   * ONE core resolver's words (`resolveModeLabel`; the UI never maps ids to
+   * words itself, R1 spirit for authored words). On a no-registry map this
+   * is exactly the built-in trio with the bare built-ins' own words (their
+   * ids ARE their words — C23); a registry relabels or extends it. A
+   * computed over DISCRETE signals only (D2): the map signal (a load
+   * re-reads) and editorRevision (an in-place registry mutation re-reads —
+   * C24, the scaleNow precedent; no registry editor exists yet, the dep
+   * costs nothing). `travelMode` is deliberately NOT a dependency: the rows
+   * are map data — the active highlight compares the travelMode signal in
+   * the template (the tme-active projection, R3). Empty before loadMap (no
+   * map, no universe — the switch renders no buttons; the panel is never
+   * shown pre-load).
+   */
+  readonly modeRows = computed((): readonly { id: TravelMode; label: string }[] => {
+    void this.editorRevision(); // dependency: an in-place registry edit re-reads (C24)
+    const map = this.map();
+    if (map === null) return [];
+    return this.modeUniverseIds(map).map((id) => ({ id, label: resolveModeLabel(id, map.modes) }));
+  });
+
+  /**
+   * B-124: the travel-mode preference switch's C30 refusal surface (the
+   * saveError/arcBlockRefusal pattern). Every rendered row id is valid
+   * against the loaded map's universe by construction (the facade's
+   * setTravelMode validates against the SAME map, C30), so the throw is the
+   * degrade path only (no map loaded, a runtime caller bypassing the type
+   * system) — but the surface must exist: the message is caught and rendered
+   * user-visibly by the route panel, never an uncaught console throw (C32).
+   * Cleared by the next successful switch.
+   */
+  readonly travelModeRefusal = signal<string | null>(null);
+
+  /**
+   * The map's mode universe in ROW ORDER — built-ins first, then the
+   * registry's declaration order, a registry entry adopting a built-in id
+   * deduplicated to its first occurrence (arcModesOf's insertion-order
+   * discipline, B-123; ONE helper so the switch rows and the arc panel's
+   * per-mode rows can never drift apart).
+   */
+  private modeUniverseIds(map: WorldMapData): TravelMode[] {
+    const ids: TravelMode[] = [];
+    const seen = new Set<string>();
+    for (const id of [...BUILT_IN_MODES, ...(map.modes ?? []).map((decl) => decl.id)]) {
+      if (seen.has(id)) continue; // a replica mode of an id built-in: one row ever
+      seen.add(id);
+      ids.push(id);
+    }
+    return ids;
+  }
 
   /**
    * B-105 (ruling 2): the live route from the pin to the selection — a
@@ -1294,20 +1349,38 @@ export class GraphService implements OnDestroy {
   }
 
   /**
-   * B-105 (ruling 3): the travel-mode preference switch — Walk/Car/Train only
-   * (F32/D19: there is no persistent vehicle state, and D60(a) already falls
-   * back per arc, so there is no 'auto' option to offer). R2: the facade
-   * command is the ONLY mutation; the service then mirrors its signal,
-   * refreshes the snapshot (the header re-prices) and rebuilds the
-   * projection. B-108 (finding 2, D60(a)/F32/D72): the rebuild is what
-   * re-prices the BADGES — their labels are frozen strings computed only in
-   * badgeRoutes inside rebuildElements (the route panel re-prices via its
-   * travelMode dependency; badges have no such dependency), and it re-applies
-   * the selection accents so an open arc panel keeps its accent across the
-   * element swap (B-106).
+   * B-105 (ruling 3): the travel-mode preference switch's write path — the
+   * row ids come from `modeRows` (B-124: the map's mode universe, no
+   * hardcoded trio — F32/D19: there is no persistent vehicle state, and
+   * D60(a) already falls back per arc, so there is no 'auto' option to
+   * offer). R2: the facade command is the ONLY mutation; the service then
+   * mirrors its signal, refreshes the snapshot (the header re-prices) and
+   * rebuilds the projection. B-108 (finding 2, D60(a)/F32/D72): the rebuild
+   * is what re-prices the BADGES — their labels are frozen strings computed
+   * only in badgeRoutes inside rebuildElements (the route panel re-prices
+   * via its travelMode dependency; badges have no such dependency), and it
+   * re-applies the selection accents so an open arc panel keeps its accent
+   * across the element swap (B-106).
+   * B-124 (C30/C32): the facade's setTravelMode validates against the
+   * loaded map's mode universe — the SAME map the rows render — so a
+   * refusal is the degrade path only (no map loaded; a runtime caller
+   * bypassing the type system); it is caught and surfaced user-visibly
+   * through `travelModeRefusal` (never an uncaught throw), and the C30
+   * reject-before-mutate contract means NOTHING is mirrored or re-priced.
+   * A facade-null call keeps the B-105 degrade: the mirror still follows
+   * the requested id (no core to contradict it), the rest no-ops.
    */
   setTravelModePreference(mode: TravelMode): void {
-    this.facade?.setTravelMode(mode);
+    const facade = this.facade;
+    if (facade !== null) {
+      try {
+        facade.setTravelMode(mode);
+      } catch (error) {
+        this.travelModeRefusal.set(error instanceof Error ? error.message : String(error));
+        return; // C30 refusal: nothing happened — no mirror, no re-price
+      }
+    }
+    this.travelModeRefusal.set(null);
     this.travelMode.set(mode);
     this.refreshSnapshot();
     this.rebuildElements();
@@ -1829,8 +1902,11 @@ export class GraphService implements OnDestroy {
    * B-118 (D42/F16): Done — commit ONE `facade.upsertEdge` per picked target
    * (one command per arc, C4: the engine never invents or removes
    * connections and no dedup happens here — a pre-existing parallel arc
-   * simply gains a sibling), each with the D42 defaults (CONNECT_EDGE_MODES:
-   * all modes allowed; geometry prices it, C14 row 5). Ids are the engine's
+   * simply gains a sibling), each with the map's D78 default-allowed mode
+   * set — `defaultArcModes()`, the SAME private derivation the draw-arc
+   * commit uses (B-124: one derivation, D42's "the default-allowed set";
+   * on a no-registry map exactly the D42 trio — all modes allowed,
+   * geometry-priced via C14 row 5). Ids are the engine's
    * (`id: ''` — C5/D75); the UI never invents one. A C30 refusal (the
    * validator's clone-validate-apply gate) surfaces field-precise through
    * `connectRefusal` with the UNCOMMITTED picks intact and the mode still on
@@ -1855,7 +1931,7 @@ export class GraphService implements OnDestroy {
     let refusal: NodeEditRefusal | null = null;
     for (const target of remaining) {
       try {
-        facade.upsertEdge({ id: '', source, target, modes: CONNECT_EDGE_MODES });
+        facade.upsertEdge({ id: '', source, target, modes: this.defaultArcModes() });
         remaining.delete(target);
       } catch (error) {
         refusal = nodeEditRefusal(error);
@@ -2007,10 +2083,10 @@ export class GraphService implements OnDestroy {
    * every BUILT-IN unless a registry entry adopting that id sets
    * `allowedByDefault: false`, plus every registry entry with
    * `allowedByDefault: true` (an adopting true entry is already in). On a
-   * no-registry map (FX1 today) this is exactly CONNECT_EDGE_MODES — all
-   * three built-ins allowed, geometry-priced via C14 row 5. One service-side
-   * derivation; B-124 later points quick-connect at the SAME private (this
-   * packet does not migrate it). A registry that opts out of everything
+   * no-registry map (FX1 today) this is exactly the D42 quick-connect trio —
+   * all three built-ins allowed, geometry-priced via C14 row 5 (B-124:
+   * quick-connect's Done commits THIS derivation now — one derivation, one
+   * D42 default-allowed set). A registry that opts out of everything
    * yields `modes: {}` — legal (never traversable) and refineable in the arc
    * panel (B-123).
    */
@@ -2166,14 +2242,9 @@ export class GraphService implements OnDestroy {
     const map = this.map();
     const edge = map?.edges.find((candidate) => candidate.id === arcId);
     if (map === null || edge === undefined) return null;
-    const ids: TravelMode[] = [];
-    const seen = new Set<string>();
-    for (const id of [...BUILT_IN_MODES, ...(map.modes ?? []).map((decl) => decl.id)]) {
-      if (seen.has(id)) continue; // a replica mode of an id built-in: one row ever
-      seen.add(id);
-      ids.push(id);
-    }
-    return ids.map((id) => ({
+    // B-124: the SAME insertion-order universe helper the switch rows read —
+    // one derivation, the two surfaces can never drift.
+    return this.modeUniverseIds(map).map((id) => ({
       id,
       label: resolveModeLabel(id, map.modes), // A-016's ONE resolver — authored words, never UI-mapped
       allowed: edge.modes[id]?.allowed === true,
@@ -2491,6 +2562,15 @@ export class GraphService implements OnDestroy {
     const rows = this.arcModesOf(id);
     if (rows === null) return null;
     return rows.map((row) => ({ id: row.id, label: row.label, allowed: row.allowed, authoredMinutes: row.authoredMinutes }));
+  }
+
+  /**
+   * B-124: the route panel's switch rows (`modeRows`) — the map's mode
+   * universe with the resolver's labels, the D78/C23 display seam for e2e
+   * (the testArcModesOf twin). Empty before loadMap. Read-only (R2/R4 hold).
+   */
+  testModeRows(): { id: string; label: string }[] {
+    return this.modeRows().map((row) => ({ id: row.id, label: row.label }));
   }
 
   /**
