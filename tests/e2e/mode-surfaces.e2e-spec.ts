@@ -356,6 +356,24 @@ test.describe('map-driven mode surfaces (PKG B-124)', () => {
     await expect(page.getByTestId('tme-connect-from')).toBeVisible();
     await expect.poll(readConnectMode.bind(null, page)).toBe(true);
 
+    // D81 (PKG B-125): with the property panel docked, the preserved
+    // viewport keeps the demo's rightmost leaf (high-pasture) where the
+    // full-stage fit put it — past the narrowed canvas edge, over the panel
+    // column (the pre-D81 panel-open refit used to pull it back). One
+    // background drag pans the pick target in-canvas; a drag is not a tap,
+    // so connect mode's pick state is untouched.
+    const canvas = await page.getByTestId('tme-canvas').boundingBox();
+    if (canvas === null) throw new Error('canvas host not visible');
+    const pickTarget = await nodeScreenPoint(page, HIGH_PASTURE_ID);
+    const panDx = canvas.x + canvas.width - 60 - pickTarget.x;
+    if (panDx < -8) {
+      const dragY = canvas.y + canvas.height / 2;
+      await page.mouse.move(canvas.x + canvas.width * 0.6, dragY);
+      await page.mouse.down();
+      await page.mouse.move(canvas.x + canvas.width * 0.6 + panDx, dragY, { steps: 4 });
+      await page.mouse.up();
+    }
+
     // Pick the two other vale leaves — touch alone.
     await tapPoint(page, await nodeScreenPoint(page, OLD_MILL_ID));
     await expect.poll(readPickedIds.bind(null, page)).toEqual([OLD_MILL_ID]);

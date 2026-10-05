@@ -171,7 +171,13 @@
 // chrome lives in component-scoped SCSS. Kept minimal — theming depth is M4.
 
 import cytoscape from 'cytoscape';
-import type { Core, EdgeSingular, NodeSingular, StylesheetStyle } from 'cytoscape';
+import type {
+  CollectionReturnValue,
+  Core,
+  EdgeSingular,
+  NodeSingular,
+  StylesheetStyle,
+} from 'cytoscape';
 import { Injectable, OnDestroy, computed, effect, signal } from '@angular/core';
 import type {
   ChatMapOverlay,
@@ -192,6 +198,20 @@ import { buildCrossLayerBadges, buildLayerElements, crossLayerAnchors } from './
 export interface LayerLabel {
   readonly id: string;
   readonly name: string;
+}
+
+/**
+ * D81: one interactive-chrome rectangle, in CANVAS-relative px — the clamp's
+ * avoidance targets. Measured by the consumer (map-viewer.component reads
+ * its own DOM and translates into the canvas space the service's rendered
+ * boxes live in; the service never reads the DOM). `x`/`y` is the top-left
+ * corner; a zero-area rect is skipped by the clamp.
+ */
+export interface ChromeRect {
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
 }
 
 /**
@@ -556,6 +576,15 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
 const FIT_PADDING = 40;
 
 /**
+ * D81: the WIDE-layout query — a MIRROR of the SCSS's 700px row/column
+ * switch (map-viewer.component.scss `@media (min-width: 700px)`); the SCSS
+ * owns the layout, this only classifies resizes for the preserve/refit
+ * matrix. Deliberately never computed from the canvas box: a panel-driven
+ * resize changes the box while the layout class stays put.
+ */
+const WIDE_LAYOUT_QUERY = '(min-width: 700px)';
+
+/**
  * B-117 (api.ts `parent` contract, §5 Phase 3 M1): the CONTAINER kinds —
  * every kind that may hold compound children. The property panel's parent
  * picker offers exactly these (same layer), and never 'waypoint' (D21: the
@@ -669,6 +698,17 @@ export class GraphService implements OnDestroy {
    * high-frequency `zoom` event reads it and must never touch Angular state).
    */
   private cullZoom = NEVER_CULL_ZOOM;
+
+  /**
+   * D81: the last-seen viewport dimensions — the resize-class discriminator's
+   * state. Initialized by mount() and refreshed by EVERY notifyResize(); a
+   * container resize whose viewport did not move since last seen is
+   * PANEL-DRIVEN, one whose viewport did is ENVIRONMENTAL. Plain fields,
+   * deliberately NOT signals: read/written only inside the RO-driven
+   * resize path, which stays outside Angular (D2 — the cullZoom precedent).
+   */
+  private lastViewportW: number | null = null;
+  private lastViewportH: number | null = null;
 
   /**
    * B-116 (C5/D75): the node ids of the LAST projection — rebuilt by
@@ -1319,6 +1359,12 @@ export class GraphService implements OnDestroy {
     this.cy.mount(el);
     this.cy.resize();
     this.mounted = true;
+    // D81: the discriminator's baseline — the first notifyResize compares
+    // against THIS snapshot, so its initial RO fire (same viewport) reads as
+    // panel-driven and takes the preserve path on wide: harmless, mount's
+    // fit below already covered it and no selection exists yet.
+    this.lastViewportW = window.innerWidth;
+    this.lastViewportH = window.innerHeight;
     this.fitView(); // headless rebuilds have no viewport — fit now that we do
   }
 
@@ -2311,11 +2357,152 @@ export class GraphService implements OnDestroy {
    * only `resize`). The re-fit also re-bases cullZoom: a resize that moves
    * zoom across the old threshold cannot strand a stale cull state.
    */
-  notifyResize(): void {
+  notifyResize(interactiveChrome?: readonly ChromeRect[]): void {
     if (!this.mounted) return;
+    // D81: the resize-CLASS discriminator — the VIEWPORT is the class input
+    // (the container resize is the event itself). Either viewport dimension
+    // changed since last seen ⇒ ENVIRONMENTAL; unchanged ⇒ PANEL-DRIVEN.
+    // Refreshed on every call; plain fields (D2 — this path is outside
+    // Angular).
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const environmental =
+      this.lastViewportW === null ||
+      this.lastViewportH === null ||
+      vw !== this.lastViewportW ||
+      vh !== this.lastViewportH;
+    this.lastViewportW = vw;
+    this.lastViewportH = vh;
     this.cy.resize();
-    this.fitView();
-    this.applyLabelCull();
+    if (environmental || !window.matchMedia(WIDE_LAYOUT_QUERY).matches) {
+      // D81 matrix — the refit classes: an environmental resize (either
+      // layout) and any panel-driven resize on the narrow layout keep
+      // B-106's blanket guarantee (everything fitted stays visible and
+      // tappable). This body is byte-identical to the pre-D81 refit.
+      this.fitView();
+      this.applyLabelCull();
+    } else {
+      // D81 matrix — the preserve class (wide + panel-driven): zoom and pan
+      // are PRESERVED — fit NEVER runs here, zero compensation — with the
+      // pan-only selection rescue clamp keeping the selection inside the
+      // canvas and clear of interactive chrome.
+      this.clampSelectionIntoView(interactiveChrome);
+      this.applyLabelCull(); // belt-and-braces: a pan never crosses the zoom threshold
+    }
+  }
+
+  /**
+   * D81: the rescue clamp's target — the selected element's RENDERED box
+   * (canvas-relative px) plus its anchor kind. A node selection anchors as
+   * the whole box; a cross-layer arc's selection resolves to its badge
+   * pseudo-node (the edge is never projected, C3 — and the badge IS the
+   * arc's whole canvas surface, B-107), also a box; a PROJECTED arc anchors
+   * as the box's MIDPOINT (`point` — an edge box can be longer than the
+   * chrome-free region at the current zoom; the invariant's edge semantics).
+   * null when nothing is selected or projected ⇒ the clamp no-ops.
+   */
+  private selectionAnchor(): { x1: number; y1: number; x2: number; y2: number; point: boolean } | null {
+    const nodeSel = this.selection();
+    const edgeSel = this.edgeSelection();
+    let ele: CollectionReturnValue | null = null;
+    let point = false;
+    if (nodeSel !== null) {
+      ele = this.cy.getElementById(nodeSel.id);
+    } else if (edgeSel !== null) {
+      const edge = this.cy.getElementById(edgeSel.id);
+      if (edge.length > 0) {
+        ele = edge;
+        point = true; // arc anchor: the rendered box's midpoint
+      } else {
+        ele = this.cy.getElementById(`tme-badge-${edgeSel.id}`); // B-107
+      }
+    }
+    if (ele === null || ele.length === 0) return null;
+    const box = ele.renderedBoundingBox(); // BoundingBox12: canvas-px x1/y1/x2/y2
+    return { x1: box.x1, y1: box.y1, x2: box.x2, y2: box.y2, point };
+  }
+
+  /**
+   * D81: the pan-only SELECTION RESCUE CLAMP — keep the selection's anchor
+   * inside the canvas and clear of the INTERACTIVE chrome after a
+   * panel-driven resize. No selection ⇒ nothing; already clear ⇒ a no-op
+   * (idempotent — repeated resizes settle); otherwise ONE instant `cy.pan()`
+   * correction (no animation — the refit is instant too; zoom NEVER changes).
+   * A pan delta shifts every rendered position equally (rendered =
+   * model·zoom + pan — the installed runtime's modelToRenderedPosition), so
+   * the rescue solves for a single (dx, dy): minimal canvas containment
+   * first, then a greedy smallest-legal-shift clear per overlapping chrome
+   * rect (disjointness in ONE axis suffices; the canvas center band is
+   * chrome-free, so a clearing pan always exists). Chrome rects come from
+   * the component (canvas-relative, consumer-measured); absent ⇒ the canvas
+   * rect alone. Writes NO signals (D2 — the whole resize path stays outside
+   * Angular), logs nothing. Viewer mechanics, not a user-facing number
+   * (R1 not engaged).
+   */
+  private clampSelectionIntoView(chrome?: readonly ChromeRect[]): void {
+    const anchor = this.selectionAnchor();
+    if (anchor === null) return;
+    // An arc anchor collapses to its midpoint — a zero-size box keeps ONE
+    // rectangle algebra for both anchor kinds below.
+    if (anchor.point) {
+      anchor.x1 = anchor.x2 = (anchor.x1 + anchor.x2) / 2;
+      anchor.y1 = anchor.y2 = (anchor.y1 + anchor.y2) / 2;
+    }
+    // Sanitized chrome: non-finite or empty rects are skipped — a measurement
+    // failure degrades to the canvas-rect-only clamp, never an exception
+    // (C32 spirit).
+    const rects = (chrome ?? []).filter(
+      (r) =>
+        Number.isFinite(r.x) &&
+        Number.isFinite(r.y) &&
+        Number.isFinite(r.w) &&
+        Number.isFinite(r.h) &&
+        r.w > 0 &&
+        r.h > 0,
+    );
+    const canvas = { x1: 0, y1: 0, x2: this.cy.width(), y2: this.cy.height() };
+    let dx = 0;
+    let dy = 0;
+    // Strict-overlap predicate: touching edges count as disjoint (clear).
+    const overlaps = (r: ChromeRect): boolean =>
+      anchor.x1 + dx < r.x + r.w &&
+      anchor.x2 + dx > r.x &&
+      anchor.y1 + dy < r.y + r.h &&
+      anchor.y2 + dy > r.y;
+    // 1) Canvas containment — the minimal per-axis shift (a box wider than
+    //    the stage cannot fully fit; the left/top edge wins, best effort).
+    if (anchor.x1 + dx < canvas.x1) dx = canvas.x1 - anchor.x1;
+    else if (anchor.x2 + dx > canvas.x2) dx = canvas.x2 - anchor.x2;
+    if (anchor.y1 + dy < canvas.y1) dy = canvas.y1 - anchor.y1;
+    else if (anchor.y2 + dy > canvas.y2) dy = canvas.y2 - anchor.y2;
+    // 2) Chrome clearance — per overlapping rect, the smallest ONE-axis shift
+    //    that disjointness-satisfies it while the box stays canvas-contained;
+    //    re-pass while anything still overlaps. The pass cap degrades to best
+    //    effort instead of hunting forever (C32 spirit).
+    for (let pass = 0; pass <= rects.length && pass < 12; pass++) {
+      let settled = true;
+      for (const r of rects) {
+        if (!overlaps(r)) continue;
+        settled = false;
+        const clearLeft = r.x - (anchor.x2 + dx); // box's right edge → rect's left
+        const clearRight = r.x + r.w - (anchor.x1 + dx);
+        const clearUp = r.y - (anchor.y2 + dy);
+        const clearDown = r.y + r.h - (anchor.y1 + dy);
+        const candidates: { d: number; axis: 'x' | 'y' }[] = [];
+        if (anchor.x1 + dx + clearLeft >= canvas.x1) candidates.push({ d: clearLeft, axis: 'x' });
+        if (anchor.x2 + dx + clearRight <= canvas.x2) candidates.push({ d: clearRight, axis: 'x' });
+        if (anchor.y1 + dy + clearUp >= canvas.y1) candidates.push({ d: clearUp, axis: 'y' });
+        if (anchor.y2 + dy + clearDown <= canvas.y2) candidates.push({ d: clearDown, axis: 'y' });
+        if (candidates.length === 0) continue; // cannot clear this one legally — best effort
+        const best = candidates.reduce((m, c) => (Math.abs(c.d) < Math.abs(m.d) ? c : m));
+        if (best.axis === 'x') dx += best.d;
+        else dy += best.d;
+      }
+      if (settled) break;
+    }
+    if (dx === 0 && dy === 0) return; // in view and clear — idempotent no-op
+    const pan = this.cy.pan();
+    this.cy.pan({ x: pan.x + dx, y: pan.y + dy }); // ONE instant rescue, zoom untouched
   }
 
   // --- Dev-harness-only e2e seam (exposed via window.__TME_E2E__ in App —

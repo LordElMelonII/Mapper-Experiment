@@ -10,6 +10,13 @@
 // pins what neither earlier spec could: that after a resize the map content
 // is still TAPPABLE, for both resize shapes.
 //
+// D81 scoping: this refit guarantee is the NARROW layout plus the
+// ENVIRONMENTAL classes — on the wide layout a PANEL-driven resize (the
+// container changed while the viewport did not) preserves the viewport
+// instead (tests/e2e/panel-resize-viewport.e2e-spec.ts); both cells below
+// stay in the refit classes (the desktop cell resizes the viewport itself,
+// the phone cell is the narrow layout's panel-open).
+//
 // Cited IDs:
 //   §6.1 (canvas-sizing row) — ResizeObserver → cy.resize() keeps the canvas
 //             matched to its container; the refit (B-106) keeps the fitted

@@ -810,12 +810,19 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
       .toHaveLength(1);
     await settle(page); // let the panel-open RO refit land before noting
 
-    // Zoom IN by wheel (user gesture) around the stage center — a modest
-    // ×1.25 keeps every vetted aim point inside the canvas.
+    // Zoom IN by wheel (user gesture). D81 (PKG B-125): the panel-open keeps
+    // the preserved viewport (no refit), so the wheel aims at
+    // BG_MODEL_POINT_2's own screen position — the zoom keeps the cursor
+    // point fixed, holding that vetted placement aim in-canvas at any factor
+    // — and the loop caps the factor near ×1.3 so the castle-arc gap point
+    // (the Waypoint step's aim) stays in-canvas too (the pre-D81 panel-open
+    // refit used to answer this narrowing).
     const fitZoom = await readZoom(page);
     const box = await canvasBox(page);
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    for (let i = 0; i < 10; i++) await page.mouse.wheel(0, -240);
+    const zoomAnchor = await modelPoint(page, BG_MODEL_POINT_2);
+    await page.mouse.move(box.x + zoomAnchor.x, box.y + zoomAnchor.y);
+    let ticks = 0;
+    while ((await readZoom(page)) < fitZoom * 1.25 && ticks++ < 40) await page.mouse.wheel(0, -240);
     await settle(page);
     const zoom = await readZoom(page);
     expect(zoom, 'the zoom-in driver must actually zoom in').toBeGreaterThan(fitZoom * 1.15);
