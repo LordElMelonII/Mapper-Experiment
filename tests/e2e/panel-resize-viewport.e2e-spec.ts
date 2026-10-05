@@ -500,6 +500,7 @@ test.describe('selection-driven panel resizes preserve the viewport (PKG B-125, 
     test.skip(isPhone(), 'the desktop environmental cell mirrors resize-refit\'s desktop shrink');
     const bad = collectConsole(page);
     await settle(page);
+    await expectHeaders(page);
     await tapEdgeMidpoint(page, CASTLE_ARC);
     await expect(page.getByTestId('tme-arc-panel')).toBeVisible();
     await settle(page);
