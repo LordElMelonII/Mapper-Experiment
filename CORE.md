@@ -126,6 +126,7 @@ Map lifecycle    loadMap · materialize · forkMap · saveForkToLibrary · valid
 Presence         setCurrentLocation · setStatusNote · setTravelMode · setCorrective (D63)
 Overlay edits    setBlocked · addUserNodeAt · removeUserNode · promoteUserNode
 Editor commands  upsertNode · upsertEdge · removeNode · removeEdge · calibrateScale(arcId, authoredDistance, unit?) — the optional unit (D44/D45) seeds `scale.unitLabel`/`unitKind` when present; absent ⇒ re-measure in the established unit · saveMap · hasUnsavedChanges (D75 — the F45 dirty flag's core-side read; the editor-command semantics are register row D75)
+Layer commands   upsertLayer · removeLayer (informed-cascade delete, atomic) · reorderLayers · layerRemovalImpact (the delete dialog's count query — R1) · detachNode · setNodeLayer · setLayerBackground (uploaded asset or remote URL) · setPortal (D82–D85 — the P3 M3 surface; lands with the M3 A-packet)
 Queries          findRoute · getSnapshot · renderTemplate · getPromptBlock
 Viewer state     setActiveLayer (facade-held viewer state; validated against the loaded map, reset to its first layer on every loadMap — D69; the snapshot's `layer` stays pin-derived, unaffected)
 ```
