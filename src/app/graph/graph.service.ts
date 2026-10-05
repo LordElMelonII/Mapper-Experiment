@@ -82,6 +82,16 @@
 // editor-mode-only and gated by the visible `editorTool` ('node' default /
 // 'waypoint'; draw-arc joins the same control in B-122) — one gesture per
 // mode, no invisible affordance (D53).
+// B-121 (R21 ruling D77): the unsaved-element DRAFT visual — a viewer-side
+// edit log (a plain Set of element ids, deliberately NOT a facade surface:
+// hasUnsavedChanges stays the only unsaved-state seam) fed by every editor
+// command this service issues, projected as ONE `tme-draft` class inside
+// rebuildElements' batch (nodes, edges, AND cross-layer badges — a badge IS
+// its arc's whole canvas surface, B-107) and styled light in the D7
+// stylesheet data. saveMap success / loadMap reset the log; a C30 save
+// refusal leaves it intact. Unsaved ≠ invisible: the edits RENDER (the
+// projection reads the live map) but are visibly-not-yet-saved until
+// saveMap (F45/D75).
 // The ONE cytoscape instance (D3): created headless
 // in the constructor, `mount()`/`unmount()` on demand — computation works with
 // the UI closed. Zoneless (D2): the service writes signals; the ONLY canvas
@@ -151,6 +161,13 @@ export interface ArcInfo {
 }
 
 /**
+ * B-121 (D77): the ONE light draft hue — the same pale paper tone across
+ * both element kinds (a node's outline, an arc's line, a badge's text): the
+ * "pencil sketch" reading of visibly-not-yet-saved. Plain data (D7).
+ */
+const DRAFT_ACCENT = '#f4f1e8';
+
+/**
  * D7: the cytoscape stylesheet as plain data. Selectors key off element
  * classes assigned by buildElements(): `tme-<kind>` per node kind (F07
  * districts are compound parents), `tme-pin` for the overlay's pinned node,
@@ -205,6 +222,21 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
   {
     selector: 'node.tme-waypoint',
     style: { 'background-color': '#8064b8' },
+  },
+  {
+    // B-121 (D77): a node with unsaved edits renders the light draft
+    // outline. Declared BEFORE `tme-pin` / `tme-selected` /
+    // `tme-connect-pick` because cytoscape has no CSS specificity —
+    // matching rules apply in declaration order and the LAST match per
+    // property wins (the B-111 precedent) — so those accents still
+    // override the draft's border while the element carries both classes.
+    // No `min-zoomed-font-size` (the B-107 hide-floor gotcha) and no
+    // text-opacity: the draft never fights the B-113 cull entries.
+    selector: 'node.tme-draft',
+    style: {
+      'border-color': DRAFT_ACCENT,
+      'border-width': 2,
+    },
   },
   {
     selector: 'node.tme-pin',
@@ -266,6 +298,17 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
       'text-halign': 'center',
       'z-index': -1,
     },
+  },
+  {
+    // B-121 (D77): a cross-layer arc with unsaved edits drafts its BADGE —
+    // the badge IS the arc's whole canvas surface (B-107), and its visible
+    // paint is the label TEXT, so the draft treatment here is the same
+    // light hue on `color`. Declared AFTER `node.tme-badge` (its subdued
+    // base text color must be overridable by the draft) and before the
+    // cull entries, which it never touches (no text-opacity — the badge
+    // culls with all map content, B-115).
+    selector: 'node.tme-badge.tme-draft',
+    style: { color: DRAFT_ACCENT },
   },
   {
     // B-113 (§5 M4 label culling, §6.1 dense row): the culled state is ONE
@@ -331,6 +374,17 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
       // taps the rendered midpoint of the two endpoints (test-side math).
       width: 4,
     },
+  },
+  {
+    // B-121 (D77): an arc with unsaved edits renders the light draft line
+    // — the same DRAFT_ACCENT hue as the node outline, one visual language
+    // across both kinds. Declared BEFORE `tme-blocked` /
+    // `tme-edge-selected` so those accents still override line-color on a
+    // drafted blocked or selected arc (the B-111 declaration-order
+    // precedent; the cascade has no CSS specificity). Width is untouched —
+    // the draft changes hue only.
+    selector: 'edge.tme-draft',
+    style: { 'line-color': DRAFT_ACCENT },
   },
   {
     // B-111 (§5 M3, api.ts:45): edges carrying authored `curve` data render
@@ -500,6 +554,33 @@ export class GraphService implements OnDestroy {
    * A plain field: read only by discrete tap handlers (D2).
    */
   private projectedNodeIds = new Set<string>();
+
+  /**
+   * B-121 (D77): the projected EDGE ids of the last projection — rebuilt by
+   * rebuildElements beside projectedNodeIds. doneConnect's arc-id discovery
+   * reads the delta between this set and the post-command projection: every
+   * committed quick-connect arc is engine-assigned (`arc-<n>`, C5/D75), and
+   * the single Done loop only ever ADDS edges, so the delta IS the committed
+   * arc set. A plain field, same discipline as projectedNodeIds (D2).
+   */
+  private projectedEdgeIds = new Set<string>();
+
+  /**
+   * B-121 (D77): the viewer-side EDIT LOG — the ids of the elements the
+   * editor commands this service issued have touched and not yet saved
+   * (created node ids, moved node ids, committed draft ids, committed arc
+   * ids). Deliberately NOT a facade surface: hasUnsavedChanges (D75) stays
+   * the ONLY unsaved-state seam — this log is purely the draft VISUAL's
+   * feed. Cleared whole by saveMap() success and loadMap(); a C30 save
+   * refusal leaves it intact (the map is still dirty). A removed id LEAVES
+   * the log (removeNode forgets it; its cascaded edges vanish from the
+   * projection, so a stale edge id in the log matches nothing). Overlay
+   * waypoints and their kNN edges are chat state (D21 — never dirty, never
+   * editor commands) and never enter it. A plain Set, not a signal: it is
+   * written only at discrete command sites, each of which immediately
+   * re-projects the classes (D2).
+   */
+  private readonly unsavedIds = new Set<string>();
 
   /**
    * B-116 (§5 Phase 3 M1/D75): editor mode — the authoring state. In editor
@@ -981,6 +1062,9 @@ export class GraphService implements OnDestroy {
     // B-116 (D75): a fresh load carries no unsaved editor edits (the facade
     // clears its dirty flag in loadMap) — recompute the F45 bar and drop any
     // stale save refusal from the previous session.
+    // B-121 (D77): the draft log resets with it — the rebuild below
+    // re-projects from the empty log, so no element arrives drafted.
+    this.unsavedIds.clear();
     this.editorRevision.update((n) => n + 1);
     this.saveError.set(null);
     // Validators guarantee >= 1 layer; degrade to no-layer rather than throw.
@@ -1249,6 +1333,11 @@ export class GraphService implements OnDestroy {
         break;
       }
     }
+    // B-121 (D77): every editor command records here — the placed node is
+    // drafted from the moment it exists (recordUnsaved also re-projects the
+    // tme-draft classes, so the class lands on the node the rebuild above
+    // could not yet have known).
+    if (createdId !== null) this.recordUnsaved(createdId);
     this.edgeSelection.set(null); // B-106 mutual exclusion: a node selection replaces an edge selection
     if (createdId !== null) this.selection.set({ id: createdId, label: 'New place' });
     this.editorRevision.update((n) => n + 1); // F45: the first edit shows the unsaved indicator
@@ -1291,6 +1380,7 @@ export class GraphService implements OnDestroy {
     // REPLACE semantics (a fresh object swaps in; the old one must stay
     // byte-identical for the C8 effective graph).
     facade.upsertNode({ ...authored, position: { x: position.x, y: position.y } });
+    this.recordUnsaved(id); // B-121 (D77): every editor command records here — the moved node is drafted
     this.rebuildElements(); // B-112: one cy.batch — the projection re-reads the fresh object (D75 REPLACE)
     this.editorRevision.update((n) => n + 1);
   }
@@ -1344,6 +1434,7 @@ export class GraphService implements OnDestroy {
     } catch (error) {
       return nodeEditRefusal(error);
     }
+    this.recordUnsaved(node.id); // B-121 (D77): every editor command records here — the committed draft's node is drafted
     this.rebuildElements();
     this.editorRevision.update((n) => n + 1);
     const sel = this.selection();
@@ -1373,6 +1464,10 @@ export class GraphService implements OnDestroy {
     } catch (error) {
       return nodeEditRefusal(error);
     }
+    // B-121 (D77): a removed id LEAVES the edit log; its cascaded edges are
+    // already gone from the projection, so any of their log entries match
+    // nothing (cleared whole by the next save/load).
+    this.forgetUnsaved(id);
     this.rebuildElements();
     this.editorRevision.update((n) => n + 1);
     if (this.selection()?.id === id) this.selection.set(null);
@@ -1446,6 +1541,7 @@ export class GraphService implements OnDestroy {
       return;
     }
     const remaining = new Set(this.connectPicks());
+    const beforeEdgeIds = this.projectedEdgeIds; // B-121: the Done loop only ADDS edges — the post-rebuild delta IS the committed arc set
     let refusal: NodeEditRefusal | null = null;
     for (const target of remaining) {
       try {
@@ -1460,6 +1556,14 @@ export class GraphService implements OnDestroy {
     if (committed > 0) {
       this.connectPicks.set(remaining); // uncommitted picks intact; committed ones are arcs now
       this.rebuildElements(); // the projection re-reads the live map (one cy.batch, B-112)
+      // B-121 (D77): every editor command records here — EACH committed
+      // arc is drafted by its engine-assigned id, the same C5/D75 id-delta
+      // pattern over edges (the loop above only creates, so the delta is
+      // exactly the committed set; a refused arc never existed and never
+      // enters the log).
+      for (const id of this.projectedEdgeIds) {
+        if (!beforeEdgeIds.has(id)) this.recordUnsaved(id);
+      }
       this.editorRevision.update((n) => n + 1); // F45: the dock lights on the first arc
     }
     if (refusal !== null) {
@@ -1524,9 +1628,16 @@ export class GraphService implements OnDestroy {
       facade.saveMap();
     } catch (error) {
       this.saveError.set(error instanceof Error ? error.message : String(error));
-      return;
+      return; // C30 refusal: the log stays INTACT — the map is still dirty (B-121/D77)
     }
     this.saveError.set(null);
+    // B-121 (D77): the saved edits are LIVE — the whole draft log clears and
+    // the tme-draft classes come off every element. A class-only pass (no
+    // rebuildElements — the projection already shows the edited references,
+    // the comment above stands); the empty log is the truth every later
+    // rebuild re-projects.
+    this.unsavedIds.clear();
+    this.applyDraftClasses();
     this.editorRevision.update((n) => n + 1); // F45: the indicator clears
     this.graphRevision.update((n) => n + 1); // the saved graph went live — re-route live (B-106 precedent)
     this.refreshSnapshot();
@@ -1648,6 +1759,45 @@ export class GraphService implements OnDestroy {
   testEdgeCurveStyle(id: string): string | null {
     const edge = this.cy.getElementById(id);
     return edge.length === 0 ? null : String(edge.style('curve-style'));
+  }
+
+  /**
+   * B-121 (D77): resolved line-color of one edge (the draft/blocked/selected
+   * cascade's assertion surface — the tme-draft entry's exact B-111
+   * precedent: a resolved style read, never a screenshot diff), or null.
+   * Read-only (R2/R4 hold).
+   */
+  testEdgeLineColor(id: string): string | null {
+    const edge = this.cy.getElementById(id);
+    return edge.length === 0 ? null : String(edge.style('line-color'));
+  }
+
+  /**
+   * B-121 (D77): resolved border-color of one node (the draft/pin/selected
+   * cascade's assertion surface), or null. Read-only (R2/R4 hold).
+   */
+  testNodeBorderColor(id: string): string | null {
+    const node = this.cy.getElementById(id);
+    return node.length === 0 ? null : String(node.style('border-color'));
+  }
+
+  /**
+   * B-121 (D77): the edit log's ids, insertion-ordered (the draft visual's
+   * state seam — the testNodeLabels precedent). Read-only (R2/R4 hold);
+   * never a mutation path, so the log stays the service's own.
+   */
+  testDraftedIds(): string[] {
+    return [...this.unsavedIds];
+  }
+
+  /**
+   * B-121 (D77): the stylesheet's selector strings in declaration order —
+   * the structural pin that `tme-draft` precedes the pin/selected/blocked
+   * accent entries (the no-specificity cascade's override rule; the B-111
+   * declaration-order precedent). Read-only plain data (D7, R2/R4 hold).
+   */
+  testStylesheetSelectors(): string[] {
+    return GRAPH_STYLESHEET.map((entry) => String(entry.selector));
   }
 
   /**
@@ -1841,11 +1991,14 @@ export class GraphService implements OnDestroy {
     // B-116 (C5/D75): record the node ids of the projection being installed —
     // the pre-command set the place-command's id delta reads (placeNodeAt).
     // Derived from the same pure builders' output, so it can never drift from
-    // what cy actually holds.
+    // what cy actually holds. B-121: the EDGE ids join it — doneConnect's
+    // committed-arc discovery reads that delta.
+    const projected = [...elements, ...badges];
     this.projectedNodeIds = new Set(
-      [...elements, ...badges]
-        .filter((el) => el.group === 'nodes')
-        .map((el) => String(el.data.id)),
+      projected.filter((el) => el.group === 'nodes').map((el) => String(el.data.id)),
+    );
+    this.projectedEdgeIds = new Set(
+      projected.filter((el) => el.group === 'edges').map((el) => String(el.data.id)),
     );
     this.cy.batch(() => {
       this.cy.elements().remove();
@@ -1855,6 +2008,11 @@ export class GraphService implements OnDestroy {
       // block/lift rebuilds included) without a second render pass (§6.1
       // dense-row mitigation; PKG B-112 ruling 1).
       this.projectSelectionClasses();
+      // B-121 (D77): the draft classes join the SAME batch — the element
+      // swap drops them with every other class, and the edit log (plain
+      // field, D2) is re-projected onto the fresh elements here: nodes,
+      // edges and cross-layer badges of arcs with unsaved edits.
+      this.projectDraftClasses();
       // B-113 (ruling 4), exactly true since B-120: a rebuild must not
       // un-cull a culled view — the blanket class re-applies to the FRESH
       // elements from the labelCulled state field (D2) inside this batch,
@@ -1890,6 +2048,56 @@ export class GraphService implements OnDestroy {
       routes.set(anchor.arcId, this.facade.findRoute(anchor.onLayer, anchor.other));
     }
     return routes;
+  }
+
+  /**
+   * B-121 (D77): the draft-visual seam — EVERY editor command this service
+   * issues records the touched element id here (placeNodeAt,
+   * persistNodePosition, the B-117 draft commit, doneConnect per committed
+   * arc; B-122/B-123's draw-arc and arc-panel commits join the same seam).
+   * Log write + immediate class re-projection, so the caller's ordering
+   * against rebuildElements can never leave a drafted id un-classed.
+   */
+  private recordUnsaved(id: string): void {
+    this.unsavedIds.add(id);
+    this.applyDraftClasses();
+  }
+
+  /**
+   * B-121 (D77): the log's one removal — a DELETED element's id leaves the
+   * log (removeNode; B-123's removeEdge joins here). Class re-projection
+   * included, same one-seam discipline.
+   */
+  private forgetUnsaved(id: string): void {
+    this.unsavedIds.delete(id);
+    this.applyDraftClasses();
+  }
+
+  /**
+   * B-121 (D77): the draft projection's batched wrapper — the record/forget
+   * seam's whole write (the applySelectionClasses twin; PKG B-112 ruling 1).
+   */
+  private applyDraftClasses(): void {
+    this.cy.batch(() => this.projectDraftClasses());
+  }
+
+  /**
+   * B-121 (D77): the RAW draft class operations — deliberately UN-batched
+   * (the B-112 ruling 1 structure): the CALLER owns the cy.batch, so a
+   * rebuild costs one render pass. ONE `tme-draft` class per logged id on
+   * whatever projects it — the node/edge with that id, AND the cross-layer
+   * badge pseudo-node `tme-badge-<id>` (a badge IS its arc's whole canvas
+   * surface, B-107). Class application only, no per-element style
+   * computation (R1 spirit; D7: the stylesheet computes nothing from code);
+   * ids absent from the projection (removed, other layer) match an empty
+   * collection — a no-op, never an error.
+   */
+  private projectDraftClasses(): void {
+    this.cy.elements().removeClass('tme-draft');
+    for (const id of this.unsavedIds) {
+      this.cy.getElementById(id).addClass('tme-draft');
+      this.cy.getElementById(`tme-badge-${id}`).addClass('tme-draft');
+    }
   }
 
   /**

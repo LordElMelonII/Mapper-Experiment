@@ -77,6 +77,14 @@ interface TmeE2EHook {
   edgeData(id: string): { id: string; source: string; target: string; modes: string[] } | null;
   /** B-118: the live route's leg arc ids, or null — the F45 discriminator seam. */
   routeLegArcIds(): string[] | null;
+  /** B-121 (D77): the edit log's ids — the draft visual's state seam. */
+  draftedIds(): string[];
+  /** B-121 (D77): resolved border-color of one node, or null (cascade pin). */
+  nodeBorderColor(id: string): string | null;
+  /** B-121 (D77): resolved line-color of one edge, or null (cascade pin). */
+  edgeLineColor(id: string): string | null;
+  /** B-121 (D77): the stylesheet's selectors in declaration order (cascade pin). */
+  stylesheetSelectors(): string[];
 }
 
 @Component({
@@ -157,6 +165,10 @@ export class App {
       pickedNodeIds: () => this.graphService.testPickedNodeIds(),
       edgeData: (id: string) => this.graphService.testEdgeData(id),
       routeLegArcIds: () => this.graphService.testRouteLegArcIds(),
+      draftedIds: () => this.graphService.testDraftedIds(),
+      nodeBorderColor: (id: string) => this.graphService.testNodeBorderColor(id),
+      edgeLineColor: (id: string) => this.graphService.testEdgeLineColor(id),
+      stylesheetSelectors: () => this.graphService.testStylesheetSelectors(),
     };
   }
 }
