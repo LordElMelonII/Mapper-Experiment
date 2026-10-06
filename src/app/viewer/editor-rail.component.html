@@ -102,6 +102,44 @@
   </nav>
 </div>
 
+<!-- B-132 (D90/D93/F56): the ACTIVE layer's per-layer background DIM — a
+     presentation control for the layer the switcher above selects (the
+     packet's per-layer neighborhood). Bound to the service's live reads
+     (R4): the thumb value is `activeLayerDim` (absent arm ⇒ 0), committed
+     on every input tick through `setActiveLayerDim` (map data — the save
+     dock lights per tick, D75, and the thumb re-binds from the re-read so
+     a D93 fresh-start background reset visibly returns it to 0). DISABLED
+     while the active layer has no background reference (the F07 dead-
+     control gate — a dim without an image is not offered; disabled, not
+     hidden, per the packet ruling). The numeric readout renders the arm
+     verbatim (R1 — the 1−dim styling lives at the img). Follows the layer
+     switch through the same reads (D90). Plain words (C23); >= 44px tap
+     target, touch-alone, no hover affordance (F52/D53); renders in BOTH
+     modes. SLOT (the packet's layout call, within the existing rail
+     structure): a HOST SIBLING directly under the body — on the wide
+     column it sits immediately under the layers nav (beside the
+     switcher); on the narrow bar it joins the zoom/rail-toggle band
+     (compact, flex-shrinkable) because the body's two wrapped bands are
+     the B-129 rail-band arithmetic's basis — a third band would starve
+     the stage floor / panel caps (the phone bottom-rail regime stays
+     untouched; measured against the B-104/D81/§6.2 narrow cells). -->
+<div class="tme-dim" data-testid="tme-dim">
+  <label class="tme-dim-label" for="tme-dim-slider">Dim</label>
+  <input
+    class="tme-dim-slider"
+    id="tme-dim-slider"
+    data-testid="tme-dim-slider"
+    type="range"
+    min="0"
+    max="1"
+    step="0.05"
+    [value]="graph.activeLayerDim()"
+    [disabled]="!graph.activeLayerHasBackground()"
+    (input)="setDim($event)"
+  />
+  <span class="tme-dim-value" data-testid="tme-dim-value">{{ graph.activeLayerDim() }}</span>
+</div>
+
 <!-- B-127 (D86): the zoom trio — one >= 44px button each (F52), the C23
      glyphs/words (+, −, Fit). Viewport commands of the service (R2); they
      write no signals (D2) and work identically in both modes — zooming is

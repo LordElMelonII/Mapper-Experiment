@@ -219,7 +219,7 @@
 // command (immediate discrete intent, the setNodeLayer precedent; C30
 // refusals field-precise; the node joins the B-121 log — a node edit; rebuild,
 // no fit, B-120). The pure projection and builders stay R1-clean.
-// B-131 (§5 Phase 3.5 M5 — D94/F55/C34): node BLOCKING goes live on its
+// B-131 (D94/F55/C34): node BLOCKING goes live on its
 // surfaces. (1) THE SEAM TRIO — `blockNode` / `liftNodeBlock` /
 // `clearNodeBlockRefusal` mirror the blockArc trio byte-for-byte in
 // discipline: the ONLY mutation is facade.setNodeBlocked (R2); the ADD
@@ -237,6 +237,19 @@
 // same rebuild on lift. (3) `DEFAULT_BLOCK_REASON` — the ONE shared
 // one-tap default ('Closed', D94's authored vocabulary, C23) both panels
 // apply when their reason input is empty.
+// B-132 (§5 Phase 3.5 M5 — D90/D93/F56): the per-layer background DIM goes
+// live on the rail. The R4 live reads — `activeLayerDim` (absent arm ⇒ 0)
+// and `activeLayerHasBackground` — compute over `activeLayer` +
+// `editorRevision` (the C24 in-place layer-swap precedent: BOTH the dim
+// command and the D93 fresh-start reset inside setLayerBackground splice a
+// fresh layer object, so a background change re-reads the reset dim; the
+// layer switch follows through the activeLayer dependency — D90). The ONE
+// write path `setActiveLayerDim(dim)` wraps facade.setLayerBackgroundDim
+// (R2) with NO refusal channel — the zoom-trio pattern: the range input's
+// structural 0–1/step bounds make the C30 gate unreachable from the
+// control (documented in the method). Commit-on-input: map data, dirty
+// per tick (D75 — the dock lighting is correct), no rebuild, no B-121
+// entry (the B-130 background-set discipline).
 // The ONE cytoscape instance (D3): created headless
 // in the constructor, `mount()`/`unmount()` on demand — computation works with
 // the UI closed. Zoneless (D2): the service writes signals; the ONLY canvas
@@ -2562,6 +2575,72 @@ export class GraphService implements OnDestroy {
     if (src === null || this.backgroundFailed()) return; // nothing to name / already reported
     this.backgroundFailed.set(true);
     console.warn(`[TravelMapper] background load failed: ${src}`);
+  }
+
+  // --- Per-layer background dim (PKG B-132, §5 Phase 3.5 M5 — D90/D93/F56) ----
+
+  /**
+   * B-132 (D90/D93): the ACTIVE layer's background dim — the R4 live read both
+   * the rail's slider and the tme-bg opacity bind. Absent arm ⇒ 0 (the D93
+   * default: 0 = undimmed; the validator keeps a SET 0 a present own key, so
+   * a saved 0 and an absent arm read identically here — both "undimmed").
+   * Computed over DISCRETE signals only (D2): `activeLayer` (a switch re-reads
+   * the new layer's arm — D90: the slider follows the layer switch) and
+   * `editorRevision` (C24 — the in-place layer-object swap precedent of
+   * layerNames/activeBackground: BOTH mutating commands splice a fresh layer
+   * object — `setLayerBackgroundDim` and the D93 fresh-start reset inside
+   * `setLayerBackground`, which bumps the SAME revision — so a background
+   * change re-reads the reset dim; never a cached copy, R4). The value is the
+   * core arm VERBATIM (R1 — `1 − dim` styling happens at the img, not here).
+   */
+  readonly activeLayerDim = computed<number>(() => {
+    void this.editorRevision(); // C24: the in-place layer swap re-reads (fresh-start included)
+    const layer = this.map()?.layers.find((l) => l.id === this.activeLayer());
+    return layer?.backgroundDim ?? 0;
+  });
+
+  /**
+   * B-132 (D90/D93/F07): whether the ACTIVE layer carries a background
+   * REFERENCE in map data — the rail slider's enable gate (a dim without a
+   * background is a dead control: the F07 reasoning; A-019 pinned the DATA
+   * allowing a dim arm without a background — the UI simply does not offer
+   * it). The same discrete dependencies as `activeLayerDim`: a switch
+   * re-reads the new layer's arm, and the D93 fresh-start reset re-reads.
+   */
+  readonly activeLayerHasBackground = computed<boolean>(() => {
+    void this.editorRevision(); // C24: the in-place layer swap re-reads
+    const layer = this.map()?.layers.find((l) => l.id === this.activeLayer());
+    return layer?.background !== undefined;
+  });
+
+  /**
+   * B-132 (D90/D93): the rail slider's write path — the R2 wrapper over
+   * `facade.setLayerBackgroundDim(activeLayer, dim)`; the service's
+   * single-writer discipline (the component never touches the facade).
+   *
+   * NO refusal channel — the zoom-trio pattern, not the blockArc one: the
+   * control structurally cannot produce a refusable value. The range input's
+   * min=0/max=1/step=0.05 clamps and snaps every user input into 0–1 (a
+   * non-finite cannot serialize into a range value), and the active layer
+   * always exists whenever this can fire (the slider is disabled without a
+   * background-bearing active layer, and every rendered layer id is a real
+   * layer). The facade's C30 gate remains the structural backstop.
+   *
+   * Commit-on-`input` (live preview while the thumb drags) is correct D75
+   * behavior, not an accident: the dim is MAP data, so every tick marks
+   * dirty and lights the save dock; a stray drag is recovered by dragging
+   * back or by Save. Like the background set (B-130) the dim is NOT a cy
+   * projection element: no rebuild and no B-121 draft-log entry — the
+   * post-sequence is the editorRevision bump ALONE (the dock lights; both
+   * live reads re-read, C24). The snapshot is untouched: the arm never
+   * enters it (D90, unit-pinned).
+   */
+  setActiveLayerDim(dim: number): void {
+    const facade = this.facade;
+    const layerId = this.activeLayer();
+    if (facade === null || layerId === null) return; // degrade before loadMap (C32 spirit)
+    facade.setLayerBackgroundDim(layerId, dim);
+    this.editorRevision.update((n) => n + 1); // F45/C24: the dock lights; the reads re-read
   }
 
   /**

@@ -58,6 +58,7 @@
 // narrow content height).
 :host(.tme-collapsed) .tme-rail-body,
 :host(.tme-collapsed) .tme-zoom,
+:host(.tme-collapsed) .tme-dim,
 :host(.tme-collapsed) .tme-save-dock {
   display: none;
 }
@@ -186,6 +187,68 @@
 // the same gold accent as the active layer.
 .tme-layer-button.tme-manage {
   border-style: dashed;
+}
+
+// B-132 (D90/D93/F56): the per-layer background DIM — label + native range
+// input + numeric readout in one row. SLOT: a HOST SIBLING under the body —
+// the wide column stretches it full width directly under the layers nav;
+// the narrow bar packs it into the zoom/rail-toggle band. The narrow basis
+// (150px, shrinkable to its ~110px content floor) is measured, not guessed:
+// zoom(133) + rail-toggle(60) + the dim + gaps must stay within one 359px
+// band at 375px so the B-129 rail-band arithmetic (stage floor / panel
+// caps — the phone bottom-rail regime) never sees a third band (the
+// B-104/D81/§6.2 narrow cells pin that). The slider is the NATIVE control
+// (no appearance overrides — the value↔position mapping stays browser-
+// intrinsic) sized to >= 44x44: the standing F52 sweep enumerates every
+// visible `input` and asserts BOTH dimensions, and a DISABLED slider is
+// still swept (the arc-panel disabled precedent). The readout reserves its
+// widest plausible width so digit changes never re-wrap the band (D53).
+.tme-dim {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 150px; // narrow: joins the zoom band, absorbing its slack
+  touch-action: manipulation; // §6.2
+}
+
+@media (min-width: 700px) {
+  .tme-dim {
+    flex: 0 0 auto; // the wide column: a full-width row via the host's stretch
+  }
+}
+
+.tme-dim-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px; // the label rides the row's 44px rhythm (F52 posture)
+  color: #c7d0dd;
+}
+
+.tme-dim-slider {
+  // 60px base (not 120): the dim's internal row must NEVER wrap — the
+  // label + slider + readout hypothetical sizes must fit the narrow band's
+  // ~154px floor (flex-wrap packs on hypothetical sizes, pre-shrink), then
+  // flex-grow stretches the slider into whatever the band gives it.
+  flex: 1 1 60px;
+  min-width: 44px; // F52: >= 44px tap target, both dims — the sweep asserts it
+  min-height: 44px;
+  margin: 0;
+  // §6.2: manipulation kills double-tap zoom, but a slider's thumb drag
+  // must never be re-interpreted as a pan of the wrapping rail — none is
+  // the one native-slider-reliable value (the canvas host's precedent).
+  touch-action: none;
+}
+
+.tme-dim-value {
+  display: inline-flex;
+  align-items: center;
+  min-width: 2.5em; // the readout never re-wraps as its digits change
+  min-height: 44px;
+  color: #c7d0dd;
+  font-variant-numeric: tabular-nums;
 }
 
 // B-127 (D86): the zoom trio — the same segmented-control language as the

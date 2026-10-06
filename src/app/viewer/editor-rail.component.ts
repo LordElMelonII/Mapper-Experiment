@@ -65,12 +65,26 @@ export class EditorRailComponent {
 
   /**
    * B-126 (D82): the layer nav's Manage affordance — toggles the
-   * layer-manager sheet through the service's single write path (R2/R3,
-   * the toggleEditor pattern), in BOTH view and editor modes (D76 fences
+   * layer-manager sheet through the service's single write path (R2/R3, the
+   * toggleEditor pattern), in BOTH view and editor modes (D76 fences
    * canvas gestures, not management chrome).
    */
   protected toggleLayerManager(): void {
     this.graph.toggleLayerManager();
+  }
+
+  /**
+   * B-132 (D90/D93): the per-layer background dim slider's tap/drag path —
+   * the service's single write path (R2/R3: one facade-bound method, the
+   * toggleLayerManager pattern). The input event is a discrete committed
+   * intent per step tick (commit-on-input: live preview while dragging);
+   * the range control's min/max/step structurally bound the value, so no
+   * refusal channel exists (the service documents the reasoning). D2: the
+   * writes ride the service's signals; the template re-binds from the
+   * re-read (never a local echo).
+   */
+  protected setDim(event: Event): void {
+    this.graph.setActiveLayerDim((event.target as HTMLInputElement).valueAsNumber);
   }
 
   /**

@@ -24,9 +24,24 @@
            the node graph is always the interface on top. B-130 (D84/C32):
            a failed load degrades to NO background — the backgroundFailed
            flag hides the img (one [TravelMapper] warn, the canvas untouched);
-           the flag re-arms on any src change, so a retry succeeds silently. -->
+           the flag re-arms on any src change, so a retry succeeds silently.
+           B-132 (D90/D93): the per-layer background DIM applies here as the
+           img's opacity TOWARD THE STAGE BACKDROP — `1 − dim` of the active
+           layer's arm (the service's live read: follows layer switches and
+           the D93 fresh-start reset through the editorRevision dependency).
+           Presentational styling only — the displayed/edited value stays the
+           core arm (R4); the value renders verbatim on the rail (R1). The
+           binding is deliberately ONE style attribute: B-134's D92
+           transform lands beside it without rework. -->
       @if (!graph.backgroundFailed()) {
-        <img class="tme-bg" data-testid="tme-bg" [src]="asset" alt="" (error)="graph.backgroundLoadFailed()" />
+        <img
+          class="tme-bg"
+          data-testid="tme-bg"
+          [src]="asset"
+          [style.opacity]="1 - graph.activeLayerDim()"
+          alt=""
+          (error)="graph.backgroundLoadFailed()"
+        />
       }
     }
 
