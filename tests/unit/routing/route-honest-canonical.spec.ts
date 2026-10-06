@@ -37,7 +37,7 @@ const load = (map: WorldMapData) => {
     travelMode: 'walk',
     userNodes: [],
     userEdges: [],
-    blocked: {},
+    blocked: {}, nodeBlocked: {},
   };
   const f = createFacade();
   f.loadMap(map, overlay);

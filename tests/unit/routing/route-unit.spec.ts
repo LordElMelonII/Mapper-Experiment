@@ -19,7 +19,7 @@ const loadFuyuki = () => {
     travelMode: 'walk',
     userNodes: [],
     userEdges: [],
-    blocked: {},
+    blocked: {}, nodeBlocked: {},
   };
   const f = createFacade();
   f.loadMap(map, overlay);
@@ -46,7 +46,7 @@ const loadInline = (edges: WorldMapData['edges']) => {
     edges,
   };
   const f = createFacade();
-  f.loadMap(map, { mapId: map.id, currentLocationId: 'a', travelMode: 'walk', userNodes: [], userEdges: [], blocked: {} });
+  f.loadMap(map, { mapId: map.id, currentLocationId: 'a', travelMode: 'walk', userNodes: [], userEdges: [], blocked: {}, nodeBlocked: {} });
   f.materialize();
   return f;
 };

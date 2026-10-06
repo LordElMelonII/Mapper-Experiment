@@ -37,7 +37,7 @@ const tinyOverlay = (): ChatMapOverlay => ({
   userEdges: [
     { id: 'e-uc', source: 'n-beta', target: 'u-camp', modes: { walk: { allowed: true } } },
   ],
-  blocked: {},
+  blocked: {}, nodeBlocked: {},
 });
 
 // Deliberately invalid — loadMap must refuse it at runtime (typed lie for TS).

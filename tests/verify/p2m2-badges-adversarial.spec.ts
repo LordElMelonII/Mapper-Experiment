@@ -34,7 +34,7 @@ const overlayOf = (map: WorldMapData, pin: string | null = 'emiya-residence'): C
   travelMode: 'walk',
   userNodes: [],
   userEdges: [],
-  blocked: {},
+  blocked: {}, nodeBlocked: {},
 });
 
 // Mirrors the service bridge's badgeRoutes (GraphService.badgeRoutes): one

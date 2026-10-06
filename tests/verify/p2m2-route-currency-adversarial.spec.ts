@@ -24,7 +24,7 @@ const loadFuyuki = (travelMode: ChatMapOverlay['travelMode'] = 'walk') => {
     travelMode,
     userNodes: [],
     userEdges: [],
-    blocked: {},
+    blocked: {}, nodeBlocked: {},
   };
   const f = createFacade();
   f.loadMap(map, overlay);
@@ -38,7 +38,7 @@ const overlayOf = (map: WorldMapData, pin: string | null): ChatMapOverlay => ({
   travelMode: 'walk',
   userNodes: [],
   userEdges: [],
-  blocked: {},
+  blocked: {}, nodeBlocked: {},
 });
 
 const load = (map: WorldMapData, pin: string | null = null) => {

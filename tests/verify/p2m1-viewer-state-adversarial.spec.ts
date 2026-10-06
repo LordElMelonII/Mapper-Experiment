@@ -21,7 +21,7 @@ const fuyukiOverlay = (): ChatMapOverlay => ({
   travelMode: 'walk',
   userNodes: [],
   userEdges: [],
-  blocked: {},
+  blocked: {}, nodeBlocked: {},
 });
 
 describe('P2 M1 viewer-state seam (setActiveLayer, C19/C30/C8/R4)', () => {

@@ -41,7 +41,7 @@ const load = (map: WorldMapData) => {
     travelMode: 'walk',
     userNodes: [],
     userEdges: [],
-    blocked: {},
+    blocked: {}, nodeBlocked: {},
   };
   const f = createFacade();
   f.loadMap(map, overlay);
@@ -237,6 +237,7 @@ const curveOverlay = (): ChatMapOverlay => ({
   ],
   userEdges: [{ id: 'we-c1', source: 'wp-c1', target: 's2', modes: { walk: { allowed: true } } }],
   blocked: { 'we-c1': 'trail closed' },
+  nodeBlocked: {},
 });
 
 const nodeOf = (elements: ReturnType<typeof buildLayerElements>, id: string) => {

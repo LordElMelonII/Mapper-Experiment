@@ -184,7 +184,7 @@ describe('VERIFY M3 — FX2 on the imported map, re-proven (FX2, D54/D60)', () =
       travelMode: 'walk',
       userNodes: [],
       userEdges: [],
-      blocked: {},
+      blocked: {}, nodeBlocked: {},
     };
     const f = createFacade();
     f.loadMap(imported, overlay);

@@ -32,7 +32,7 @@ const tinyOverlay = (over: Partial<ChatMapOverlay> = {}): ChatMapOverlay => ({
   travelMode: 'walk',
   userNodes: [],
   userEdges: [],
-  blocked: {},
+  blocked: {}, nodeBlocked: {},
   ...over,
 });
 

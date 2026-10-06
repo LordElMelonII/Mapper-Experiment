@@ -36,7 +36,7 @@ const load = (map: WorldMapData, pin: string | null = 'emiya-residence') => {
     travelMode: 'walk',
     userNodes: [],
     userEdges: [],
-    blocked: {},
+    blocked: {}, nodeBlocked: {},
   };
   const f = createFacade();
   f.loadMap(map, overlay);

@@ -52,7 +52,7 @@ const validOverlay = (): ChatMapOverlay => ({
   travelMode: 'walk',
   userNodes: [],
   userEdges: [],
-  blocked: {},
+  blocked: {}, nodeBlocked: {},
 });
 
 /** A deep clone of the valid map with one (deliberately invalid) mutation applied. */
@@ -436,6 +436,33 @@ describe('validateOverlay', () => {
       o.userNodes = [{ id: 'u1', label: 'Camp', kind: 'waypoint', layer: 'layer-city' }];
       o.userEdges = [{ id: 'ue1', source: 'u1', target: 'n-emiya', modes: { walk: { allowed: true } } }];
       o.blocked = { ue1: 'flooded' };
+    });
+    expect(() => validateOverlay(ok, validMap())).not.toThrow();
+  });
+
+  it('requires nodeBlocked keys to reference library or user nodes with non-empty reasons (D94/C34)', () => {
+    expect(singlePath(overlayIssues(mutatedOverlay((o) => { o.nodeBlocked = { 'n-ghost': 'why' }; })))).toBe('nodeBlocked.n-ghost');
+    expect(singlePath(overlayIssues(mutatedOverlay((o) => { o.nodeBlocked = { 'n-station': '' }; })))).toBe('nodeBlocked.n-station');
+    expect(() => validateOverlay(mutatedOverlay((o) => { o.nodeBlocked = { 'n-station': 'flooded' }; }), validMap())).not.toThrow();
+  });
+
+  it('refuses a missing or non-object nodeBlocked like blocked (F50/C30)', () => {
+    expect(singlePath(overlayIssues(mutatedOverlay((o) => { delete o.nodeBlocked; })))).toBe('nodeBlocked');
+    expect(singlePath(overlayIssues(mutatedOverlay((o) => { o.nodeBlocked = 'nope'; })))).toBe('nodeBlocked');
+    expect(singlePath(overlayIssues(mutatedOverlay((o) => { o.nodeBlocked = null; })))).toBe('nodeBlocked');
+  });
+
+  it('collects every nodeBlocked issue into one report (C30)', () => {
+    const issues = overlayIssues(mutatedOverlay((o) => {
+      o.nodeBlocked = { 'n-ghost': 'why', 'n-station': '' };
+    }));
+    expect(pathsOf(issues).sort()).toEqual(['nodeBlocked.n-ghost', 'nodeBlocked.n-station']);
+  });
+
+  it('accepts a node block on a user node (D94/C34)', () => {
+    const ok = mutatedOverlay((o) => {
+      o.userNodes = [{ id: 'u1', label: 'Camp', kind: 'waypoint', layer: 'layer-city' }];
+      o.nodeBlocked = { u1: 'camp flooded' };
     });
     expect(() => validateOverlay(ok, validMap())).not.toThrow();
   });

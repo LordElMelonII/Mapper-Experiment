@@ -16,7 +16,7 @@ const overlayFor = (mapId: string): ChatMapOverlay => ({
   travelMode: 'walk',
   userNodes: [],
   userEdges: [],
-  blocked: {},
+  blocked: {}, nodeBlocked: {},
 });
 
 /** A v1 document: v2-shaped except schemaVersion 1 and legacy field names. */

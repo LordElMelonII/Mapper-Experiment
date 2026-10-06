@@ -22,7 +22,7 @@ const loadFuyuki = (travelMode: ChatMapOverlay['travelMode'] = 'walk') => {
     travelMode,
     userNodes: [],
     userEdges: [],
-    blocked: {},
+    blocked: {}, nodeBlocked: {},
   };
   const f = createFacade();
   f.loadMap(map, overlay);
@@ -126,7 +126,7 @@ const loadInterleaved = () => {
     travelMode: 'walk',
     userNodes: [],
     userEdges: [],
-    blocked: {},
+    blocked: {}, nodeBlocked: {},
   });
   f.materialize();
   return f;
@@ -181,7 +181,7 @@ describe('§6.2 at the route level — authored-time legs must not accrue terrai
       ],
     };
     const f = createFacade();
-    f.loadMap(map, { mapId: map.id, currentLocationId: 'a', travelMode: 'walk', userNodes: [], userEdges: [], blocked: {} });
+    f.loadMap(map, { mapId: map.id, currentLocationId: 'a', travelMode: 'walk', userNodes: [], userEdges: [], blocked: {}, nodeBlocked: {} });
     f.materialize();
     const r = f.findRoute('a', 'b');
     expect(r.ok).toBe(true);
@@ -211,7 +211,7 @@ describe('§6.2 — zero-distance nodes route at cost 0, not ∞ (§6.2, C14 row
   it('co-located nodes with an unauthored arc ⇒ ok:true, total 0 (§6.2)', () => {
     const map = zeroDistance(true);
     const f = createFacade();
-    f.loadMap(map, { mapId: map.id, currentLocationId: 'a', travelMode: 'walk', userNodes: [], userEdges: [], blocked: {} });
+    f.loadMap(map, { mapId: map.id, currentLocationId: 'a', travelMode: 'walk', userNodes: [], userEdges: [], blocked: {}, nodeBlocked: {} });
     f.materialize();
     const r = f.findRoute('a', 'b');
     expect(r).toEqual({
@@ -226,7 +226,7 @@ describe('§6.2 — zero-distance nodes route at cost 0, not ∞ (§6.2, C14 row
   it('co-located nodes WITHOUT an arc ⇒ ok:false + human reason (C17, §6.2)', () => {
     const map = zeroDistance(false);
     const f = createFacade();
-    f.loadMap(map, { mapId: map.id, currentLocationId: 'a', travelMode: 'walk', userNodes: [], userEdges: [], blocked: {} });
+    f.loadMap(map, { mapId: map.id, currentLocationId: 'a', travelMode: 'walk', userNodes: [], userEdges: [], blocked: {}, nodeBlocked: {} });
     f.materialize();
     const r = f.findRoute('a', 'b');
     expect(r.ok).toBe(false);

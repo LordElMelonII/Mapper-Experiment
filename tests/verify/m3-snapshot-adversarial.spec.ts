@@ -19,7 +19,7 @@ const overlayFor = (map: WorldMapData, pin: string | null, extra: Partial<ChatMa
   travelMode: 'walk',
   userNodes: [],
   userEdges: [],
-  blocked: {},
+  blocked: {}, nodeBlocked: {},
   ...extra,
 });
 

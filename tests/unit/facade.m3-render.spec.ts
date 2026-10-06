@@ -16,7 +16,7 @@ const fuyukiOverlay = (map: WorldMapData): ChatMapOverlay => ({
   travelMode: 'walk', // D19: the chat's default mode preference
   userNodes: [],
   userEdges: [],
-  blocked: {},
+  blocked: {}, nodeBlocked: {},
 });
 
 const loadFuyukiWithEngine = () => {

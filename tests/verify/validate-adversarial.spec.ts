@@ -42,7 +42,7 @@ const validOverlay = (): ChatMapOverlay => ({
   travelMode: 'walk',
   userNodes: [],
   userEdges: [],
-  blocked: {},
+  blocked: {}, nodeBlocked: {},
 });
 
 const clone = (v: unknown): any => JSON.parse(JSON.stringify(v));
@@ -127,7 +127,7 @@ describe('FINDINGS — verifier positions, see report (expected RED until triage
     expect(() => validateOverlay(o, validateWorldMap(m))).toThrow(MapValidationError);
 
     const f = createFacade();
-    f.loadMap(validateWorldMap(m), { ...o, userNodes: [], userEdges: [], blocked: {} });
+    f.loadMap(validateWorldMap(m), { ...o, userNodes: [], userEdges: [], blocked: {}, nodeBlocked: {} });
     expect(() => f.setCurrentLocation('n-empty-district')).toThrow(/C1|container|leaf/i);
   });
 });

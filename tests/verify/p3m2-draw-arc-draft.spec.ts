@@ -35,7 +35,7 @@ const load = (map: WorldMapData, travelMode: ChatMapOverlay['travelMode'] = 'wal
     travelMode,
     userNodes: [],
     userEdges: [],
-    blocked: {},
+    blocked: {}, nodeBlocked: {},
   };
   const f = createFacade();
   f.loadMap(map, overlay);
@@ -67,7 +67,7 @@ const horseMap = (modes: ModeDeclaration[], over: Partial<WorldMapData> = {}): W
 const SECTION9_COMMANDS: (keyof MapFacade)[] = [
   'loadMap', 'materialize', 'forkMap', 'saveForkToLibrary', 'validateImport', 'migrateData',
   'setCurrentLocation', 'setStatusNote', 'setTravelMode', 'setCorrective',
-  'setBlocked', 'addUserNodeAt', 'removeUserNode', 'promoteUserNode',
+  'setBlocked', 'setNodeBlocked', 'addUserNodeAt', 'removeUserNode', 'promoteUserNode',
   'upsertNode', 'upsertEdge', 'removeNode', 'removeEdge', 'calibrateScale', 'saveMap', 'hasUnsavedChanges',
   'upsertLayer', 'removeLayer', 'reorderLayers', 'layerRemovalImpact', 'detachNode', 'setNodeLayer', 'setLayerBackground', 'setPortal',
   'findRoute', 'getSnapshot', 'renderTemplate', 'getPromptBlock',

@@ -45,7 +45,7 @@ const overlayFor = (map: WorldMapData, pin: string | null): ChatMapOverlay => ({
   travelMode: 'walk',
   userNodes: [],
   userEdges: [],
-  blocked: {},
+  blocked: {}, nodeBlocked: {},
 });
 
 const load = (map: WorldMapData, pin: string | null = null, compile?: (tpl: string) => (ctx: Record<string, unknown>) => string) => {

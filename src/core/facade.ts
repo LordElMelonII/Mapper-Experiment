@@ -90,6 +90,7 @@ export interface MapFacade {
   setCorrective(text: string | undefined): void; // D63: D26's corrective line — set by the host scanner, sticky until replaced/cleared
   // Overlay edits
   setBlocked(edgeId: string, reason?: string): void;
+  setNodeBlocked(nodeId: string, reason?: string): void; // D94/C34: the node mirror of setBlocked — a blocked node is impassable as destination/intermediate but may be a route's origin (C34); saved-plane-gated add, unconditional lift, non-empty reason
   addUserNodeAt(layer: string, position: { x: number; y: number }): void;
   removeUserNode(id: string): void;
   promoteUserNode(id: string, label: string): void;
@@ -283,10 +284,34 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
     if (!eff.nodes.some((node) => node.id === to)) {
       throw new Error(`[TravelMapper] findRoute: unknown node id '${to}'`);
     }
+    // Authored labels for every human reason below (C23 — labels are authored
+    // words; machine ids never reach a prompt-facing reason). ONE definition
+    // shared by the C34 destination refusal and the C17 unreachable wording.
+    const labelOf = (id: string): string => eff.nodes.find((node) => node.id === id)?.label ?? id;
     // Route-to-self (§6.2) — trivially satisfiable. D72: no run happened, so
     // the label is the canonical one (the D65 empty-set precedent: an empty
-    // set presents no minutes-derived cost).
+    // set presents no minutes-derived cost). C34: the trivial success stands
+    // untouched even on a blocked node — the ORIGIN exemption (the party can
+    // always leave somewhere they already are).
     if (from === to) return { ok: true, total: 0, legs: [], unit: savedScale.unitLabel };
+
+    // C34/D94: a blocked node is impassable as a DESTINATION — refused before
+    // any run, the reason naming the block (the authored label + the authored
+    // reason, verbatim). D72: no run happened, so the unit label is the
+    // canonical one (the route-to-self precedent above); no cost is presented
+    // (C17). This rides the ONE shared route computation, so the C20
+    // destination runs (getSnapshot's routeTo) inherit the refusal and the
+    // blocked hub drops from the destinations list (the C15 drop precedent).
+    const toBlockReason = overlay.nodeBlocked[to];
+    if (toBlockReason !== undefined) {
+      return {
+        ok: false,
+        total: 0,
+        legs: [],
+        unit: savedScale.unitLabel, // D72: no run — the route-to-self precedent
+        reason: `'${labelOf(to)}' is blocked: ${toBlockReason}`,
+      };
+    }
 
     const positions = new Map(eff.nodes.map((node) => [node.id, node.position] as const));
     const positionOf = (id: string): { x: number; y: number } | undefined => positions.get(id);
@@ -320,8 +345,20 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
     const preferred = mode !== undefined ? mode : overlay.travelMode;
     const priceIn = (edge: MapEdgeData, currency: CostCurrency): { mode: TravelMode; cost: number } =>
       priceForSnapshot(edge, currency, candidates, preferred, savedScale, positionOf);
+    // C34/D94: a blocked node is impassable as an INTERMEDIATE stop — the
+    // existing weightOf wrapped at the ONE seam: a step INTO a node-blocked
+    // endpoint yields the non-finite sentinel (C2's ∞ discipline — it never
+    // enters the result, C17). The ORIGIN is never stepped into (dijkstra
+    // seeds it as settled), so the C34 origin exemption falls out by
+    // construction. The exclusion is silent, like a blocked arc's ∞ — the
+    // unreachable-reason discrimination below is untouched. dijkstra.ts
+    // itself is unchanged (D94: the semantics ride the caller's weightOf).
     const run = (currency: CostCurrency) =>
-      shortestPath(nodeIds, eff.edges, (edge) => priceIn(edge, currency).cost, from, to);
+      shortestPath(nodeIds, eff.edges, (edge, traversedFrom) => {
+        const into = edge.source === traversedFrom ? edge.target : edge.source; // C6: the endpoint being entered
+        if (overlay.nodeBlocked[into] !== undefined) return Infinity; // the internal sentinel — never in any output (C2/C17)
+        return priceIn(edge, currency).cost;
+      }, from, to);
     let currency: CostCurrency;
     let result: ReturnType<typeof run>;
     if (forcedCurrency !== undefined) {
@@ -350,9 +387,11 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       // C17: translate unreachability into a human reason. Was the graph
       // disconnected in principle, or did blocks/mode restrictions sever it?
       // Brute-force probe (D59): a second plain run at weight 1 per edge —
-      // ignoring blocked/disallowed costs entirely (C2).
+      // ignoring blocked/disallowed costs entirely (C2). The probe ignores
+      // node blocks too (C34): an intermediate node-block sever is SILENT
+      // here, exactly like a blocked arc's ∞ — the route dies with the
+      // existing unreachable wording, never naming the intermediate block.
       const connected = shortestPath(nodeIds, eff.edges, () => 1, from, to).ok;
-      const labelOf = (id: string): string => eff.nodes.find((node) => node.id === id)?.label ?? id;
       return {
         ok: false,
         total: 0,
@@ -609,6 +648,48 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
         // survives this delete (a silent no-op there); the next rebuild
         // re-merges the union.
         delete overlay.blocked[edgeId];
+      }
+      state.stale = true; // C8 — the next query's ensureFresh picks the change up
+    },
+    // D94/C34: the node-level mirror of setBlocked — a chat-scoped block on a
+    // NODE (not its arcs). Same seams verbatim: ensureFresh prelude, no-map
+    // refusal, saved-plane-gated ADD (A-014 — an overlay key the saved plane
+    // lacks would make validateOverlay refuse the WHOLE overlay at the next
+    // load, F50), C30 non-empty-reason refusal stored verbatim untrimmed,
+    // UNCONDITIONAL lift (a no-op on an unknown/stale key is harmless), and
+    // stale, never dirty (the R25 adjudication: an overlay command —
+    // chat-scoped blocks must not ride saveMap into the library).
+    setNodeBlocked: (nodeId, reason) => {
+      ensureFresh(); // C8 — keeps the no-map invariant below uniform with the other §9 commands
+      const { overlay, effective } = state;
+      if (overlay === null || effective === null) throw new Error('[TravelMapper] no map loaded');
+      if (reason !== undefined) {
+        // A-014 (D75 amendment): the ADD path writes an overlay key, so it may
+        // only reference a node the SAVED plane knows (savedNodeIds ∪ overlay
+        // userNodes) — an unsaved editor node is refused exactly like an
+        // unknown one (C30 field-precise); the LIFT path below never binds
+        // and stays unconditional.
+        if (!state.savedNodeIds.has(nodeId) && !overlay.userNodes.some((nd) => nd.id === nodeId)) {
+          throw new Error(`[TravelMapper] setNodeBlocked: unknown node id '${nodeId}' (unsaved — save the map first)`);
+        }
+        // C30/F50: the setBlocked discipline verbatim — validate BEFORE
+        // mutating; an empty or whitespace-only string is neither a reason
+        // nor a lift (a blank-looking reason would reach prompts verbatim as
+        // C34's payload). Valid strings are stored verbatim, untrimmed — the
+        // reason is the author's payload.
+        if (typeof reason !== 'string' || reason.trim().length === 0) {
+          throw new Error(
+            `[TravelMapper] setNodeBlocked: reason must be a non-empty string or undefined (got '${String(reason)}')`,
+          );
+        }
+        overlay.nodeBlocked[nodeId] = reason; // D94/C34: chat-scoped block — adds or restates only
+      } else {
+        // Lift: an UNCONDITIONAL delete of the overlay entry (the setBlocked
+        // mirror — the lift path never binds state, so the saved-plane gate
+        // does not apply). Node blocks are overlay-ONLY (D94 adds no
+        // library-level node block), so there is no library block to
+        // survive; the next rebuild re-reads the map.
+        delete overlay.nodeBlocked[nodeId];
       }
       state.stale = true; // C8 — the next query's ensureFresh picks the change up
     },

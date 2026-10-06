@@ -26,7 +26,7 @@ const overlayFor = (map: WorldMapData): ChatMapOverlay => ({
   travelMode: 'walk',
   userNodes: [],
   userEdges: [],
-  blocked: {},
+  blocked: {}, nodeBlocked: {},
 });
 
 const load = (map: WorldMapData) => {

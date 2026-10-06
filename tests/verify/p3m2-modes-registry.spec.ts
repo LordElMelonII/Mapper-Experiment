@@ -40,7 +40,7 @@ const load = (map: WorldMapData, travelMode: ChatMapOverlay['travelMode'] = 'wal
     travelMode,
     userNodes: [],
     userEdges: [],
-    blocked: {},
+    blocked: {}, nodeBlocked: {},
   };
   const f = createFacade();
   f.loadMap(map, overlay);
@@ -198,7 +198,7 @@ describe('p3m2 registry — C32 degrade at load, C30 gate discipline (D78/C32/C3
       travelMode: 42 as unknown as ChatMapOverlay['travelMode'],
       userNodes: [],
       userEdges: [],
-      blocked: {},
+      blocked: {}, nodeBlocked: {},
     };
     const f = createFacade();
     f.loadMap(map, overlay);

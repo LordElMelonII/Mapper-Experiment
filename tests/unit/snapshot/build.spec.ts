@@ -27,7 +27,7 @@ const overlayFor = (map: WorldMapData, pin: string | null, extra: Partial<ChatMa
   travelMode: 'walk',
   userNodes: [],
   userEdges: [],
-  blocked: {},
+  blocked: {}, nodeBlocked: {},
   ...extra,
 });
 
@@ -428,5 +428,51 @@ describe('buildSnapshot — C20 cap (DESTINATIONS_CAP = 12, truncation marked, D
     );
     expect(snap.destinations).toHaveLength(12);
     expect(snap.destinationsTruncated).toBe(false);
+  });
+});
+
+// --- D94/C34: the blocked-nodes listing ------------------------------------------------------
+
+describe('buildSnapshot — the blocked-nodes listing (D94/C34, C2 spirit, C23)', () => {
+  it('a blocked node surfaces with its authored label + reason (D94/C34, C2)', () => {
+    const m = neighborhoodMap();
+    const overlay = overlayFor(m, 'pin', { nodeBlocked: { keep: 'gate sealed' } });
+    const snap = build(m, overlay, facadeStylePriceEdge(m, 'minutes'));
+    expect(snap.blockedNodes).toEqual([{ label: 'Blocked Keep', reason: 'gate sealed' }]);
+  });
+
+  it('a blocked NAMED user waypoint surfaces; an UNNAMED one never does (C23 — the same exclusion seam)', () => {
+    const m = neighborhoodMap();
+    const named = overlayFor(m, 'pin', {
+      userNodes: [{ id: 'wp-1', label: 'Camp', kind: 'waypoint', layer: 'layer-top', origin: 'user' }],
+      nodeBlocked: { 'wp-1': 'camp flooded' },
+    });
+    expect(build(m, named, () => null).blockedNodes).toEqual([{ label: 'Camp', reason: 'camp flooded' }]);
+
+    const unnamed = overlayFor(m, 'pin', {
+      userNodes: [{ id: 'wp-2', label: 'Waypoint', kind: 'waypoint', layer: 'layer-top', origin: 'user' }],
+      nodeBlocked: { 'wp-2': 'why' },
+    });
+    expect(build(m, unnamed, () => null).blockedNodes).toBeUndefined(); // C23: excluded; empty ⇒ omitted
+  });
+
+  it('a dangling key degrades out silently (C32 — the effective.ts dangling-key mirror)', () => {
+    const m = neighborhoodMap();
+    const dangling = overlayFor(m, 'pin', { nodeBlocked: { ghost: 'why' } });
+    expect('blockedNodes' in build(m, dangling, () => null)).toBe(false);
+  });
+
+  it('omitted entirely when no node is blocked (no empty-array noise — the statusNote/corrective shape)', () => {
+    const m = neighborhoodMap();
+    const snap = build(m, overlayFor(m, 'pin'), facadeStylePriceEdge(m, 'minutes'));
+    expect('blockedNodes' in snap).toBe(false);
+  });
+
+  it('rides the degraded snapshot like statusNote/corrective — the prompt learns WHY even without a pin (C2 spirit, C27)', () => {
+    const m = neighborhoodMap();
+    const overlay = overlayFor(m, null, { nodeBlocked: { keep: 'gate sealed' } });
+    const snap = build(m, overlay, () => null);
+    expect(snap.location).toBeNull();
+    expect(snap.blockedNodes).toEqual([{ label: 'Blocked Keep', reason: 'gate sealed' }]);
   });
 });

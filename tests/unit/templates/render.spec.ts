@@ -83,7 +83,7 @@ const overlayFor = (map: WorldMapData, pin: string | null = 'crossroads'): ChatM
   travelMode: 'walk',
   userNodes: [],
   userEdges: [],
-  blocked: {},
+  blocked: {}, nodeBlocked: {},
 });
 
 const loadTiny = (facade: ReturnType<typeof createFacade>): void => {

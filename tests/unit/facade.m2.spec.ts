@@ -20,7 +20,7 @@ const fuyukiOverlay = (map: WorldMapData): ChatMapOverlay => ({
   travelMode: 'walk', // D19: the chat's default mode preference
   userNodes: [],
   userEdges: [],
-  blocked: {},
+  blocked: {}, nodeBlocked: {},
 });
 
 const loadFuyuki = () => {
@@ -60,7 +60,7 @@ const loadIslands = () => {
     travelMode: 'walk',
     userNodes: [],
     userEdges: [],
-    blocked: {},
+    blocked: {}, nodeBlocked: {},
   });
   f.materialize();
   return f;
@@ -230,7 +230,7 @@ const loadMixed = () => {
     travelMode: 'walk',
     userNodes: [],
     userEdges: [],
-    blocked: {},
+    blocked: {}, nodeBlocked: {},
   });
   f.materialize();
   return f;
@@ -354,7 +354,7 @@ const loadRegistry = (map: WorldMapData, preferred: TravelMode = 'horse'): { f: 
     travelMode: preferred, // D78: a registry mode the loaded map knows
     userNodes: [],
     userEdges: [],
-    blocked: {},
+    blocked: {}, nodeBlocked: {},
   };
   const f = createFacade();
   f.loadMap(map, overlay);
@@ -401,7 +401,7 @@ describe('D78 mode registry — the speed seam and modeLabel (C14, C15, C23, D78
       travelMode: 'walk',
       userNodes: [],
       userEdges: [],
-      blocked: {},
+      blocked: {}, nodeBlocked: {},
     };
     const fRel = createFacade();
     fRel.loadMap(relabeled, overlay);

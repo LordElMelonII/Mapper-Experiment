@@ -284,6 +284,7 @@ export class App {
           userNodes: [],
           userEdges: [],
           blocked: {},
+          nodeBlocked: {},
         }
       : {
           mapId: 'fuyuki-misaki',
@@ -292,6 +293,7 @@ export class App {
           userNodes: [],
           userEdges: [],
           blocked: {},
+          nodeBlocked: {},
         };
 
     facade.loadMap(displayMap, overlay); // R2: the facade owns the map lifecycle

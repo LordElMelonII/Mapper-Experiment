@@ -27,7 +27,7 @@ const loadFuyuki = (pin = 'emiya-residence') => {
     travelMode: 'walk',
     userNodes: [],
     userEdges: [],
-    blocked: {},
+    blocked: {}, nodeBlocked: {},
   };
   const f = createFacade({ compile });
   f.loadMap(map, overlay);

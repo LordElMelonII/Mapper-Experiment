@@ -32,7 +32,7 @@ const tinyOverlay = (pin: string | null): ChatMapOverlay => ({
   travelMode: 'walk',
   userNodes: [],
   userEdges: [],
-  blocked: {},
+  blocked: {}, nodeBlocked: {},
 });
 
 // --- C27 orphan policy through LIVE library edits (D33/D39/D47 real path) ----------
@@ -101,6 +101,7 @@ describe('FX1 through the facade (FX1, C8, C24, C2/D20, C1, F17)', () => {
       userNodes: [],
       userEdges: [],
       blocked: { 'arc-shopping-district-fuyuki-bridge': 'Protest shuts the bridge approach' },
+      nodeBlocked: {},
     };
     const map: WorldMapData = JSON.parse(JSON.stringify(fuyukiMap)); // deepFreeze would poison mutation tests
     const f = createFacade();
@@ -136,7 +137,7 @@ describe('FX1 through the facade (FX1, C8, C24, C2/D20, C1, F17)', () => {
       travelMode: 'walk',
       userNodes: [],
       userEdges: [],
-      blocked: {},
+      blocked: {}, nodeBlocked: {},
     };
     const snap = JSON.stringify(fuyukiMap);
     const f = createFacade();

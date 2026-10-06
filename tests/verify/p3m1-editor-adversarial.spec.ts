@@ -50,7 +50,7 @@ const overlayFor = (map: WorldMapData, pin: string | null = null): ChatMapOverla
   travelMode: 'walk',
   userNodes: [],
   userEdges: [],
-  blocked: {},
+  blocked: {}, nodeBlocked: {},
 });
 
 const load = (map: WorldMapData, overlay: ChatMapOverlay, withEngine = false) => {

@@ -19,6 +19,7 @@ import type {
   MapNodeData,
   MapSnapshot,
   RouteResult,
+  SnapshotBlockedNode,
   SnapshotDestination,
   SnapshotRoute,
   TravelMode,
@@ -94,9 +95,25 @@ export function buildSnapshot(
   routeTo: (nodeId: string) => RouteResult,
 ): MapSnapshot {
   // statusNote/corrective ride on every snapshot, degraded or not (D17/D63).
+  // D94/C34: the blocked-nodes listing rides with them — overlay chat state
+  // independent of the pin, surfaced like an arc's blockedReason (C2 spirit:
+  // the prompt learns WHY access is barred). One entry per overlay.nodeBlocked
+  // key resolvable in the effective graph, the node's authored label + the
+  // authored reason. A dangling key (node gone after a live library edit, C24)
+  // degrades out silently (C32 — the effective.ts dangling-key mirror); an
+  // unnamed user waypoint never surfaces (C23 — the same exclusion seam as
+  // routes/destinations). Omitted entirely when nothing is left (no empty
+  // array noise — the statusNote/corrective shape).
+  const blockedNodes: SnapshotBlockedNode[] = [];
+  for (const [id, reason] of Object.entries(overlay.nodeBlocked)) {
+    const node = effective.nodes.find((nd) => nd.id === id);
+    if (node === undefined || isUnnamedUserNode(node)) continue;
+    blockedNodes.push({ label: node.label, reason });
+  }
   const passthrough = {
     ...(overlay.statusNote !== undefined ? { statusNote: overlay.statusNote } : {}),
     ...(overlay.corrective !== undefined ? { corrective: overlay.corrective } : {}),
+    ...(blockedNodes.length > 0 ? { blockedNodes } : {}),
   };
 
   const pinId = effective.pin.id;

@@ -52,7 +52,7 @@ const overlayWithWaypoints = (): ChatMapOverlay => ({
       modes: { walk: { allowed: true } },
     },
   ],
-  blocked: {},
+  blocked: {}, nodeBlocked: {},
 });
 
 const nodeOf = (elements: ReturnType<typeof buildLayerElements>, id: string) => {

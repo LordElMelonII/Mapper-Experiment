@@ -18,7 +18,7 @@ const FACADE_COMMANDS: (keyof MapFacade)[] = [
   // Presence
   'setCurrentLocation', 'setStatusNote', 'setTravelMode', 'setCorrective',
   // Overlay edits
-  'setBlocked', 'addUserNodeAt', 'removeUserNode', 'promoteUserNode',
+  'setBlocked', 'setNodeBlocked', 'addUserNodeAt', 'removeUserNode', 'promoteUserNode', // setNodeBlocked: D94/C34 (A-018)
   // Editor commands
   'upsertNode', 'upsertEdge', 'removeNode', 'removeEdge', 'calibrateScale', 'saveMap', 'hasUnsavedChanges', // D75: additive §9 extension
   // Layer commands

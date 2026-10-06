@@ -780,6 +780,24 @@ export function validateOverlay(
     }
   }
 
+  // nodeBlocked — the D94/C34 mirror of the blocked rules: every key an
+  // existing node (library ∪ userNodes — the same universe shape), every value
+  // a non-empty reason; dangling block = reject.
+  const nodeBlocked = overlay['nodeBlocked'];
+  if (!isObject(nodeBlocked)) {
+    push(issues, 'nodeBlocked', 'must be an object mapping node ids to reasons');
+  } else {
+    const blockedNodeUniverse = new Set<string>([...libraryNodeIds, ...overlayNodeIds]);
+    for (const key of Object.keys(nodeBlocked)) {
+      if (!blockedNodeUniverse.has(key)) {
+        push(issues, `nodeBlocked.${key}`, `must reference an existing node id ('${key}' not found)`);
+      }
+      if (!isNonEmptyString(nodeBlocked[key])) {
+        push(issues, `nodeBlocked.${key}`, 'must be a non-empty reason string');
+      }
+    }
+  }
+
   if (issues.length > 0) throw new MapValidationError(issues, 'overlay data');
   return overlay as unknown as ChatMapOverlay; // shape proven by the checks above
 }

@@ -111,6 +111,7 @@ export interface ChatMapOverlay {
   userNodes: MapNodeData[];            // waypoints — persist, promotable (D21)
   userEdges: MapEdgeData[];
   blocked: Record<string, string>;     // edgeId → reason (D20)
+  nodeBlocked: Record<string, string>; // nodeId → reason (D94/C34) — origin-exempt routing
 }
 
 // D62: the template engine is an INJECTED capability (R5 — the core imports
@@ -172,6 +173,17 @@ export interface SnapshotDestination {
   cost: number;
 }
 
+/**
+ * D94/C34: one blocked node in the snapshot's blocked listing — the authored
+ * label and the authored reason (C2 spirit: blocked ≠ hidden, the prompt
+ * learns WHY access is barred; C23: prompt-facing words only — never the node
+ * id).
+ */
+export interface SnapshotBlockedNode {
+  label: string;
+  reason: string;
+}
+
 export interface MapSnapshot {
   location: string | null;
   region: string | null;
@@ -182,4 +194,5 @@ export interface MapSnapshot {
   destinationsTruncated: boolean;      // C20/D63: the cap dropped entries — the template's `truncated` variable
   unit: string;                        // cost-currency label: 'min' when minutes, else the canonical unitLabel (C15/D60, §6.2)
   corrective?: string;                 // D26 line (overlay.corrective, D63)
+  blockedNodes?: SnapshotBlockedNode[]; // D94/C34: the blocked-node listing — label + reason per blocked node (C2 spirit: the prompt learns WHY); omitted entirely when no node is blocked
 }

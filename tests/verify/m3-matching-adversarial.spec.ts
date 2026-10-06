@@ -102,7 +102,7 @@ describe('VERIFY M3 — D26 end-to-end seam: matcher → setCorrective → promp
       travelMode: 'walk',
       userNodes: [],
       userEdges: [],
-      blocked: {},
+      blocked: {}, nodeBlocked: {},
     });
     f.materialize();
 

@@ -139,7 +139,7 @@ describe('FX2 cross-check — findRoute E → MT = 350 via Station Front (FX2, D
     travelMode: 'walk',
     userNodes: [],
     userEdges: [],
-    blocked: {},
+    blocked: {}, nodeBlocked: {},
   };
   facade.loadMap(imported, overlay);
 
