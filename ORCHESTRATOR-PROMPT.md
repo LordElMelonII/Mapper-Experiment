@@ -38,11 +38,11 @@ This prompt never overrides the repo docs. If they disagree, the docs win and yo
 
 Product behavior (anything the register marks as the owner's call), scope or phase changes, new dependencies, destructive operations, gate pass/fail summaries, and anything the docs don't answer. When unsure whether something is product or engineering: it's product.
 
-## First actions (R24 — M3 gate-passed, close-out commit pending the owner's approval; §8.6(r))
+## First actions (R24 — R23 CLOSED, M3 committed `e638d1f`; the next milestone is the owner's pick)
 
-Repo state (reconcile; the status line is your state — **current-state-only since the R20 collapse ruling**: round history lives in EXECUTION-PLAN §8.6 item 6, the one append-only ledger): HEAD on `develop` is the R23 planning commit (register rows D82–D86, PRODUCT/CORE placements, the P3-M3 store tracker, the prompt refresh); **the ENTIRE R23 execution — A-017, B-126..B-130, C-002, the verifier's adversarial suite, all close-out docs (D87/D88 register rows, CORE §9 line, status lines, AGENTS §4, this refresh), and the store tracker — sits UNCOMMITTED in the working tree** (the D73 mid-milestone discipline: the close-out lands as ONE commit once the owner approves the gate; §8.6(r) carries the full record). Reconcile by diff, not by log: `git status` shows the round. Gates at the close (lead-proven on the settled tree): `npm run verify` **641/641** (49 files); `npm run test:e2e` **335 passed / 69 cited skips** (desktop + phone-with-touch). Anything else ⇒ stop and report.
+Repo state (reconcile; the status line is your state — **current-state-only since the R20 collapse ruling**: round history lives in EXECUTION-PLAN §8.6 item 6, the one append-only ledger): HEAD on `develop` is the R23 resolution `docs:` commit on top of the M3 work commit **`e638d1f`** (feat: P3 M3 — A-017, B-126..B-130, C-002, the verifier's adversarial suite, and every close-out doc in one commit, landed on the owner's instruction 2026-10-06); tree clean apart from untracked scratch (`.playwright-mcp/`). Reconcile by `git log` + the §8.6(r) ledger record. Gates at the close (lead-proven on the settled tree): `npm run verify` **641/641** (49 files); `npm run test:e2e` **335 passed / 69 cited skips** (desktop + phone-with-touch). Anything else ⇒ stop and report.
 
-**First action: obtain the owner's gate approval (report per §8.6(r)) and land the close-out commit. Then ask the owner what opens next** — Phase 3 M4 (per §5), the Phase 3 integration pass, or an owner-picked line; do not self-select a milestone.
+**First action: report the committed state to the owner and ask what opens next** — Phase 3 M4 (per §5), the Phase 3 integration pass against local ST, or an owner-picked line; do not self-select a milestone. The M3 planning rulings D82–D88 are the law; the parked contacts stay parked (node-level blocking; the Game/View/Edit display-mode idea).
 
 Operational facts this round proved (carry them):
 
