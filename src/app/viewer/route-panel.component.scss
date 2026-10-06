@@ -1,21 +1,24 @@
 // PKG B-105 — component-scoped chrome only (D7: zero global leakage; graph
-// visual language stays GRAPH_STYLESHEET data in graph.service.ts). The host
-// element is sized by the map viewer's flex layout; here it only guarantees
-// its own content never forces horizontal overflow (D53) and scrolls its own
-// overflow vertically.
+// visual language stays GRAPH_STYLESHEET data in graph.service.ts).
 // B-114 (§5 M4 responsive panels, D53/F52): below the 700px breakpoint the
 // panel presents as a bottom SHEET — the rail is the always-visible ≥44px
 // row and the body hides while collapsed (ruling 1). Narrow is the DEFAULT
-// (mobile-first, matching map-viewer.component.scss); the ≥700px media query
-// neutralizes the sheet — rail display:none, body always shown regardless of
-// state. The padding moved off :host onto the body so the rail spans the
-// panel edge-to-edge while the desktop rendering is pixel-identical.
+// (mobile-first, matching map-viewer.component.scss).
+// B-133 (D91): the narrow sheet OVERLAYS the stage (the .tme-sheets stack —
+// the map-viewer SCSS owns the stack; this file makes the host a flex column
+// so a stack squeeze scrolls the BODY and never hides the rail). At ≥700px
+// the panel is the FLOATING surface (the B-119 regime generalized): a
+// position:fixed floater bottom-anchored inside the stage — its default
+// anchor is the stage's bottom-RIGHT, or bottom-LEFT (clearing the rail
+// column via --tme-rail-w) when the selection sits on the right half (the
+// avoid-the-selection default, placement-only); a remembered position
+// (transform) replaces the anchor; Maximize lifts the height cap.
 :host {
-  display: block;
-  min-width: 0; // never propagate content width into the flex row (D53)
+  display: flex;
+  flex-direction: column; // narrow: the rail stays put, the body absorbs squeezes
+  min-width: 0; // never propagate content width into the stack (D53)
+  min-height: 0;
   box-sizing: border-box;
-  overflow-y: auto;
-  overscroll-behavior: contain;
   color: #e6ebf2;
   font:
     400 0.875rem/1.5 system-ui,
@@ -23,12 +26,26 @@
     sans-serif;
 }
 
+// B-133 (D91): the wide floater's regime header — narrow-invisible by
+// default (the sheet rail is the narrow affordance); the wide query shows it.
+.tme-float-head {
+  display: none;
+}
+
+.tme-float-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
 // B-114 (ruling 1): the sheet rail — one full-width ≥44px tap target (F52).
 // No hover affordance: the chevron rotation and the body visibility are the
 // signal-driven state (R3); touch-action: manipulation keeps double-taps
-// from zooming the chrome (§6.2).
+// from zooming the chrome (§6.2). flex: 0 0 auto so a stack squeeze never
+// shrinks the affordance (D91's overlay form).
 .tme-sheet-rail {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
   box-sizing: border-box;
@@ -58,16 +75,20 @@
 }
 
 // The body wrapper (B-114 ruling 1): every control/content the panel has
-// ever rendered lives inside it. It is ALWAYS in the DOM (the ≥700px media
-// query shows it regardless of state); the padding lives here, not on the
-// host, so the rail spans edge-to-edge and the desktop look is unchanged.
+// ever rendered lives inside it. The padding lives here, not on the host, so
+// the rail spans edge-to-edge. D91: the body is the shrinkable member — a
+// stack squeeze scrolls IT, never the host, so the rail stays reachable.
 .tme-sheet-body {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 0.75rem;
 }
 
-// Narrow only: collapsed hides the body — the freed height returns to the
-// canvas stage (the host is flex: 0 0 auto in map-viewer.component.scss, so
-// it shrinks to rail height and the ResizeObserver → refit chain follows).
+// Narrow only: collapsed hides the body — the sheet folds down to its rail
+// band (the overlay's height follows its content; the stage's height NEVER
+// changes — D91 replaced the old freed-height-returns-to-canvas behavior).
 // Scoped to the media query so the ≥700px world can never hide the body.
 @media (max-width: 699.98px) {
   .tme-collapsed .tme-sheet-body {
@@ -75,11 +96,112 @@
   }
 }
 
-// Wide (the existing breakpoint): the sheet neutralizes — the rail is gone
-// and the body always shows, whatever the (phone-world) toggle state is.
+// Wide (the existing breakpoint): the sheet rail is gone and the floater
+// takes over.
 @media (min-width: 700px) {
   .tme-sheet-rail {
     display: none;
+  }
+
+  // Closed on wide (no content and never summoned): no surface at all.
+  :host {
+    display: none;
+  }
+
+  // B-133 (D91): the floating surface. Bottom-anchored INSIDE the stage
+  // (the stage is the viewport's full height on wide, so the viewport
+  // insets are the stage insets); the default anchor is bottom-right.
+  :host(.tme-float-open) {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    bottom: 0.75rem;
+    right: 0.75rem;
+    z-index: 20; // above the map it legitimately overlaps (clamped clear of the chrome)
+    width: min(18rem, 100vw - 1.5rem); // FLOAT_WIDTH_PX — never offscreen-wide (D53)
+    max-height: min(26rem, 100dvh - 1.5rem);
+    border: 1px solid rgba(174, 189, 211, 0.4);
+    border-radius: 8px;
+    background: #14171c; // opaque — the map underneath is occluded, not bled through
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    overflow: hidden; // the BODY scrolls (the head must stay reachable)
+  }
+
+  // The avoid-the-selection default anchor (D91, placement-only): the
+  // selection sits on the right half ⇒ anchor bottom-LEFT, clearing the
+  // rail column via the layout's own custom property.
+  :host(.tme-float-open.tme-anchor-start) {
+    right: auto;
+    left: calc(var(--tme-rail-w, 0px) + 0.75rem);
+  }
+
+  // A remembered position (the drag's committed transform) replaces the
+  // anchor: the fixed host sits at the origin and the transform places it.
+  :host(.tme-float-open.tme-placed) {
+    top: 0;
+    left: 0;
+    right: auto;
+    bottom: auto;
+  }
+
+  // Maximize: the tall overlay form (the cap lifts to the property panel's
+  // maximized arithmetic: 100dvh − 7.75rem — the top chrome band (chip 6.5rem
+  // + the 8px clamp gap) above the 0.75rem bottom inset, so the standing chip
+  // stays tappable here too; the property panel's SCSS carries the doctrine).
+  :host(.tme-float-open.tme-maximized) {
+    max-height: calc(100dvh - 7.75rem);
+  }
+
+  // The regime header: the drag surface + the maximize toggle. touch-action:
+  // none lives HERE ONLY (never the stage — §6.2) so a header drag never
+  // scrolls the host page.
+  .tme-float-head {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid rgba(174, 189, 211, 0.25);
+    touch-action: none;
+    cursor: move;
+    user-select: none;
+  }
+
+  // The body's duplicate title hides — the header carries it.
+  .tme-sheet-body .tme-title {
+    display: none;
+  }
+
+  .tme-sheet-body {
+    flex: 0 1 auto;
+    min-height: 0;
+  }
+}
+
+// B-133: the Maximize/Restore regime button — one >= 44px tap target (F52),
+// touch-alone (D53), neutral chrome (panel management, not a route action:
+// gold stays the commit's color, red the destructive one).
+.tme-regime {
+  display: none; // narrow: no floater, no regime chrome
+  min-width: 44px; // F52
+  min-height: 44px;
+  padding: 0 0.625rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+@media (min-width: 700px) {
+  .tme-regime {
+    display: inline-flex;
   }
 }
 
@@ -271,4 +393,16 @@
 
 .tme-blocked-reason {
   color: #9aa7b8;
+}
+
+// B-133 review fix (lead, D91): the host's padding band is hit-testable but
+// visually empty — canvas taps aimed there died on it (a real dead zone).
+// The host never intercepts; the visible root section re-enables events for
+// its content (the stack wrapper is already none/auto).
+:host {
+  pointer-events: none; // B-133 review (D91) — see the note above
+}
+
+.tme-route {
+  pointer-events: auto; // B-133 review (D91) — the visible sheet re-enables
 }

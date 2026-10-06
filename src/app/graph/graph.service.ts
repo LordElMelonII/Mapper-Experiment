@@ -68,17 +68,19 @@
 // Phase 4) with the maximized-default reset on editor entry. All clamp /
 // drag DOM math lives in the panel component (the consumer); the service
 // holds the two signals and nothing else.
-// B-120 (R21 rulings 1 + D76; fit-site list refined by D81): viewport
-// stability + editor-only placement. (1) fitView belongs to mount(),
-// selectLayer() and ENVIRONMENTAL notifyResize() ONLY (D81: a panel-driven
-// resize on the wide layout never fits — zoom and pan are preserved, with a
-// pan-only selection rescue clamp; every resize on the narrow layout keeps
-// the B-106 refit) — rebuildElements NEVER fits, so an edit
-// (place/move/property-commit), a block/lift, a mode switch or a map load
-// leaves zoom and pan untouched (the cull machinery follows: cullZoom is
-// recomputed only by real fits, and a rebuild re-applies the cull class
-// from `labelCulled` — an edit while culled stays culled, B-113 ruling 4's
-// stated intent now exactly true).
+// B-120 (R21 rulings 1 + D76; fit-site list refined by D81, narrowed by
+// D91): viewport stability + editor-only placement. (1) fitView belongs to
+// mount(), selectLayer() and ENVIRONMENTAL notifyResize() ONLY — rebuildElements
+// NEVER fits, so an edit (place/move/property-commit), a block/lift, a mode
+// switch or a map load leaves zoom and pan untouched (the cull machinery
+// follows: cullZoom is recomputed only by real fits, and a rebuild re-applies
+// the cull class from `labelCulled` — an edit while culled stays culled,
+// B-113 ruling 4's stated intent now exactly true). D91: the four panels are
+// OVERLAYS (floaters on wide, bottom sheets on narrow) — a panel open/close
+// resizes NOTHING, so the only remaining panel-driven container resize is the
+// editor rail's collapse/expand; on the wide layout it takes the preserve
+// path (zoom and pan byte-kept, with a pan-only selection rescue clamp) and
+// every narrow-layout and environmental resize keeps the B-106 refit.
 // (2) D76: view mode is purely navigational — tap selects, drag pans, pinch
 // zooms, NOTHING is ever placed (a background tap clears both selections
 // only; a compound-box tap is a deliberate no-op). Placement of every kind
@@ -278,7 +280,7 @@ import type {
   NodeSingular,
   StylesheetStyle,
 } from 'cytoscape';
-import { Injectable, OnDestroy, computed, effect, signal } from '@angular/core';
+import { Injectable, OnDestroy, computed, effect, linkedSignal, signal } from '@angular/core';
 import type {
   ChatMapOverlay,
   LayerBackground,
@@ -727,8 +729,11 @@ const ZOOM_STEP = 1.25;
  * D81: the WIDE-layout query — a MIRROR of the SCSS's 700px row/column
  * switch (map-viewer.component.scss `@media (min-width: 700px)`); the SCSS
  * owns the layout, this only classifies resizes for the preserve/refit
- * matrix. Deliberately never computed from the canvas box: a panel-driven
- * resize changes the box while the layout class stays put.
+ * matrix. Deliberately never computed from the canvas box. D91: the four
+ * panels are overlays and can no longer move the box — on the wide layout
+ * the only panel-driven resize left is the editor rail's collapse/expand
+ * (the stage grows/shrinks with the rail column); a floater drag changes
+ * nothing the RO can see.
  */
 const WIDE_LAYOUT_QUERY = '(min-width: 700px)';
 
@@ -1010,17 +1015,31 @@ export class GraphService implements OnDestroy {
    */
   readonly drawArcFeedback = signal<string | null>(null);
 
-  // --- Panel regime (PKG B-119, Q29 / §8 item 3 — the property panel) ------
+  // --- Panel regime (PKG B-119, Q29 / §8 item 3 — generalized by B-133/D91) --
 
   /**
-   * B-119: whether the F40 property panel FLOATS over the stage (Q29's
-   * standing-panel regime) instead of sitting maximized in its docked
-   * region. FRONTEND viewer state, in-memory only — the facade carries no
-   * command for it and must not gain one this milestone (§9: the host owns
-   * preferences, Phase 4's persistence; never map data, so no facade/R2/R4
-   * surface). The panel component is the consumer: it writes this signal on
-   * its Maximize/Restore toggle (R3, the selection.set precedent), and
-   * enterEditor resets it — the editor maximizes by default (§8 item 3).
+   * D91 (B-133): ALL FOUR panels (route, arc, property, layer-manager) are
+   * floating surfaces over the full-width stage on wide viewports and
+   * overlay as bottom sheets on narrow ones — a panel open/close never
+   * resizes the stage and never moves the viewport. The regime state below
+   * is FRONTEND viewer chrome, in-memory only: the facade carries no command
+   * for any of it and must not gain one (§9 puts preferences with the host
+   * in Phase 4). The B-119 split stands: each panel component owns its clamp
+   * / drag DOM math (the consumer); the service holds signals and read-only
+   * projection reads — one remembered position PER PANEL KIND.
+   */
+
+  /**
+   * B-119: whether the F40 property panel FLOATS (the compact remembered-
+   * position form) instead of sitting maximized — under D91 both forms are
+   * overlays over the stage: maximized is the tall surface the editor opens
+   * by default, floating the compact one at the remembered position.
+   * FRONTEND viewer state, in-memory only — the facade carries no command
+   * for it (§9: the host owns preferences, Phase 4's persistence; never map
+   * data, so no facade/R2/R4 surface). The panel component is the consumer:
+   * it writes this signal on its Maximize/Restore toggle (R3, the
+   * selection.set precedent), and enterEditor resets it — the editor
+   * maximizes by default (§8 item 3).
    */
   readonly panelFloating = signal(false);
 
@@ -1035,6 +1054,73 @@ export class GraphService implements OnDestroy {
    * AND editor toggles; only `panelFloating` resets on editor entry.
    */
   readonly panelPosition = signal<{ x: number; y: number } | null>(null);
+
+  /**
+   * D91 (B-133): the route panel's WIDE open state — the auto-float rule.
+   * The panel floats whenever it HAS content (a route target selected, or
+   * blocked listings in the snapshot projection) and the rail's Route toggle
+   * summons it when it has none (a route-count-free empty state renders
+   * inside). A linkedSignal keyed on the CONTENT SIGNATURE (selection id +
+   * blocked counts): every content change recomputes (auto-float — the
+   * narrow sheet's B-114 auto-expand parity), while the toggle's write
+   * persists between content changes (the user can close a content-bearing
+   * panel and it stays closed until the content changes again). Narrow
+   * never reads this: the narrow sheet flow (its always-visible rail + the
+   * component-local expand state) is unchanged. Frontend viewer chrome, the
+   * panelFloating class.
+   */
+  readonly routePanelOpen = linkedSignal<string, boolean>({
+    source: () => {
+      const snapshot = this.snapshot();
+      const blocked =
+        (snapshot?.routes ?? []).filter((route) => route.blockedReason !== undefined).length +
+        (snapshot?.blockedNodes?.length ?? 0);
+      return `${this.selection()?.id ?? ''}|${blocked}`;
+    },
+    computation: (key) => key !== '|0',
+  });
+
+  /**
+   * D91 (B-133): the route panel's wide summon/close — the rail toggle's
+   * single write path (R3, the toggleLayerManager pattern). The next content
+   * change recomputes `routePanelOpen` from the auto-float rule (the
+   * linkedSignal source).
+   */
+  toggleRoutePanel(): void {
+    this.routePanelOpen.update((open) => !open);
+  }
+
+  /**
+   * D91 (B-133): the route panel floater's remembered position — the
+   * panelPosition precedent, one slot per panel kind. Frontend viewer
+   * chrome, viewport px, written once per drag end by the route panel.
+   */
+  readonly routePanelPosition = signal<{ x: number; y: number } | null>(null);
+
+  /** D91 (B-133): the arc panel floater's remembered position (routePanelPosition precedent). */
+  readonly arcPanelPosition = signal<{ x: number; y: number } | null>(null);
+
+  /** D91 (B-133): the layer-manager floater's remembered position (routePanelPosition precedent). */
+  readonly layerManagerPosition = signal<{ x: number; y: number } | null>(null);
+
+  /**
+   * D91 (B-133): which half of the canvas the current selection's rendered
+   * anchor sits on — the floating panels' best-effort avoid-the-selection
+   * DEFAULT placement reads this (a panel without a remembered position
+   * anchors on the side AWAY from the selection; placement-only, never a
+   * pan). The arc anchor resolves exactly as the rescue clamp's
+   * selectionAnchor (a projected arc = its box midpoint, a cross-layer arc =
+   * its badge box). null when nothing is selected or projected ⇒ the panel
+   * takes its neutral default. A discrete-read for template binding (the
+   * computed in the panel reads the selection signals first, so this only
+   * runs on selection changes — D2).
+   */
+  selectionRenderedSide(): 'left' | 'right' | null {
+    if (this.selection() === null && this.edgeSelection() === null) return null;
+    const anchor = this.selectionAnchor();
+    if (anchor === null) return null;
+    return (anchor.x1 + anchor.x2) / 2 > this.cy.width() / 2 ? 'right' : 'left';
+  }
 
   /**
    * B-116 (F45/D75): bumped by every editor command (place, move), by
@@ -1089,7 +1175,9 @@ export class GraphService implements OnDestroy {
    * for stale viewer state). Available in BOTH view and editor modes: every
    * mutation inside is chrome-driven through the facade (dirty + the save
    * dock appear), and D76's "view mode is purely navigational" fences
-   * CANVAS gestures, not management chrome.
+   * CANVAS gestures, not management chrome. D91: the sheet OVERLAYS the
+   * stage on both layouts (a floater on wide, a bottom sheet on narrow) —
+   * opening/closing it resizes nothing.
    */
   readonly layerManagerOpen = signal(false);
 
@@ -1639,7 +1727,7 @@ export class GraphService implements OnDestroy {
     this.cy.mount(el);
     this.cy.resize();
     this.mounted = true;
-    // D81: the discriminator's baseline — the first notifyResize compares
+    // D91: the discriminator's baseline — the first notifyResize compares
     // against THIS snapshot, so its initial RO fire (same viewport) reads as
     // panel-driven and takes the preserve path on wide: harmless, mount's
     // fit below already covered it and no selection exists yet.
@@ -2012,9 +2100,11 @@ export class GraphService implements OnDestroy {
    * nodes become grabbable (drag persists — see the `free` handler). The
    * toggle is the template's only write path for this state (R3).
    * B-119 (Q29/§8 item 3): editor entry also MAXIMIZES the property panel —
-   * the floating flag resets so a re-entry always opens the docked region
-   * form. The remembered position survives (panelPosition untouched): the
-   * next Restore floats it back where the author left it.
+   * the floating flag resets so a re-entry always opens the maximized
+   * overlay form (D91: the maximized form is the tall surface over the
+   * stage's right side, not a flex region — the stage never resizes). The
+   * remembered position survives (panelPosition untouched): the next
+   * Restore floats it back where the author left it.
    * B-120 (D76): entry also RESETS the tool to 'node' — every editor session
    * starts from the authored-node default (no remembered placement kind
    * fires as a surprise gesture).
@@ -2357,9 +2447,10 @@ export class GraphService implements OnDestroy {
   /**
    * B-126 (D82): the layer-manager sheet's open/close toggle — the Manage
    * affordance's single write path (R3, the toggleEditor pattern). A pure
-   * signal write; the region/sheet form and any resize ride the template
-   * and the D81 discriminator (a region open/close is a panel-driven
-   * resize: preserved on wide, refit on narrow — zero new resize code).
+   * signal write. D91: the sheet OVERLAYS the stage on both layouts (a
+   * floater on wide, a bottom sheet on narrow) — open/close resizes nothing
+   * and the ResizeObserver never fires for it; the preserve/refit matrix
+   * below is the rail's and the environment's business only.
    */
   toggleLayerManager(): void {
     this.layerManagerOpen.update((open) => !open);
@@ -3199,22 +3290,23 @@ export class GraphService implements OnDestroy {
 
   /**
    * Charter lifecycle: the host's ResizeObserver funnels container resizes
-   * here. B-106 + D81: resizes split by class. An ENVIRONMENTAL resize (the
-   * browser viewport itself changed — window resize, orientation change) and
-   * every resize on the NARROW layout keep B-106's refit — the stage's fixed
-   * chrome (header top, layer switcher bottom-left) overlays the canvas, so
-   * content fitted for a taller stage can otherwise end up underneath that
-   * chrome once a panel opens at phone width, untappable (found live by the
-   * arc-panel phone e2e: the castle node landed under a layer button); the
-   * refit keeps the whole layer visible AND tappable at any stage size. A
-   * PANEL-DRIVEN resize on the WIDE layout (D81: the container changed while
-   * the viewport did not — the arc/property panel columns, a future ST
-   * drawer) PRESERVES the viewport instead: zoom untouched, pan untouched —
-   * zero compensation (the stage anchors at its left edge, so the selection
-   * is pixel-stable; only the freed band clips) — with a pan-only selection
-   * rescue clamp when the selection's rendered box would sit outside the
-   * canvas or under interactive chrome. Either path writes no signals (D2 —
-   * outside Angular, like mount()'s fit).
+   * here. B-106 + D81, narrowed by D91: resizes split by class. An
+   * ENVIRONMENTAL resize (the browser viewport itself changed — window
+   * resize, orientation change) and every resize on the NARROW layout keep
+   * B-106's refit — the stage's fixed chrome (header top, breadcrumb,
+   * layer switcher bottom-left) overlays the canvas, so content fitted for a
+   * taller stage can otherwise end up underneath that chrome once the rail
+   * collapses at phone width, untappable (found live by the arc-panel phone
+   * e2e: the castle node landed under a layer button); the refit keeps the
+   * whole layer visible AND tappable at any stage size. A PANEL-DRIVEN
+   * resize on the WIDE layout PRESERVES the viewport instead: zoom untouched,
+   * pan untouched — zero compensation — with a pan-only selection rescue
+   * clamp when the selection's rendered box would sit outside the canvas or
+   * under interactive chrome. D91: the panel-driven class is now the rail's
+   * ALONE — the four panels are overlays (floaters on wide, bottom sheets on
+   * narrow) and their open/close resizes nothing, so the only wide container
+   * resize that reaches here is the rail column's collapse/expand. Either
+   * path writes no signals (D2 — outside Angular, like mount()'s fit).
    *
    * B-113 (ruling 5): the cull check re-runs after the re-fit — idempotent.
    * Verification finding (B-111 precedent, file:line): a programmatic
@@ -3229,9 +3321,9 @@ export class GraphService implements OnDestroy {
     if (!this.mounted) return;
     // D81: the resize-CLASS discriminator — the VIEWPORT is the class input
     // (the container resize is the event itself). Either viewport dimension
-    // changed since last seen ⇒ ENVIRONMENTAL; unchanged ⇒ PANEL-DRIVEN.
-    // Refreshed on every call; plain fields (D2 — this path is outside
-    // Angular).
+    // changed since last seen ⇒ ENVIRONMENTAL; unchanged ⇒ PANEL-DRIVEN
+    // (D91: on wide, the rail's collapse/expand only). Refreshed on every
+    // call; plain fields (D2 — this path is outside Angular).
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const environmental =
@@ -3243,17 +3335,19 @@ export class GraphService implements OnDestroy {
     this.lastViewportH = vh;
     this.cy.resize();
     if (environmental || !window.matchMedia(WIDE_LAYOUT_QUERY).matches) {
-      // D81 matrix — the refit classes: an environmental resize (either
-      // layout) and any panel-driven resize on the narrow layout keep
-      // B-106's blanket guarantee (everything fitted stays visible and
-      // tappable). This body is byte-identical to the pre-D81 refit.
+      // D91 matrix — the refit classes: an environmental resize (either
+      // layout) and any resize on the narrow layout keep B-106's blanket
+      // guarantee (everything fitted stays visible and tappable). This body
+      // is byte-identical to the pre-D81 refit.
       this.fitView();
       this.applyLabelCull();
     } else {
-      // D81 matrix — the preserve class (wide + panel-driven): zoom and pan
-      // are PRESERVED — fit NEVER runs here, zero compensation — with the
-      // pan-only selection rescue clamp keeping the selection inside the
-      // canvas and clear of interactive chrome.
+      // D91 matrix — the preserve class (wide + panel-driven, i.e. the
+      // rail's collapse/expand): zoom and pan are PRESERVED — fit NEVER runs
+      // here, zero compensation — with the pan-only selection rescue clamp
+      // keeping the selection inside the canvas and clear of interactive
+      // chrome. D91: panel open/close can no longer reach this path at all —
+      // the panels overlay the stage and the RO never fires for them.
       this.clampSelectionIntoView(interactiveChrome);
       this.applyLabelCull(); // belt-and-braces: a pan never crosses the zoom threshold
     }
@@ -3291,9 +3385,11 @@ export class GraphService implements OnDestroy {
   }
 
   /**
-   * D81: the pan-only SELECTION RESCUE CLAMP — keep the selection's anchor
-   * inside the canvas and clear of the INTERACTIVE chrome after a
-   * panel-driven resize. No selection ⇒ nothing; already clear ⇒ a no-op
+   * D81, narrowed by D91: the pan-only SELECTION RESCUE CLAMP — keep the
+   * selection's anchor inside the canvas and clear of the INTERACTIVE chrome
+   * after a wide-layout panel-driven resize (the rail's collapse/expand —
+   * the only resize class that still reaches it). No selection ⇒ nothing;
+   * already clear ⇒ a no-op
    * (idempotent — repeated resizes settle); otherwise ONE instant `cy.pan()`
    * correction (no animation — the refit is instant too; zoom NEVER changes).
    * A pan delta shifts every rendered position equally (rendered =

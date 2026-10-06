@@ -179,14 +179,15 @@ test.describe('the route panel as a narrow-width sheet (PKG B-114)', () => {
     await expect(page.getByTestId('tme-sheet-rail')).toHaveAttribute('aria-expanded', 'false');
   });
 
-  test('phone: collapsing returns the height to the canvas (RO chain); the refit keeps nodes tappable; landscape rotation survives (§6.2)', async ({
+  test('phone: collapsing overlays nothing — the canvas keeps its height (D91); the refit-free flow keeps nodes tappable; landscape rotation survives (§6.2)', async ({
     page,
   }) => {
-    test.skip(!isPhone(), 'the freed-height + rotation checks belong to the phone stage (§5 M4/§6.2)');
+    test.skip(!isPhone(), 'the overlay + rotation checks belong to the phone stage (§5 M4/§6.2)');
 
-    // Expand via a selection, then collapse via the rail: the collapsed host
-    // is rail-height only (flex: 0 0 auto), so the canvas box GROWS — the
-    // freed height returns to the map (ruling 3).
+    // Expand via a selection, then collapse via the rail: under D91 the
+    // sheet OVERLAYS the stage — the canvas box is byte-identical collapsed
+    // and expanded (the old freed-height-returns-to-canvas behavior and its
+    // refit are gone: panel transitions resize nothing).
     await tapNode(page, STATION_ID);
     await settle(page);
     const expandedCanvas = await canvasBox(page);
@@ -196,11 +197,16 @@ test.describe('the route panel as a narrow-width sheet (PKG B-114)', () => {
     const collapsedCanvas = await canvasBox(page);
     expect(
       collapsedCanvas.height,
-      'collapse returns the freed height to the canvas (ruling 3)',
-    ).toBeGreaterThan(expandedCanvas.height);
+      'collapse never resizes the canvas (D91 zero-motion)',
+    ).toBe(expandedCanvas.height);
+    expect(
+      collapsedCanvas.width,
+      'collapse never resizes the canvas (D91 zero-motion)',
+    ).toBe(expandedCanvas.width);
 
-    // The RO → cy.resize() → refit chain ran for the grown stage: a node is
-    // still tappable at its re-fitted position (B-112 chain, end to end).
+    // The RO chain no longer runs for the sheet — and nothing needs to: the
+    // canvas box never moved, so the fit stands. A node is still tappable at
+    // its untouched position (end to end).
     await tapNode(page, CASTLE_ID);
     await expect(page.getByTestId('tme-selection-chip')).toBeVisible();
     await expect(page.getByTestId('tme-selection-label')).toHaveText('Einzbern Castle');

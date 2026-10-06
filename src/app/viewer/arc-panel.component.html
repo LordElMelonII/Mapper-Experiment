@@ -13,7 +13,27 @@
      B-116 waypoint precedent); the measure section serves the MERGED set
      (A-015). -->
 <section class="tme-arc" data-testid="tme-arc-panel" aria-label="Arc">
-  <h2 class="tme-title">Arc</h2>
+  <!-- B-133 (D91): the wide floater's regime header — the drag handle +
+       Maximize/Restore toggle (>= 44px, F52). Hidden at narrow widths (the
+       media query owns it); the body's duplicate title hides at wide. -->
+  <header class="tme-float-head" data-testid="tme-arc-float-head" (pointerdown)="onDragStart($event)">
+    <h2 class="tme-float-title">Arc</h2>
+    <button
+      type="button"
+      class="tme-regime"
+      data-testid="tme-arc-panel-maximize"
+      [attr.aria-pressed]="maximized() ? 'true' : 'false'"
+      (click)="toggleMaximize()"
+    >
+      {{ maximized() ? 'Restore' : 'Maximize' }}
+    </button>
+  </header>
+
+  <!-- B-133 (D91): the scrollable body wrapper — narrow, a plain block (the
+       host scrolls, as it always has); wide, the floater's scrollable member
+       under the fixed regime header (the head must stay reachable, D53). -->
+  <div class="tme-body-scroll">
+    <h2 class="tme-title">Arc</h2>
 
   @if (arc(); as info) {
     <!-- Endpoints in AUTHORED order (source ↔ target) — labels via labelOf,
@@ -316,4 +336,5 @@
       </section>
     }
   }
+  </div>
 </section>

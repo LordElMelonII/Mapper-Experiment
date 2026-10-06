@@ -1,17 +1,14 @@
 // PKG B-102 — component-scoped chrome only (D7: zero global leakage; the
 // graph's visual language is GRAPH_STYLESHEET data in graph.service.ts).
-// B-105 (ruling 5): the figure is a flex LAYOUT — the map stage and the
-// route panel are its two regions: side by side on wide viewports, stacked
-// (canvas above, panel below) on narrow ones. Narrow is the DEFAULT so the
-// phone never depends on a media query resolving in time. B-106 (ruling 3):
-// the arc panel is a third region — beside the route panel when wide, under
-// it when narrow — with the same rules (internal scroll only, never the
-// page; D53). B-127 (D86/F53): the editor rail is the control region —
-// DOM-last (the narrow bottom bar, after the panel stack; the default needs
-// no media query) and moved FIRST by the wide query (order: -1, the left
-// column). The stage is the growing flex child either way, so a rail
-// collapse/expand resizes the STAGE and the existing RO + D81 discriminator
-// classify it with zero new resize code (the B-126 sheet precedent).
+// B-105/B-106/B-117/B-126 laid the panels out as flex REGIONS beside/under
+// the stage; B-133 (D91) re-plumbed the layout: the stage is FULL-WIDTH at
+// both breakpoints and the four panels are OVERLAYS — floaters over it on
+// wide (each panel's own component SCSS), a bottom-sheet STACK anchored to
+// the stage's bottom edge on narrow. A panel open/close therefore resizes
+// nothing: the stage's flex box depends only on the viewport and the rail,
+// so the ResizeObserver fires solely for the rail's collapse/expand (wide:
+// the preserve class; narrow: the B-106 refit) and environmental resizes —
+// the D91 surviving resize classes.
 :host {
   display: block;
   width: 100%;
@@ -20,7 +17,7 @@
 
 .tme-viewer {
   display: flex;
-  flex-direction: column; // narrow default: the panel stacks BELOW the canvas
+  flex-direction: column; // narrow default: the stage + the bottom rail bar
   margin: 0;
   width: 100%;
   height: 100%;
@@ -28,42 +25,40 @@
   background: #14171c;
 }
 
-// B-127 (D86/F53): the stage's vetted tap-geometry floor — single-sourced so
-// the narrow panel cap below subtracts the SAME constant (B-129).
-$stage-floor: 210px;
-
-// B-129: the narrow rail band — the measured bottom-bar height at phone
-// width (159px on the emulated phone, 107px Chromium-narrow) plus a 2px
-// reclaim margin. A constant, not a measurement: CSS cannot reference a
-// sibling's height. Single-sourced with the cap below.
-$rail-band: 161px;
+// B-127 (D86): the rail column's width, single-sourced as a custom property
+// so the D91 floaters' avoid-the-selection LEFT anchor can clear it (a
+// fixed-position element cannot read a sibling's box — the B-129 lesson —
+// but it CAN read a custom property set by the layout that owns the rail).
+// Narrow (the bottom bar) has no horizontal rail band: 0.
+.tme-viewer {
+  --tme-rail-w: 0px;
+}
 
 // The map region: canvas + the stage's remaining overlays (background,
 // header, chip, draw-arc banner) positioned relative to this container — so
 // the per-layer background can never paint under a panel.
-// B-127 (D86/F53): the stage grows from a 210px FLOOR and never shrinks
-// below it (flex-shrink 0) — on the narrow layout the stacked panels
-// (shrinkable below) + the rail band must never crush the map: 210px is the
-// pre-rail worst case (route sheet expanded + a panel, B-106/B-114), the
-// smallest stage the vetted phone tap geometry was tuned against — below it
-// the fitted nodes pack inside cytoscape's touch slop and taps resolve to
-// neighbors. The panels scroll their own overflow instead. On the wide row
-// layout the same rule is the width basis (grow fills the row, shrink 0
-// keeps a floor).
+// B-127's 210px STAGE FLOOR dies with D91: it existed so in-flow stacked
+// panels + the rail band could never crush the map below the vetted phone
+// tap geometry — the panels no longer take layout space (they overlay), and
+// the narrow stage is the whole viewport minus the rail bar (≈505px on the
+// emulated phone, far above the 210px the tap geometry was tuned against).
 .tme-stage {
   position: relative;
-  flex: 1 0 $stage-floor;
+  flex: 1 1 auto;
+  min-height: 0;
   min-width: 0;
   overflow: hidden; // never horizontal scroll at phone width (D53)
   background: #14171c;
 }
 
 // B-127 (D86/F53): the rail region — DOM-last, so the narrow default is the
-// BOTTOM BAR after the panel stack (content height: its bands wrap, never
+// BOTTOM BAR under the stage (content height: its bands wrap, never
 // sideways scroll — the component's own SCSS). The wide query below moves it
 // FIRST (the left column) and fixes its width; the component's tme-collapsed
 // host class shrinks the column to the slim strip (the expand affordance).
-// The rail renders in BOTH modes (the mode toggle is on it).
+// Its collapse/expand is the ONE panel-driven resize left (D91) and the RO
+// classifies it with zero new resize code. The rail renders in BOTH modes
+// (the mode toggle is on it).
 .tme-rail {
   flex: 0 0 auto;
   min-width: 0;
@@ -71,103 +66,57 @@ $rail-band: 161px;
   border-top: 1px solid rgba(174, 189, 211, 0.25);
 }
 
-// The route panel region (B-105): capped below half the height on narrow
-// viewports — the map stays the primary surface and the panel scrolls its own
-// overflow internally (route-panel.component.scss), never the page (D53).
-// B-129 (the D81 close-leg finding): the pre-floor `45%` alone went stale
-// when B-127 added the stage floor + the rail band — an expanded sheet whose
-// content exceeds the space above them could refill right up to `45%`,
-// pinning the stage AT its floor forever: a sibling panel's close freed its
-// band and the sheet silently consumed it (measured live on the WebKit phone
-// viewer, where 100dvh resolves to the SMALL viewport height). The
-// primary-surface promise is now structural: the expanded sheet never takes
-// more than half the viewer NOR more than viewer − stage-floor − rail band,
-// so a panel close always leaves free flex space — and the stage is the
-// column's only grower, so the freed band returns to the map (the B-106
-// refit follows from the RO) in BOTH engines. Content that fits above
-// floor + band still renders fully (no internal scroll — the P2/D53 panel
-// contract at 375px); only genuinely taller content scrolls, as it already
-// did under the bare 45% cap.
-.tme-panel {
-  // B-127 (D86/F53): narrow panels are SHRINKABLE — the stage's 210px floor
-  // and the rail band come first; a squeezed panel scrolls its own overflow
-  // (its established form), never the page (D53).
-  flex: 0 1 auto;
-  min-height: 0;
-  max-height: min(45%, calc(100% - #{$stage-floor} - #{$rail-band}));
-  border-top: 1px solid rgba(174, 189, 211, 0.25);
+// B-133 (D91): the bottom-sheet STACK — the four panel surfaces as narrow
+// overlays. Anchored INSIDE the stage (absolute, so the sheets always sit
+// above the editor rail's band and their caps resolve against the STAGE),
+// full-width, hugging the bottom; pointer-events none on the stack so the
+// uncovered stage stays fully interactive, auto on the sheets. The stack is
+// the B-129 cap re-derived for the overlay world: the sheets no longer
+// subtract from the stage, so the old min(45%, 100% − stage-floor − rail-band)
+// arms die; the structural promise becomes the stack's own cap — the sheets
+// together never cover more than 70% of the stage, and each sheet scrolls
+// its own overflow when the stack squeezes it (the standing D53 rule). The
+// route sheet's rail stays the stack's always-visible floor (B-114 ruling
+// 1): 44px of the stage's bottom edge is the narrow form's standing chrome.
+.tme-sheets {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 15; // above the canvas and the stage's chrome; below the floaters' 20
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  max-height: 70%;
+  pointer-events: none;
 }
 
-// B-106 (ruling 3): the arc panel region — beside the route panel on wide
-// viewports, under it on narrow ones (the SAME 700px breakpoint and flex
-// rules as .tme-panel). Rendered only while an edge is selected, so the map
-// never shares height with it until an arc is actually being managed; it
-// scrolls its own overflow internally (arc-panel.component.scss), never the
-// page (D53).
-.tme-arc-panel {
-  // B-127 (D86/F53): narrow panels are SHRINKABLE — the stage's 210px floor
-  // and the rail band come first; a squeezed panel scrolls its own overflow
-  // (its established form), never the page (D53).
+.tme-sheets > * {
+  // B-133 review (D91): pointer-events moved INTO the panels — each host is
+  // `none` and its visible root section `auto`, so a host's padding band can
+  // never eat canvas taps (the dead zone). This wrapper rule used to force
+  // `auto` on the hosts and out-ranked the panels' own `:host` rule on
+  // stylesheet order — its removal lets the panels self-manage.
   flex: 0 1 auto;
   min-height: 0;
-  max-height: 38%;
-  border-top: 1px solid rgba(174, 189, 211, 0.25);
-}
-
-// B-117 (§5 Phase 3 M1): the property panel region — beside the other
-// panels on wide viewports, stacked under them on narrow ones (the SAME
-// 700px breakpoint and flex rules). The component hides its host entirely
-// when it has no open draft (property-panel.component.scss display:none),
-// so the map only ever shares height with it while a node is actually being
-// edited; it scrolls its own overflow internally, never the page (D53).
-// The 38% cap matches the arc panel: with the route sheet also open at
-// phone width the stage keeps at least 17% — the established worst case
-// (arc + route) from B-106/B-114.
-.tme-property-panel {
-  // B-127 (D86/F53): narrow panels are SHRINKABLE — the stage's 210px floor
-  // and the rail band come first; a squeezed panel scrolls its own overflow
-  // (its established form), never the page (D53).
-  flex: 0 1 auto;
-  min-height: 0;
-  max-height: 38%;
-  border-top: 1px solid rgba(174, 189, 211, 0.25);
-}
-
-// B-126 (§5 Phase 3 M3/D82): the layer-manager sheet region — beside the
-// other panels on wide viewports, a bottom sheet (the B-114 rail pattern)
-// under them on narrow ones. The component hides its host entirely while
-// closed (layer-manager.component.scss display:none), so the map only
-// shares height with it while the sheet is open; it scrolls its own
-// overflow internally, never the page (D53). Narrow keeps the route
-// sheet's 45% cap: the manager is a modal-enough management surface, and a
-// collapsed rail shrinks the region to its chrome heights anyway.
-.tme-layer-manager {
-  // B-127 (D86/F53): narrow panels are SHRINKABLE — the stage's 210px floor
-  // and the rail band come first; a squeezed panel scrolls its own overflow
-  // (its established form), never the page (D53).
-  // Gate-verifier finding 4 (M3 gate): the bare 45% cap carries B-129's
-  // refill economics — a tall sheet refilling after a sibling closes could
-  // squeeze the stage below its floor on short viewports — so it takes the
-  // same space-above-floor-and-rail arm (the constants are the SCSS's own).
-  flex: 0 1 auto;
-  min-height: 0;
-  max-height: min(45%, calc(100% - $stage-floor - $rail-band));
-  border-top: 1px solid rgba(174, 189, 211, 0.25);
+  min-width: 0;
+  max-width: 100%;
 }
 
 @media (min-width: 700px) {
   // Wide: side by side. 700, not the ruling's ~600, so the existing
   // orientation-change e2e (viewport.e2e-spec.ts: a 664px-landscape phone
-  // keeps the canvas wider than tall) stays green — a 320px panel beside a
-  // 664px canvas would invert that. Listed in this packet's DEVIATIONS.
+  // keeps the canvas wider than tall) stays green. Listed in B-102's
+  // DEVIATIONS and kept by D91 (the breakpoint mirror is the
+  // WIDE_LAYOUT_QUERY's pair).
   .tme-viewer {
     flex-direction: row;
   }
 
   // B-127 (D86): the rail becomes the LEFT COLUMN — first visually (order)
   // and fixed-width; the slim collapsed strip is 3.25rem (a 44px toggle +
-  // the band's padding). max-width keeps ultra-narrow wide-mode windows
-  // from crushing the stage (the .tme-panel discipline).
+  // the band's padding). Its width publishes to --tme-rail-w for the
+  // floaters' left anchor.
   .tme-rail {
     order: -1;
     flex: 0 0 9.5rem;
@@ -181,42 +130,21 @@ $rail-band: 161px;
     max-width: 22%;
   }
 
-  .tme-panel {
-    flex: 0 0 20rem;
-    max-width: 40%; // ultra-narrow wide-mode windows never crush the stage
-    max-height: none;
-    border-top: none;
-    border-left: 1px solid rgba(174, 189, 211, 0.25);
+  .tme-viewer {
+    --tme-rail-w: 9.5rem;
   }
 
-  .tme-arc-panel {
-    flex: 0 0 15rem;
-    max-width: 30%; // ultra-narrow wide-mode windows never crush the stage
-    max-height: none;
-    border-top: none;
-    border-left: 1px solid rgba(174, 189, 211, 0.25);
+  .tme-viewer:has(> .tme-rail.tme-collapsed) {
+    --tme-rail-w: 3.25rem;
   }
 
-  .tme-property-panel {
-    flex: 0 0 15rem;
-    max-width: 30%; // ultra-narrow wide-mode windows never crush the stage
+  // B-133 (D91): wide DISSOLVES the sheet stack — the four panel hosts
+  // become direct participants again, each one position:fixed over the
+  // stage under its own component SCSS (the B-119 surface generalized).
+  // The stack contributes no box of its own.
+  .tme-sheets {
+    display: contents;
     max-height: none;
-    border-top: none;
-    border-left: 1px solid rgba(174, 189, 211, 0.25);
-  }
-
-  .tme-layer-manager {
-    // Gate-verifier finding 5 (M3 gate): the basis is shrinkable (0 1, not
-    // 0 0) with min-width 0 — content min-width overflowed narrow-wide
-    // windows (~804px, ~110px of page scroll) — so the region shrinks inside
-    // its basis and scrolls its own overflow (the narrow form's standing
-    // rule); at comfortable widths nothing moves.
-    flex: 0 1 15rem;
-    max-width: 30%; // ultra-narrow wide-mode windows never crush the stage
-    max-height: none;
-    min-width: 0;
-    border-top: none;
-    border-left: 1px solid rgba(174, 189, 211, 0.25);
   }
 }
 
@@ -260,6 +188,52 @@ $rail-band: 161px;
 
 .tme-sep {
   opacity: 0.55;
+}
+
+// B-116 (F45/D75) via the B-133 review (D91): the save dock as an app-bar
+// pill at the header's end. The header is an absolute overlay that never
+// joins the stage's flex flow, so the dock's dirty/clean flip is
+// commit-neutral by construction (the RO cannot fire for it; B-124's
+// commit-neutral pin). The pill re-enables pointer events inside the
+// pointer-events:none header — its Save button is a real control (>= 44px,
+// F52); the header text around it stays gesture-transparent.
+.tme-save-dock {
+  pointer-events: auto;
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.9);
+  color: #e6ebf2;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+// The C30 save refusal — user-visibly inside the pill (its own wrapped
+// line), never console-only.
+.tme-save-error {
+  flex-basis: 100%;
+  color: #c9564e;
+}
+
+// The Save button — the dock's commit control, >= 44px (F52), gold to read
+// as the primary action (the active toggle/chip accent).
+.tme-save {
+  min-width: 44px; // F52: >= 44px tap target
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid #ffd166;
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #ffd166;
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
 }
 
 // B-128 (D85/F02): the breadcrumb bar — the active layer's ancestor chain,

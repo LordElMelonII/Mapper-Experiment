@@ -1,28 +1,56 @@
 // PKG B-126 — component-scoped chrome only (D7: zero global leakage). The
-// host is the map viewer's FIFTH flex REGION (beside the panels on wide
-// viewports, stacked below them on narrow ones — the map-viewer SCSS owns
-// the flex sizing); the sheet hides itself entirely (display:none) whenever
-// it is closed, so the closed sheet never occupies a slot (the B-117
-// precedent). Below 700px the sheet carries the B-114 rail: an always-
-// visible >= 44px collapse row whose body hide/show is scoped to the media
-// query; at >= 700px the rail is gone and the body always shows. Content
-// never forces horizontal overflow (D53) and scrolls its own overflow
-// vertically, never the page.
+// host was the map viewer's FIFTH flex REGION; B-133 (D91) makes it an
+// OVERLAY — a bottom sheet in the .tme-sheets stack on narrow, a position:
+// fixed FLOATER over the full-width stage on wide (the B-119 surface
+// generalized: bottom-right default anchor, or bottom-left clearing the rail
+// column when the selection sits on the right half; a remembered transform
+// replaces the anchor; Maximize lifts the height cap). The sheet hides itself
+// entirely (display:none) whenever it is closed (the B-117 precedent).
+// Below 700px the sheet carries the B-114 rail: an always-visible >= 44px
+// collapse row whose body hide/show is scoped to the media query; at >= 700px
+// the rail is gone and the body always shows. Content never forces horizontal
+// overflow (D53) and scrolls its own overflow vertically, never the page.
 :host {
-  display: none; // closed: no slot, no chrome
+  display: none; // closed: no slot, no chrome, no paint
   box-sizing: border-box;
 }
 
 :host(.tme-open) {
-  display: block;
+  display: flex;
+  flex-direction: column; // the head stays put; the body absorbs squeezes (D91 stack)
   min-width: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  min-height: 0;
   color: #e6ebf2;
   font:
     400 0.875rem/1.5 system-ui,
     -apple-system,
     sans-serif;
+}
+
+.tme-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+// B-133 (D91): the Maximize/Restore regime button — one >= 44px tap target
+// (F52), narrow-invisible (the floater chrome is wide-world; the narrow
+// sheet keeps its rail as the collapse affordance).
+.tme-regime {
+  display: none;
+  min-width: 44px; // F52
+  min-height: 44px;
+  padding: 0 0.625rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
 }
 
 .tme-manager-head {
@@ -92,26 +120,81 @@
 
 // The body wrapper: every control/content the sheet renders lives inside
 // it. ALWAYS in the DOM; the padding lives here so the rail spans
-// edge-to-edge (the B-114 structure).
+// edge-to-edge (the B-114 structure). D91: the body is the shrinkable member
+// — a stack squeeze scrolls IT, never the host, so the head/rail stay
+// reachable.
 .tme-manager-body {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 0.75rem;
 }
 
-// Narrow only: collapsed hides the body — the freed height returns to the
-// canvas stage (the host is flex: 0 0 auto in map-viewer.component.scss,
-// so it shrinks to rail height and the ResizeObserver → refit chain
-// follows — the pinned B-114 behavior).
+// Narrow only: collapsed hides the body — the sheet folds down to its rail
+// band (the overlay's height follows its content; the stage's height NEVER
+// changes — D91 replaced the old freed-height-returns-to-canvas behavior).
+// Scoped to the media query so the ≥700px world can never hide the body.
 @media (max-width: 699.98px) {
   .tme-collapsed .tme-manager-body {
     display: none;
   }
 }
 
-// Wide (the established breakpoint): the sheet neutralizes — the rail is
-// gone and the body always shows, whatever the (phone-world) toggle is.
+// Wide (the established breakpoint): the sheet rail is gone and the floater
+// takes over.
 @media (min-width: 700px) {
   .tme-sheet-rail {
     display: none;
+  }
+
+  // B-133 (D91): the floating surface over the full-width stage (bottom-
+  // right default anchor; the stage is the viewport's full height on wide).
+  :host(.tme-open) {
+    position: fixed;
+    bottom: 0.75rem;
+    right: 0.75rem;
+    z-index: 20; // above the map it legitimately overlaps
+    width: min(18rem, 100vw - 1.5rem); // FLOAT_WIDTH_PX — never offscreen-wide (D53)
+    max-height: min(26rem, 100dvh - 1.5rem);
+    border: 1px solid rgba(174, 189, 211, 0.4);
+    border-radius: 8px;
+    background: #14171c; // opaque — the map underneath is occluded, not bled through
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    overflow: hidden; // the BODY scrolls (the head must stay reachable)
+  }
+
+  :host(.tme-open.tme-anchor-start) {
+    right: auto;
+    left: calc(var(--tme-rail-w, 0px) + 0.75rem);
+  }
+
+  :host(.tme-open.tme-placed) {
+    top: 0;
+    left: 0;
+    right: auto;
+    bottom: auto;
+  }
+
+  :host(.tme-open.tme-maximized) {
+    // The maximized cap mirrors the property panel's arithmetic (100dvh −
+    // 7.75rem): the top chrome band (chip 6.5rem + the 8px clamp gap) stays
+    // clear above the 0.75rem bottom inset (F52 — the chip stays tappable).
+    max-height: calc(100dvh - 7.75rem);
+  }
+
+  // The head is the drag surface at wide (touch-action none HERE ONLY —
+  // §6.2); the maximize toggle shows beside the close X.
+  .tme-manager-head {
+    flex: 0 0 auto;
+    touch-action: none;
+    cursor: move;
+    user-select: none;
+    border-bottom: 1px solid rgba(174, 189, 211, 0.25);
+  }
+
+  .tme-regime {
+    display: inline-flex;
   }
 }
 
@@ -325,4 +408,16 @@
 .tme-error-path {
   color: #9aa7b8;
   font-size: 0.75rem;
+}
+
+// B-133 review fix (lead, D91): the host's padding band is hit-testable but
+// visually empty — canvas taps aimed there died on it (a real dead zone).
+// The host never intercepts; the visible root section re-enables events for
+// its content (the stack wrapper is already none/auto).
+:host {
+  pointer-events: none; // B-133 review (D91) — see the note above
+}
+
+.tme-manager {
+  pointer-events: auto; // B-133 review (D91) — the visible sheet re-enables
 }

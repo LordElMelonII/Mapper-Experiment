@@ -100,6 +100,26 @@
       Manage
     </button>
   </nav>
+
+  <!-- B-133 (D91): the Route panel's summon — the wide floater's toggle.
+       The route panel auto-floats while it has content (the service's
+       routePanelOpen rule); this is how a user summons it EMPTY (to see why
+       there are no routes, if nothing else) and closes it again. WIDE-ONLY
+       chrome: the narrow layout's sheet rail (tme-sheet-rail on the panel)
+       is that world's summon — do not duplicate it here (the packet's
+       no-duplicate rule), so the media query hides this button below 700px
+       and the phone bottom-rail regime keeps its two bands. >= 44px (F52),
+       pressed state mirrors the signal (R3), plain word (C23). -->
+  <button
+    type="button"
+    class="tme-route-toggle"
+    data-testid="tme-route-toggle"
+    [class.tme-active]="graph.routePanelOpen()"
+    [attr.aria-pressed]="graph.routePanelOpen() ? 'true' : 'false'"
+    (click)="toggleRoutePanel()"
+  >
+    Route
+  </button>
 </div>
 
 <!-- B-132 (D90/D93/F56): the ACTIVE layer's per-layer background DIM — a
@@ -157,24 +177,14 @@
   <button type="button" class="tme-zoom-button" data-testid="tme-zoom-fit" (click)="fitToView()">Fit</button>
 </div>
 
-<!-- B-116 (F45/D75): the save dock — the F45 unsaved-changes indicator
-     (the core's dirty flag is the single truth, R1) PLUS the Save button,
-     rendered exactly while the facade still holds unsaved editor edits,
-     so it survives editor-mode toggles (F45: edits live until saveMap).
-     A C30 save refusal surfaces user-visibly through graph.saveError
-     (the established signal → template message path, never console-only)
-     while the dock stays (dirty remains true after a refusal). A host
-     sibling like the zoom trio so the wide column's section order holds
-     (toggle, tools, layers, zoom, dock — D86). -->
-@if (graph.unsavedChanges()) {
-  <aside class="tme-save-dock" data-testid="tme-save-dock" role="status" aria-label="Unsaved map changes">
-    <span data-testid="tme-unsaved">Unsaved changes</span>
-    @if (graph.saveError(); as err) {
-      <span class="tme-save-error" data-testid="tme-save-error">{{ err }}</span>
-    }
-    <button type="button" class="tme-save" data-testid="tme-save" (click)="saveMap()">Save</button>
-  </aside>
-}
+<!-- B-116 (F45/D75): the save dock lived here until the B-133 review (D91):
+     as a rail flow child its dirty/clean flip resized the narrow band (the
+     stage yielded, the RO fired, a commit moved the viewport — B-124's
+     commit-neutral pin broken) and every layout-neutral alternative
+     (reserved row, overlay over the bar or the sheet rail) either starved
+     the boot-fit zoom or covered B-114's always-reachable sheet rail. It
+     moved to the map-viewer's header band — the chip idiom's sibling: a
+     transient, commit-neutral stage overlay. The testid is unchanged. -->
 
 <!-- The rail's collapse toggle — one >= 44px tap target (F52), the only
      control the collapsed strip carries. The state is component-local (the

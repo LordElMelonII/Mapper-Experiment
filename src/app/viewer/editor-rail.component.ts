@@ -13,9 +13,15 @@
 // layout, a BOTTOM BAR on narrow/tall (the 700px breakpoint — the map-viewer
 // SCSS owns the region placement/order; this component's SCSS mirrors the
 // same constant for its INTERNAL orientation, the D81 discipline). A rail
-// collapse/expand is a panel-driven resize the existing D81 discriminator
-// classifies with zero new resize code (preserve on wide, refit on narrow —
-// the B-126 sheet precedent).
+// collapse/expand is THE panel-driven resize under D91 (B-133: the four
+// panels are overlays and open/close none of them resizes anything) — the
+// existing discriminator classifies it with zero new resize code (preserve +
+// rescue clamp on wide, refit on narrow — the B-126 sheet precedent).
+//
+// B-133 (D91): the rail also carries the Route toggle (tme-route-toggle) —
+// the wide route floater's summon/close; WIDE-ONLY chrome (the narrow
+// sheet's rail on the panel is that world's summon — the phone bottom-rail
+// regime keeps its two bands).
 //
 // R2/R3: every control's tap path is the service's single write path (the
 // handlers moved here from map-viewer with the elements — migration, not
@@ -71,6 +77,16 @@ export class EditorRailComponent {
    */
   protected toggleLayerManager(): void {
     this.graph.toggleLayerManager();
+  }
+
+  /**
+   * B-133 (D91): the Route panel's summon/close — the wide floater's toggle
+   * through the service's single write path (R2/R3, the Manage precedent).
+   * The next route-content change recomputes the auto-float state (the
+   * linkedSignal source); between changes this toggle's write stands.
+   */
+  protected toggleRoutePanel(): void {
+    this.graph.toggleRoutePanel();
   }
 
   /**

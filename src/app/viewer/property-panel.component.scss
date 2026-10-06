@@ -1,15 +1,19 @@
 // PKG B-117 — component-scoped chrome only (D7: zero global leakage). The
-// host is the map viewer's fourth flex REGION (beside the panels on wide
-// viewports, stacked below them on narrow ones — the map-viewer SCSS owns
-// the flex sizing); the panel hides itself entirely (display:none) whenever
-// it has no open draft, so the closed panel never occupies a slot. Content
-// never forces horizontal overflow (D53) and scrolls its own overflow
-// vertically, never the page.
-// B-119 (Q29/§8 item 3): the floating regime below — the same host leaves
-// the flex flow entirely (position: fixed) and floats over the stage at its
-// remembered position; the docked (maximized) rendering is untouched.
+// host was the map viewer's fourth flex REGION; B-133 (D91) makes it an
+// OVERLAY on both layouts — a bottom sheet in the .tme-sheets stack on
+// narrow, and on wide the panel regime's TWO overlay forms: MAXIMIZED (the
+// editor's default — the tall surface anchored to the stage's bottom-right,
+// or bottom-left clearing the rail column when the selection sits on the
+// right half) and FLOATING (the compact remembered-position form). The
+// panel hides itself entirely (display:none) whenever it has no open draft.
+// Content never forces horizontal overflow (D53) and scrolls its own
+// overflow vertically, never the page.
+// B-119 (Q29/§8 item 3): the floating regime below — both wide forms are
+// position:fixed over the stage; the compact form renders at its remembered
+// position (translate(x, y) of the service's viewport-px position signal,
+// applied through the host's [style.transform] binding).
 :host {
-  display: none; // closed (no open draft): no slot, no chrome
+  display: none; // closed (no open draft): no slot, no chrome, no paint
   box-sizing: border-box;
 }
 
@@ -364,19 +368,15 @@
   font-size: 0.75rem;
 }
 
-// --- B-119 (Q29 panel regime, §8 item 3) -------------------------------------
+// --- B-119 (Q29 panel regime, §8 item 3) — generalized by B-133 (D91) --------
 
-// The FLOATING regime: the host leaves the flex flow entirely (position:
-// fixed; the stage regains the region and the ResizeObserver → refit chain
-// follows) and floats over it at the remembered position — translate(x, y)
-// of the service's viewport-px position signal, applied through the host's
-// [style.transform] binding. Requires .tme-open so a closed floating panel
-// still hides entirely (the base :host display:none must keep winning).
-// Width/max-height MIRROR the clamp constants in property-panel.component.ts
-// (FLOAT_WIDTH_PX / 18rem): Restore clamps against the floating size while
-// the panel is still docked and unmeasurable. The full border shorthand
-// replaces the map-viewer region rule's border-top/border-left for this
-// state only (higher specificity in the component's emulated scope).
+// The FLOATING regime (the compact wide form): the host sits at the origin
+// and the remembered position applies as translate(x, y) of the service's
+// viewport-px position signal. Width/max-height MIRROR the clamp constants
+// in property-panel.component.ts (FLOAT_WIDTH_PX / 18rem): Restore clamps
+// against the floating size while the panel is still maximized and
+// unmeasurable. The full border shorthand replaces the maximized form's for
+// this state only.
 :host(.tme-open.tme-floating) {
   position: fixed;
   top: 0;
@@ -391,10 +391,9 @@
 }
 
 // The header is the floating panel's drag handle: pointer events unify
-// mouse/touch (D53 — one code path, no hover affordance); touch-action:
-// none lives HERE ONLY (never the stage — §6.2) so a header drag never
-// scrolls the host page. Docked, the header is plain chrome: no drag, no
-// move cursor, default touch behavior.
+// mouse/touch (D53 — one code path, no hover affordance). Docked/maximized
+// at narrow widths, the header is plain chrome: no drag, no move cursor,
+// default touch behavior.
 :host(.tme-floating) .tme-prop-head {
   touch-action: none;
   cursor: move;
@@ -418,4 +417,68 @@
     sans-serif;
   cursor: pointer;
   touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+// B-133 (D91): the WIDE maximized form — the editor's default overlay (the
+// old flex-region dock's replacement): the tall surface anchored to the
+// stage's bottom edge, same width as the compact floater. The header stays
+// reachable: sticky above the scrolling body. Both wide forms drag by the
+// header (touch-action none HERE ONLY — never the stage, §6.2).
+@media (min-width: 700px) {
+  :host(.tme-open) {
+    position: fixed;
+    bottom: 0.75rem;
+    right: 0.75rem;
+    z-index: 20;
+    width: min(18rem, 100vw - 1.5rem); // FLOAT_WIDTH_PX — never offscreen-wide (D53)
+    // The maximized cap — tall, but never into the top chrome band: the chip
+    // sits at 3.75rem + its 44px target (6.5rem) and the clamp's 8px clear
+    // gap (6.75rem) stands above the panel's 0.75rem bottom inset, so the
+    // standing chip stays tappable in the maximized overlay form too (the
+    // drag clamp's own doctrine, F52/D53 — found live by the B-133c gates).
+    max-height: calc(100dvh - 7.75rem);
+    border: 1px solid rgba(174, 189, 211, 0.4);
+    border-radius: 8px;
+    background: #14171c;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  }
+
+  // The avoid-the-selection default anchor (placement-only, never a pan):
+  // the selection sits on the right half ⇒ anchor bottom-LEFT, clearing the
+  // rail column via the layout's own custom property.
+  :host(.tme-open.tme-anchor-start) {
+    right: auto;
+    left: calc(var(--tme-rail-w, 0px) + 0.75rem);
+  }
+
+  // The compact floating form: the remembered transform owns placement —
+  // the anchor insets stand down (the .tme-floating rule above pins the
+  // host to the origin).
+  :host(.tme-open.tme-floating) {
+    bottom: auto;
+    right: auto;
+    max-height: min(22rem, 100dvh - 1.5rem);
+  }
+
+  // The maximized form's header stays reachable above the scrolling body
+  // (plain chrome — the drag surface is the FLOATING form's header only,
+  // the B-119 dock semantics: no drag until Restore).
+  :host(.tme-open) .tme-prop-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #14171c;
+  }
+}
+
+// B-133 review fix (lead, D91): the host's padding band is hit-testable but
+// visually empty — canvas taps aimed there died on it (a real dead zone).
+// The host never intercepts; the visible root section re-enables events for
+// its content (the stack wrapper is already none/auto).
+:host {
+  pointer-events: none; // B-133 review (D91) — see the note above
+}
+
+.tme-prop {
+  pointer-events: auto; // B-133 review (D91) — the visible sheet re-enables
 }

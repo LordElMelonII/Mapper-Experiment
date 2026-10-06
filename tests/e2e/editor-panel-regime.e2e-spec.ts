@@ -1,10 +1,15 @@
 // tests/e2e/editor-panel-regime.e2e-spec.ts — PKG B-119: the Q29 panel
 // regime on the F40 property panel (EXECUTION-PLAN §8 item 3's settled
 // reading — settled product per R20, not an open question): the panel opens
-// MAXIMIZED (the docked region form) in the editor, a ≥44px header
-// Maximize/Restore toggle floats it at a REMEMBERED position, the header
-// drags it (pointer events — one path for mouse and touch, D53), and the
-// position survives close/reopen. Runs at BOTH playwright projects (desktop
+// MAXIMIZED in the editor, a ≥44px header Maximize/Restore toggle floats the
+// compact form at a REMEMBERED position, the header drags it (pointer events
+// — one path for mouse and touch, D53), and the position survives
+// close/reopen. Re-derived under PKG B-133 (D91): both forms are OVERLAYS —
+// the maximized form is the tall fixed surface anchored inside the stage's
+// bottom edge on wide (the old flex-region dock is gone) and the in-stack
+// bottom sheet on narrow (position static there); a regime toggle therefore
+// resizes the stage NOT A BYTE on either layout (the old freed-dock-region
+// asserts flipped to zero-motion). Runs at BOTH playwright projects (desktop
 // + emulated phone with touch) per D53/F52; the drag cells run the touch
 // gestures through the Chromium-twin pattern (WebKit's iPhone 13 emulation
 // cannot drive CDP touch gestures directly — see
@@ -13,8 +18,13 @@
 // Cited IDs:
 //   Q29/§8 item 3 — floating, remembered-position panel with a maximize
 //          button; the editor maximizes by default (cell 3: re-entering the
-//          editor always re-docks the panel, while the position itself stays
-//          remembered across the editor toggle).
+//          editor always re-maximizes the panel, while the position itself
+//          stays remembered across the editor toggle).
+//   D91    — the overlay regime: the maximized/floating toggle never
+//          resizes the stage and never moves the viewport (zero-motion
+//          asserts below); the maximized form is a fixed overlay on wide,
+//          the in-stack sheet on narrow (position static — the same
+//          observable the old dock asserted, now as an overlay).
 //   D2     — the drag's high-frequency pointermove writes NO signals: the
 //          live position is a direct style transform (purely presentational)
 //          and the position signal commits ONCE on release — every
@@ -45,8 +55,10 @@ interface TmeE2EHook {
 }
 
 interface PanelState {
-  /** computed position — 'static' docked (maximized) / 'fixed' floating. */
+  /** computed position — maximized: 'fixed' anchored (wide) / 'static' in-stack (narrow); floating: 'fixed' both. */
   position: string;
+  /** the B-119 floating-regime class on the host — the compact remembered-position form's flag. */
+  floating: boolean;
   x: number;
   y: number;
   w: number;
@@ -89,6 +101,9 @@ const readRenderedPosition = (page: Page, id: string): Promise<{ x: number; y: n
  * the HOST element (`tme-property-panel`) — the regime (floating class,
  * position: fixed, transform) lives there; the data-testid marks the inner
  * section (the panel's content), which stays position:static in both states.
+ * D91: `floating` is the regime discriminator — the maximized form is the
+ * ANCHORED overlay (position fixed on wide, the in-stack static sheet on
+ * narrow), the floating form the fixed remembered-position surface on both.
  */
 const readPanelState = (page: Page): Promise<PanelState | null> =>
   page.evaluate((): PanelState | null => {
@@ -96,8 +111,18 @@ const readPanelState = (page: Page): Promise<PanelState | null> =>
     if (panel === null) return null;
     const cs = getComputedStyle(panel);
     const r = panel.getBoundingClientRect();
-    return { position: cs.position, x: r.x, y: r.y, w: r.width, h: r.height };
+    return {
+      position: cs.position,
+      floating: panel.classList.contains('tme-floating'),
+      x: r.x,
+      y: r.y,
+      w: r.width,
+      h: r.height,
+    };
   });
+
+/** The maximized form's computed position per project (D91: fixed overlay on wide, in-stack sheet on narrow). */
+const maximizedPosition = (): string => (isPhone() ? 'static' : 'fixed');
 
 /** The map stage's rect (the clamp's bounds — read test-side only). */
 const readStageBox = (page: Page): Promise<Box> =>
@@ -279,7 +304,7 @@ test.describe('property panel regime: floating, remembered, maximized-by-default
     await expect.poll(() => readRenderedPosition(page, EMIYA_ID)).not.toBeNull();
   });
 
-  test('opens maximized; Restore floats it clear of the top-right chrome; Maximize re-docks (Q29/F52/D53)', async ({
+  test('opens maximized; Restore floats it clear of the top-right chrome; Maximize returns the anchored overlay (Q29/F52/D53/D91)', async ({
     page,
   }) => {
     const bad: string[] = [];
@@ -288,12 +313,18 @@ test.describe('property panel regime: floating, remembered, maximized-by-default
 
     await openPanelFor(page, EMIYA_ID);
 
-    // Maximized default: the docked region form (in-flow, position static),
-    // Restore offered, the chrome stack it shares the stage with reachable.
+    // Maximized default: the ANCHORED overlay (D91 — the old flex-region dock
+    // is gone: wide anchors the tall fixed surface inside the stage's bottom
+    // corner, narrow keeps the in-stack static sheet), Restore offered, the
+    // chrome stack it shares the stage with reachable (the maximized cap
+    // stops below the chip — the B-133c arithmetic).
     let state = await readPanelState(page);
-    expect(state?.position, 'docked panel is in-flow (maximized default)').toBe('static');
+    expect(state?.floating, 'maximized default: the anchored overlay, not floating').toBe(false);
+    expect(state?.position, 'maximized form (wide fixed overlay / narrow in-stack sheet)').toBe(
+      maximizedPosition(),
+    );
     await expect(regime).toHaveText('Restore');
-    expect(await chromeReachable(page), 'chrome reachable while docked').toBe(true);
+    expect(await chromeReachable(page), 'chrome reachable while maximized').toBe(true);
 
     // Make the save dock part of the stack: a committed edit lights it
     // (F45 — the dock reads the core's dirty flag, so the draft must be
@@ -303,19 +334,24 @@ test.describe('property panel regime: floating, remembered, maximized-by-default
     await activate(page.getByTestId('tme-node-done'));
     await expect(page.getByTestId('tme-save-dock')).toBeVisible();
 
-    // Restore → floating: out of flow (the stage regains the region), inside
-    // the stage bounds, and the whole top-right stack stays reachable.
-    const stageDocked = await readStageBox(page);
+    // Restore → floating: the fixed remembered/default surface on BOTH
+    // layouts, inside the stage bounds, the whole top-right stack reachable —
+    // and the STAGE MOVES NOT A BYTE (D91: a regime toggle resizes nothing;
+    // the old freed-dock-region asserts died with the dock).
+    const stageMaximized = await readStageBox(page);
     await activate(regime);
     await expect(regime).toHaveText('Maximize');
     await settle(page);
     state = await readPanelState(page);
     const stageFloating = await readStageBox(page);
-    expect(state?.position, 'restored panel floats (position fixed)').toBe('fixed');
-    expect(
-      stageFloating.width * stageFloating.height,
-      'the freed dock region returns to the stage',
-    ).toBeGreaterThan(stageDocked.width * stageDocked.height);
+    expect(state?.floating, 'restored panel floats (the floating regime class)').toBe(true);
+    expect(state?.position, 'floating panel is fixed on both layouts').toBe('fixed');
+    expect(stageFloating.width, 'D91: the regime toggle resizes nothing (width)').toBe(
+      stageMaximized.width,
+    );
+    expect(stageFloating.height, 'D91: the regime toggle resizes nothing (height)').toBe(
+      stageMaximized.height,
+    );
     if (state === null) throw new Error('panel closed unexpectedly');
     expect(state.x, 'floating panel inside the stage (left)').toBeGreaterThanOrEqual(stageFloating.x);
     expect(
@@ -332,24 +368,27 @@ test.describe('property panel regime: floating, remembered, maximized-by-default
     expect(regimeBox?.width ?? 0, 'regime button width >= 44px (F52)').toBeGreaterThanOrEqual(44);
 
     // D53/§6.2: the drag handle owns touch-action none — the header only,
-    // never the stage; docked, the header is plain chrome again.
+    // never the stage; anchored/maximized, the header is plain chrome again.
     expect(await headerTouchAction(page), 'floating header is the drag surface').toBe('none');
     await activate(regime);
     await expect(regime).toHaveText('Restore');
     state = await readPanelState(page);
-    expect(state?.position, 'Maximize returns the docked form').toBe('static');
+    expect(state?.floating, 'Maximize leaves the floating regime').toBe(false);
+    expect(state?.position, 'maximized form again (wide fixed / narrow static)').toBe(
+      maximizedPosition(),
+    );
     const stageRedocked = await readStageBox(page);
-    expect(
-      stageRedocked.width * stageRedocked.height,
-      'Maximize gives the region back to the dock',
-    ).toBeLessThan(stageFloating.width * stageFloating.height);
-    expect(await headerTouchAction(page), 'docked header is not a drag surface').not.toBe('none');
-    expect(await chromeReachable(page), 'chrome reachable re-docked').toBe(true);
+    expect(stageRedocked.width, 'D91: the return resizes nothing (width)').toBe(stageFloating.width);
+    expect(stageRedocked.height, 'D91: the return resizes nothing (height)').toBe(
+      stageFloating.height,
+    );
+    expect(await headerTouchAction(page), 'anchored header is not a drag surface').not.toBe('none');
+    expect(await chromeReachable(page), 'chrome reachable re-maximized').toBe(true);
 
     expect(bad, 'no console errors/warnings/pageerrors in the regime sweep').toEqual([]);
   });
 
-  test('header drag moves the floating panel (mouse / Chromium-twin touch); the position survives close/reopen; Maximize re-docks', async ({
+  test('header drag moves the floating panel (mouse / Chromium-twin touch); the position survives close/reopen; Maximize returns the anchored overlay', async ({
     page,
   }) => {
     const dragRememberRedock = async (p: Page): Promise<void> => {
@@ -405,11 +444,16 @@ test.describe('property panel regime: floating, remembered, maximized-by-default
       await expect(regimeButton(p)).toHaveText('Maximize');
       expect(await chromeReachable(p), 'chrome reachable after reopen').toBe(true);
 
-      // Maximize → the docked form returns.
+      // Maximize → the anchored overlay returns (D91: the maximized form is
+      // the wide fixed bottom-corner surface / the narrow in-stack sheet —
+      // the old flex-region dock no longer exists to "re-dock" into).
       await activate(regimeButton(p));
-      await settle(p); // the re-dock is a class flip — let the CD flush land (D2)
+      await settle(p); // the re-anchor is a class flip — let the CD flush land (D2)
       const redocked = await readPanelState(p);
-      expect(redocked?.position).toBe('static');
+      expect(redocked?.floating, 'Maximize leaves the floating regime').toBe(false);
+      expect(redocked?.position, 'maximized form (wide fixed / narrow static)').toBe(
+        maximizedPosition(),
+      );
 
       expect(bad, 'no console errors/warnings/pageerrors in the drag cell').toEqual([]);
     };
@@ -441,7 +485,10 @@ test.describe('property panel regime: floating, remembered, maximized-by-default
       await expect(p.getByTestId('tme-editor-toggle')).toHaveAttribute('aria-pressed', 'true');
       await expect(p.getByTestId('tme-property-panel')).toBeVisible();
       const reentered = await readPanelState(p);
-      expect(reentered?.position, 'editor entry re-docks the panel (maximized default)').toBe('static');
+      expect(reentered?.floating, 'editor entry re-maximizes the panel (maximized default)').toBe(false);
+      expect(reentered?.position, 'maximized form (wide fixed overlay / narrow in-stack sheet)').toBe(
+        maximizedPosition(),
+      );
       await expect(regimeButton(p)).toHaveText('Restore');
 
       // Restore floats it back to the remembered spot (±2px), even though a

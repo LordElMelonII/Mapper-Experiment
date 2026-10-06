@@ -184,6 +184,24 @@ const settle = (page: Page): Promise<void> =>
 
 /** F52/D53: tap on the touch-emulated project, click on desktop (points). */
 const tapPoint = async (page: Page, point: Point): Promise<void> => {
+  // B-133 (D91): the panels are stage overlays — a tap aimed at a covered
+  // point lands on the sheet, not the canvas. If the aim point sits under
+  // the route sheet (the auto-expanded content overlay), collapse it first —
+  // the user's "the map didn't respond, close the sheet, tap again" flow;
+  // a selection below re-expands it (B-114). Property/arc-panel coverage is
+  // NOT auto-cleared (their dismissal would churn the selection state the
+  // cell under test owns — those cells clear it explicitly).
+  const covered = await page.evaluate(([px, py]) => {
+    const el = document.elementFromPoint(px, py);
+    return el !== null && el.closest('tme-route-panel') !== null;
+  }, [point.x, point.y] as const);
+  if (covered) {
+    if ((await page.getByTestId('tme-sheet-rail').getAttribute('aria-expanded')) === 'true') {
+      await page.getByTestId('tme-sheet-rail').click();
+      await expect(page.getByTestId('tme-sheet-rail')).toHaveAttribute('aria-expanded', 'false');
+      await page.waitForTimeout(200); // the collapse re-renders — a tap in the same tick can still hit the body
+    }
+  }
   if (isPhone()) await page.touchscreen.tap(point.x, point.y);
   else await page.mouse.click(point.x, point.y);
 };
@@ -266,6 +284,16 @@ test.describe('map-driven mode surfaces (PKG B-124)', () => {
     await expect(page.getByTestId('tme-canvas')).toBeVisible();
     await expect.poll(() => readRenderedPosition(page, VALE_GATE_ID)).not.toBeNull();
     await openSheetOnPhone(page);
+    if (!isPhone()) {
+      // D91 aiming repair (B-133c): the wide route panel no longer stands
+      // open without content — the demo map boots route-free, so the panel
+      // is closed and the mode switch hidden with it. The rail's Route
+      // toggle is the panel's summon (D91's own affordance; the narrow
+      // sheet rail above is the phone world's). The cell's observables —
+      // the mode universe, its wrap, the >= 44px targets — are unchanged.
+      await activate(page.getByTestId('tme-route-toggle'));
+    }
+    await expect(page.getByTestId('tme-route-panel')).toBeVisible();
 
     // The rows: built-ins first (the relabeled car carries the registry
     // word), then the registry declaration order (horse) — what the service
@@ -356,6 +384,18 @@ test.describe('map-driven mode surfaces (PKG B-124)', () => {
     await expect(page.getByTestId('tme-connect-from')).toBeVisible();
     await expect.poll(readConnectMode.bind(null, page)).toBe(true);
 
+    // B-133 (D91) review fix: collapse the route sheet before the picks —
+    // the VALE_GATE selection gave it content (the auto-expand) and on the
+    // full-width overlay stage it covers the demo's pick targets. The
+    // property panel stays (it is the connect surface); the sheet's own
+    // rail toggle clears the map. Setup, not assertion.
+    if ((await page.getByTestId('tme-sheet-rail').getAttribute('aria-expanded')) === 'true') {
+      await page.getByTestId('tme-sheet-rail').click();
+      await expect(page.getByTestId('tme-sheet-rail')).toHaveAttribute('aria-expanded', 'false');
+      await page.waitForTimeout(200); // the collapse re-renders — a tap in the same tick can still hit the body
+    }
+    await expect(page.getByTestId('tme-connect-from')).toBeVisible(); // the collapse never leaves connect mode
+
     // D81 (PKG B-125): with the property panel docked, the preserved
     // viewport keeps the demo's rightmost leaf (high-pasture) where the
     // full-stage fit put it — past the narrowed canvas edge, over the panel
@@ -366,6 +406,11 @@ test.describe('map-driven mode surfaces (PKG B-124)', () => {
     // the stage — a tap landing on it dismisses the selection and exits
     // connect mode (clearing the picks), so the drag carries a vertical
     // component whenever the target sits in the chip's band.
+    // B-133 (D91) review fix: the panels are OVERLAYS now — a pick target
+    // under the property sheet (the connect surface itself; it must stay
+    // open) is equally unreachable. Extend the dodge: when the target sits
+    // below a panel's top edge, add a vertical component that drags the
+    // target ABOVE it (drag up = content up; the same drag, not a tap).
     const canvas = await page.getByTestId('tme-canvas').boundingBox();
     if (canvas === null) throw new Error('canvas host not visible');
     const pickTarget = await nodeScreenPoint(page, HIGH_PASTURE_ID);
@@ -383,7 +428,21 @@ test.describe('map-driven mode surfaces (PKG B-124)', () => {
         panDy = chip.y + chip.height + 16 - pickTarget.y;
       }
     }
-    if (panDx < -8 || panDy > 8) {
+    const propPanel = await page.getByTestId('tme-property-panel').boundingBox();
+    const routeSheet = await page.getByTestId('tme-route-panel').boundingBox();
+    // Both pick targets must clear the panels — OLD_MILL is picked first, so
+    // a dodge computed against high-pasture alone can leave it covered.
+    const pickTargets = [OLD_MILL_ID, HIGH_PASTURE_ID];
+    for (const id of pickTargets) {
+      const t = await nodeScreenPoint(page, id);
+      if (propPanel !== null && t.y > propPanel.top - 16) {
+        panDy = Math.min(panDy, propPanel.top - 16 - t.y);
+      }
+      if (routeSheet !== null && t.y > routeSheet.top - 16) {
+        panDy = Math.min(panDy, routeSheet.top - 16 - t.y);
+      }
+    }
+    if (panDx < -8 || panDy < -8 || panDy > 8) {
       const dragY = canvas.y + canvas.height / 2;
       await page.mouse.move(canvas.x + canvas.width * 0.6, dragY);
       await page.mouse.down();

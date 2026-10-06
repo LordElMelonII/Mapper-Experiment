@@ -352,14 +352,20 @@ test.describe('the editor rail: one responsive control surface (PKG B-127, D86/F
       .toHaveLength(1);
     await expect(page.getByTestId('tme-save-dock')).toBeVisible();
     await expect(page.getByTestId('tme-unsaved')).toHaveText('Unsaved changes');
-    const railWithDock = await railBox(page);
+    // B-133 review (D91) re-derivation: the dock LEFT the rail — as a rail
+    // flow child its dirty/clean flip resized the narrow band on every commit
+    // (the stage yielded, the RO fired, the viewport moved — B-124's pin).
+    // It is stage chrome now: an app-bar pill inside the header band (the
+    // chip's sibling, commit-neutral by construction). Absorption inverted:
+    // the header renders it, the rail renders none; the Save target stays
+    // >= 44px (F52).
+    const headerDock = await page.locator('.tme-header .tme-save-dock').count();
+    expect(headerDock, 'the save dock renders in the header band (D91 commit-neutral home)').toBe(1);
     for (const testId of ['tme-save-dock', 'tme-save']) {
-      const box = await controlBox(page, testId);
-      expectInsideRail(box, railWithDock, testId);
-      expectTapTarget(box, testId);
+      expectTapTarget(await controlBox(page, testId), testId);
     }
-    const stageDock = await page.locator('.tme-stage .tme-save-dock').count();
-    expect(stageDock, 'the save dock renders nothing inside the stage (D86 absorption)').toBe(0);
+    const railDock = await page.locator('tme-editor-rail .tme-save-dock').count();
+    expect(railDock, 'the rail renders no save dock (D91: the dock left the rail)').toBe(0);
 
     // D53: the rail never widens the page.
     const overflow = await page.evaluate(
@@ -561,6 +567,23 @@ test.describe('the editor rail: one responsive control surface (PKG B-127, D86/F
     // the new layer commits cross-layer and the banner clears.
     await activate(page.getByTestId('tme-tool-arc'));
     await expect(page.getByTestId('tme-tool-arc')).toHaveAttribute('aria-pressed', 'true');
+    // B-133 (D91) review fix: the placement above gave the route sheet
+    // content (the auto-expand) and its selection holds the property panel
+    // open — on the full-width overlay stage either can cover the castle's
+    // tap point. Clear both first (phone; the wide sidebar has no sheet
+    // regime). Setup, not assertion.
+    if (isPhone()) {
+      const chip = page.getByTestId('tme-selection-chip');
+      if ((await chip.count()) > 0 && (await chip.isVisible())) {
+        await chip.click();
+        await expect(chip).toBeHidden();
+      }
+      if ((await page.getByTestId('tme-sheet-rail').getAttribute('aria-expanded')) === 'true') {
+        await page.getByTestId('tme-sheet-rail').click();
+        await expect(page.getByTestId('tme-sheet-rail')).toHaveAttribute('aria-expanded', 'false');
+        await page.waitForTimeout(200); // the collapse re-renders — a tap in the same tick can still hit the body
+      }
+    }
     await tapNode(page, CASTLE_ID);
     await expect.poll(readDrawSourceId.bind(null, page)).toBe(CASTLE_ID);
     await activate(page.getByTestId(MISAKI_BUTTON));

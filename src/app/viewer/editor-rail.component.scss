@@ -58,10 +58,14 @@
 // narrow content height).
 :host(.tme-collapsed) .tme-rail-body,
 :host(.tme-collapsed) .tme-zoom,
-:host(.tme-collapsed) .tme-dim,
-:host(.tme-collapsed) .tme-save-dock {
+:host(.tme-collapsed) .tme-dim {
   display: none;
 }
+
+// B-133 review fix (lead, D91): the save dock moved OUT of the rail (see the
+// rail template's note) — it now lives in the map-viewer's header band as a
+// commit-neutral stage overlay. No rail styles remain; the collapsed-rail
+// display:none rule for it is gone with it.
 
 // --- The migrated stage chrome (styles moved with the elements) --------------
 
@@ -189,6 +193,36 @@
   border-style: dashed;
 }
 
+// B-133 (D91): the Route panel's summon — WIDE-ONLY chrome (the narrow
+// sheet's own rail is that world's summon; adding a button to the phone
+// bar would re-wrap the two-band regime the B-129 arithmetic was measured
+// against). Hidden below the breakpoint, shown as a >= 44px row in the
+// wide column; the pressed state mirrors routePanelOpen (the gold accent).
+.tme-route-toggle {
+  display: none;
+  min-width: 44px; // F52: >= 44px tap target
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+@media (min-width: 700px) {
+  .tme-route-toggle {
+    display: block;
+  }
+}
+
+.tme-route-toggle.tme-active {
+  border-color: #ffd166;
+  color: #ffd166;
+}
+
 // B-132 (D90/D93/F56): the per-layer background DIM — label + native range
 // input + numeric readout in one row. SLOT: a HOST SIBLING under the body —
 // the wide column stretches it full width directly under the layers nav;
@@ -302,52 +336,6 @@
   .tme-zoom .tme-zoom-button:last-child {
     border-radius: 0 0 8px 8px;
   }
-}
-
-// B-116 (F45/D75): the save dock — indicator (+ refusal) and Save. A wrapped
-// row in the narrow bar; in the wide column the block stacks so long refusal
-// messages wrap INSIDE the dock, never widening the rail (D53).
-.tme-save-dock {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.25rem 0.5rem;
-  min-width: 0;
-  max-width: 100%;
-  padding: 0.375rem 0.625rem;
-  border: 1px solid rgba(230, 235, 242, 0.35);
-  border-radius: 8px;
-  background: rgba(20, 23, 28, 0.9);
-  color: #e6ebf2;
-}
-
-@media (min-width: 700px) {
-  .tme-save-dock {
-    flex-direction: column;
-    align-items: stretch;
-  }
-}
-
-// The C30 save refusal — user-visibly inside the dock (its own line in the
-// column; a wrapped line in the bar), never console-only.
-.tme-save-error {
-  flex-basis: 100%;
-  color: #c9564e;
-}
-
-// The Save button — the dock's commit control, >= 44px (F52), gold to read
-// as the primary action (the active toggle/chip accent).
-.tme-save {
-  min-width: 44px; // F52: >= 44px tap target
-  min-height: 44px;
-  padding: 0 0.875rem;
-  border: 1px solid #ffd166;
-  border-radius: 8px;
-  background: rgba(20, 23, 28, 0.85);
-  color: #ffd166;
-  font: inherit;
-  cursor: pointer;
-  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
 }
 
 // The rail's collapse toggle — one >= 44px tap target (F52), inline at the

@@ -22,17 +22,33 @@
     aria-label="Manage layers"
     [class.tme-collapsed]="collapsed()"
   >
-    <header class="tme-manager-head">
+    <!-- B-133 (D91): the head is the WIDE floater's drag handle (the
+         pointerdown path, D2/D53 — the header's buttons keep their taps) and
+         carries the Maximize/Restore regime toggle (>= 44px, F52) beside the
+         close X. Narrow: the same head renders plain (no drag, no regime
+         chrome) above the sheet rail. -->
+    <header class="tme-manager-head" (pointerdown)="onDragStart($event)">
       <h2 class="tme-title">Layers</h2>
-      <button
-        type="button"
-        class="tme-close"
-        data-testid="tme-layer-manager-close"
-        aria-label="Close layer management"
-        (click)="close()"
-      >
-        ×
-      </button>
+      <div class="tme-head-actions">
+        <button
+          type="button"
+          class="tme-regime"
+          data-testid="tme-layer-manager-maximize"
+          [attr.aria-pressed]="maximized() ? 'true' : 'false'"
+          (click)="toggleMaximize()"
+        >
+          {{ maximized() ? 'Restore' : 'Maximize' }}
+        </button>
+        <button
+          type="button"
+          class="tme-close"
+          data-testid="tme-layer-manager-close"
+          aria-label="Close layer management"
+          (click)="close()"
+        >
+          ×
+        </button>
+      </div>
     </header>
 
     <!-- B-114 (ruling 1): the sheet rail — one full-width >= 44px toggle

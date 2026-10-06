@@ -1,22 +1,31 @@
-// tests/e2e/panel-resize-viewport.e2e-spec.ts — PKG B-125 (D81): a
-// selection-driven panel resize preserves the viewport. On the WIDE layout a
-// PANEL-driven container resize (the arc/property panel columns open/close —
-// the container changed while the viewport did not) keeps zoom and pan
-// byte-untouched, with a pan-only SELECTION RESCUE CLAMP keeping the selected
-// element inside the canvas and clear of interactive chrome; the narrow
-// layout and the environmental classes keep the B-106 refit byte-identically
-// (resize-refit.e2e-spec.ts). Desktop cells skip on the phone project and
-// vice versa (the established isPhone pattern); both projects sit far from
-// the 700px breakpoint, so the layout class is never ambiguous.
+// tests/e2e/panel-resize-viewport.e2e-spec.ts — PKG B-125 (D81), re-derived
+// under PKG B-133 (D91): the four panels are OVERLAYS — floaters over the
+// full-width stage on wide, bottom sheets on narrow — so a panel open/close
+// RESIZES NOTHING on either layout. The wide byte-equal cells keep their
+// observable (panel transitions move nothing — the viewport math did not
+// change, only the mechanism: no stage delta ever). The clamp cells
+// re-derive their TRIGGER: the clamp rescue belongs to the surviving
+// panel-driven class — the editor rail's collapse/expand on wide (the
+// panels can no longer produce one) — and are modeled on
+// editor-rail.e2e-spec.ts's rail-expand cell. The phone cell FLIPS: under
+// D91 a panel transition moves nothing on narrow either, so it now pins the
+// ZERO-MOTION invariant (byte-equal zoom/pan and an unchanged canvas box
+// across the open/close round-trip). The environmental class keeps the
+// B-106 refit byte-identically (resize-refit.e2e-spec.ts). Desktop cells
+// skip on the phone project and vice versa (the established isPhone
+// pattern); both projects sit far from the 700px breakpoint, so the layout
+// class is never ambiguous.
 //
 // Cited IDs:
-//   D81      — the resize-class ruling under test: environmental (either
-//              layout) and narrow panel-driven resizes refit; wide
-//              panel-driven resizes preserve (no fit, no compensation) and
-//              rescue the selection pan-only.
+//   D91      — the overlay panel regime: panel open/close never resizes the
+//              stage and never moves the viewport; the panel-driven resize
+//              class narrows to the rail's collapse/expand (+environmental),
+//              whose wide branch preserves the viewport with a pan-only
+//              selection rescue clamp.
 //   B-120    — the surviving pin: a rebuild never fits (zoom and pan are the
 //              user's) — asserted throughout via byte-equal viewport reads.
-//   B-106    — the refit the narrow layout keeps (the phone cell).
+//   B-106    — the refit the narrow layout keeps for environmental/rail
+//              resizes (the phone cells).
 //   B-107    — a cross-layer arc's badge IS its whole canvas surface: the
 //              clamp's edge-anchor semantics (midpoint) and badge fallback
 //              are the engine side of this spec's geometry.
@@ -73,7 +82,7 @@ const OUTSKIRTS_ID = 'outskirts';
 const GHOST_HOUSE_ID = 'ghost-house'; // FX1's RIGHTMOST content (x 625)
 const TEMPLE_ID = 'ryuudou-temple'; // FX1's BOTTOM content (y 470)
 
-/** D81/B-127/B-128 (D86/D85): the measured INTERACTIVE chrome surfaces (map-viewer.component — the rail, the breadcrumb bar and the chip). */
+/** D91/B-127/B-128 (D86/D85): the measured INTERACTIVE chrome surfaces (map-viewer.component — the rail, the breadcrumb bar and the chip). */
 const CHROME_SELECTORS = ['.tme-rail', '.tme-breadcrumb', '.tme-chip'];
 
 const R1_HEADERS: ReadonlyArray<[string, string]> = [
@@ -134,11 +143,11 @@ const tapPoint = async (page: Page, x: number, y: number): Promise<void> => {
 };
 
 /**
- * Wait two animation frames: a panel open/close changes the stage size
- * synchronously, but the ResizeObserver-driven path (D81: preserve + rescue
- * on the wide layout, the B-106 refit otherwise) runs just before the next
- * paint — reading inside that window yields pre-resize coordinates. Two rAFs
- * put every read AFTER it (deterministic, no arbitrary timeout).
+ * Wait two animation frames: a resize's RO-driven path (D91: preserve +
+ * rescue for the wide rail class, the B-106 refit otherwise) runs just
+ * before the next paint — reading inside that window yields pre-resize
+ * coordinates. Two rAFs put every read AFTER it (deterministic, no
+ * arbitrary timeout).
  */
 const settle = (page: Page): Promise<void> =>
   page.evaluate(
@@ -187,7 +196,7 @@ const collectConsole = (page: Page): string[] => {
 };
 
 /**
- * D81: the interactive-chrome rects as the CLAMP sees them — Playwright
+ * D91: the interactive-chrome rects as the CLAMP sees them — Playwright
  * boundingBoxes translated into the canvas coordinate space (the same
  * consumer-math map-viewer.component does for the service).
  */
@@ -222,7 +231,26 @@ const expectInCanvasAndClear = (box: Box, canvas: { width: number; height: numbe
   }
 };
 
-test.describe('selection-driven panel resizes preserve the viewport (PKG B-125, D81)', () => {
+/**
+ * D91: the pan used to engineer a selection into the rail's reclaimed band —
+ * a background drag in the stage's empty bottom band (below the fitted
+ * content, clear of every element: a down on a node body is captured by the
+ * node, not the pan; a drag is not a tap, so any selection stands). The
+ * start point is the canvas's horizontal center so it clears the boot route
+ * floater (bottom-right anchor) on both sides.
+ */
+const panByDrag = async (page: Page, dx: number): Promise<void> => {
+  const canvas = await canvasBox(page);
+  const startX = canvas.x + canvas.width / 2;
+  const startY = canvas.y + canvas.height - 70;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + dx, startY, { steps: 6 });
+  await page.mouse.up();
+  await settle(page);
+};
+
+test.describe('panel transitions and rail resizes (PKG B-133, D91)', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await expect(page.getByTestId('tme-canvas')).toBeVisible();
@@ -230,10 +258,10 @@ test.describe('selection-driven panel resizes preserve the viewport (PKG B-125, 
     await expect.poll(() => readPosition(page, CASTLE_ARC.target)).not.toBeNull();
   });
 
-  test('wide, view mode: arc select opens the panel zoom/pan byte-equal; node select closes it byte-equal (D81)', async ({
+  test('wide, view mode: arc select opens the floating panel zoom/pan byte-equal; node select closes it byte-equal (D91)', async ({
     page,
   }) => {
-    test.skip(isPhone(), 'the wide-layout preserve rule is the desktop project (SCSS 700px breakpoint)');
+    test.skip(isPhone(), 'the wide-layout zero-motion rule is the desktop project (SCSS 700px breakpoint)');
     const bad = collectConsole(page);
     await settle(page);
     await expectHeaders(page);
@@ -241,9 +269,9 @@ test.describe('selection-driven panel resizes preserve the viewport (PKG B-125, 
     const panBefore = await readPan(page);
 
     // The castle arc's midpoint sits mid-canvas at the fit — in view and
-    // clear of every chrome rect even after the stage narrows — so the
-    // preserve path must not move AT ALL (the clamp's common case: zero
-    // compensation, D81 geometry fact 1).
+    // clear of every chrome rect — so the ZERO-MOTION invariant must hold
+    // exactly: the arc panel FLOATS (D91 — it resizes nothing), and with no
+    // rescue-worthy displacement nothing moves at all.
     await tapEdgeMidpoint(page, CASTLE_ARC);
     await expect(page.getByTestId('tme-arc-panel')).toBeVisible();
     await settle(page);
@@ -253,7 +281,7 @@ test.describe('selection-driven panel resizes preserve the viewport (PKG B-125, 
     expect(panOpen.y, 'pan.y preserved across the panel open').toBe(panBefore.y);
 
     // Node select ⇒ the arc panel closes (the B-106 mutual exclusion) — the
-    // stage widens, the viewport stays byte-put.
+    // overlay vanishes, the viewport stays byte-put.
     await tapNode(page, CASTLE_ID);
     await expect(page.getByTestId('tme-arc-panel')).toBeHidden();
     await settle(page);
@@ -266,10 +294,10 @@ test.describe('selection-driven panel resizes preserve the viewport (PKG B-125, 
     expect(bad, 'console clean (housekeeping)').toEqual([]);
   });
 
-  test('wide, zoomed in: arc-select open and node-select swap keep the zoomed viewport byte-equal (D81)', async ({
+  test('wide, zoomed in: arc-select open and node-select swap keep the zoomed viewport byte-equal (D91)', async ({
     page,
   }) => {
-    test.skip(isPhone(), 'the wide-layout preserve rule is the desktop project');
+    test.skip(isPhone(), 'the wide-layout zero-motion rule is the desktop project');
     const bad = collectConsole(page);
     await settle(page);
     await expectHeaders(page);
@@ -314,42 +342,75 @@ test.describe('selection-driven panel resizes preserve the viewport (PKG B-125, 
     expect(bad, 'console clean (housekeeping)').toEqual([]);
   });
 
-  test('wide clamp, node: the rightmost leaf selected in the editor is rescued pan-only, minimal pure-x (D81)', async ({
+  test('wide clamp, node: selecting the rightmost leaf in the editor floats the panel with zero motion, and a rail EXPAND rescues it pan-only, minimal pure-x (D91)', async ({
     page,
   }) => {
-    test.skip(isPhone(), 'the wide-layout preserve rule is the desktop project');
+    test.skip(isPhone(), 'the wide-layout clamp rule is the desktop project');
     const bad = collectConsole(page);
     await settle(page);
     await expectHeaders(page);
-    await page.getByTestId('tme-editor-toggle').click();
     const zoomBefore = await readZoom(page);
     const panBefore = await readPan(page);
 
-    // Engineering: FX1's rightmost content sits inside the full-width stage
-    // but PAST the band the docked property panel will take (stage −240px).
-    const boxPre = expectBoxed(await readBox(page, GHOST_HOUSE_ID), GHOST_HOUSE_ID);
-    const canvasPre = await canvasBox(page);
-    expect(boxPre.x + boxPre.w, 'engineering: ghost-house fits the full stage').toBeLessThanOrEqual(canvasPre.width);
-    expect(boxPre.x + boxPre.w, 'engineering: ghost-house lies past the post-open band').toBeGreaterThan(
-      canvasPre.width - 260,
-    );
+    // Enter the editor FIRST (D91 aiming repair, B-133c): the collapsed rail
+    // strip carries only the expand affordance (B-127), so the editor toggle
+    // must be operated while the rail is still expanded. Editor entry alone
+    // moves nothing (no selection, no panel — byte-equal asserts below).
+    await page.getByTestId('tme-editor-toggle').click();
+    await expect(page.getByTestId('tme-editor-toggle')).toHaveAttribute('aria-pressed', 'true');
 
-    await tapNode(page, GHOST_HOUSE_ID); // editor select ⇒ the property panel docks
+    // Collapse the rail (nothing selected ⇒ the preserve path's
+    // zero-motion case: nothing can leave a GROWING canvas) — the stage
+    // widens, and the reclaimed band the EXPAND will take back is engineered
+    // below (the editor-rail rail-expand cell's proven pattern).
+    await page.getByTestId('tme-rail-toggle').click();
+    await settle(page);
+    const canvasCollapsed = await canvasBox(page);
+    expect(await readZoom(page), 'collapse (stage grows): zoom byte-equal').toBe(zoomBefore);
+    expect((await readPan(page)).x, 'collapse (stage grows): pan.x byte-equal').toBe(panBefore.x);
+
+    // Engineering: FX1's rightmost content is panned (view-mode background
+    // drag — a drag is not a tap) so its right edge sits inside the
+    // COLLAPSED canvas but past the post-EXPAND band.
+    const boxFit = expectBoxed(await readBox(page, GHOST_HOUSE_ID), GHOST_HOUSE_ID);
+    const dragDx = canvasCollapsed.width - 24 - (boxFit.x + boxFit.w);
+    if (dragDx > 5) await panByDrag(page, dragDx);
+    const boxPre = expectBoxed(await readBox(page, GHOST_HOUSE_ID), GHOST_HOUSE_ID);
+    expect(
+      boxPre.x + boxPre.w,
+      'engineering: ghost-house sits past the post-expand band',
+    ).toBeGreaterThan(canvasCollapsed.width - 100);
+    const panPanned = await readPan(page);
+
+    // Editor select ⇒ the property panel FLOATS (D91): the stage must not
+    // move a byte — no stage delta, no refit, no clamp motion (the selection
+    // is comfortably in-canvas). The editor is already on (entered before
+    // the rail collapse — the collapsed strip has no editor toggle).
+    await tapNode(page, GHOST_HOUSE_ID);
     await expect(page.getByTestId('tme-property-panel')).toBeVisible();
     await settle(page);
-    const canvasAfter = await canvasBox(page);
-    expect(canvasAfter.width, 'the stage narrowed with the panel').toBeLessThan(canvasPre.width);
+    const canvasSelected = await canvasBox(page);
+    expect(canvasSelected.width, 'the stage NEVER resizes for a panel (D91)').toBe(canvasCollapsed.width);
+    expect(await readZoom(page), 'zoom untouched by the panel open (D91)').toBe(zoomBefore);
+    const panSelected = await readPan(page);
+    expect(panSelected.x, 'pan untouched by the panel open (D91)').toBe(panPanned.x);
+    expect(panSelected.y, 'pan untouched by the panel open (D91)').toBe(panPanned.y);
 
-    // Zoom byte-put; the rescue is ONE minimal pure-x pan (the box is
-    // vertically clear of all chrome, so dy must be exactly 0) bringing the
-    // box's right edge to the canvas's right edge.
-    expect(await readZoom(page), 'zoom untouched by the rescue (D81)').toBe(zoomBefore);
-    const panAfter = await readPan(page);
-    expect(panAfter.y, 'the rescue is pure-x (no vertical motion)').toBe(panBefore.y);
+    // Expand the rail: the stage narrows from the left ⇒ the preserved
+    // viewport leaves the selection past the right edge ⇒ the clamp rescues
+    // it — ONE minimal pure-x pan, zoom byte-put (the D91 panel-driven
+    // class's surviving wide branch).
+    await page.getByTestId('tme-rail-toggle').click();
+    await settle(page);
+    const canvasAfter = await canvasBox(page);
+    expect(canvasAfter.width, 'the stage narrowed with the expanded rail').toBeLessThan(canvasCollapsed.width);
     const expectedDx = canvasAfter.width - (boxPre.x + boxPre.w);
     expect(expectedDx, 'engineering: a rescue was needed').toBeLessThan(0);
+    expect(await readZoom(page), 'zoom untouched by the rescue (D91)').toBe(zoomBefore);
+    const panAfter = await readPan(page);
+    expect(panAfter.y, 'the rescue is pure-x (no vertical motion)').toBe(panSelected.y);
     expect(
-      Math.abs(panAfter.x - panBefore.x - expectedDx),
+      Math.abs(panAfter.x - panSelected.x - expectedDx),
       'pan moved by exactly the minimal rescue',
     ).toBeLessThanOrEqual(EPS);
 
@@ -358,8 +419,9 @@ test.describe('selection-driven panel resizes preserve the viewport (PKG B-125, 
     const boxAfter = expectBoxed(await readBox(page, GHOST_HOUSE_ID), GHOST_HOUSE_ID);
     expectInCanvasAndClear(boxAfter, canvasAfter, await chromeBoxes(page), 'rescued ghost-house');
 
-    // Idempotent settle: dismiss (stage widens, NOTHING selected ⇒ zero
-    // motion), then re-select — the settled pan must not move again.
+    // Settle: dismiss (the floating panel closes with the selection — ZERO
+    // motion: no resize exists to react to), then re-select — the settled
+    // pan must not move again.
     await page.getByTestId('tme-selection-chip').click();
     await expect(page.getByTestId('tme-property-panel')).toBeHidden();
     await settle(page);
@@ -368,11 +430,13 @@ test.describe('selection-driven panel resizes preserve the viewport (PKG B-125, 
     expect(panDismissed.y).toBe(panAfter.y);
     expect(await readZoom(page)).toBe(zoomBefore);
 
+    // Re-select (the editor is still on): the property panel floats again,
+    // the pan and zoom stand untouched.
     await tapNode(page, GHOST_HOUSE_ID);
     await expect(page.getByTestId('tme-property-panel')).toBeVisible();
     await settle(page);
     const panReopened = await readPan(page);
-    expect(panReopened.x, 'the clamp is idempotent — repeated resizes settle').toBe(panAfter.x);
+    expect(panReopened.x, 'the clamp is idempotent — a settled pan never moves again').toBe(panAfter.x);
     expect(panReopened.y).toBe(panAfter.y);
     expect(await readZoom(page)).toBe(zoomBefore);
     expectInCanvasAndClear(
@@ -386,53 +450,64 @@ test.describe('selection-driven panel resizes preserve the viewport (PKG B-125, 
     expect(bad, 'console clean (housekeeping)').toEqual([]);
   });
 
-  test('wide clamp, arc: a panned-past-the-band midpoint is rescued to the canvas edge, zoom byte-put (D81/B-107)', async ({
+  test('wide clamp, arc: the floating arc panel opens with zero motion, and a rail EXPAND rescues a panned-past-the-band midpoint to the canvas edge, zoom byte-put (D91/B-107)', async ({
     page,
   }) => {
-    test.skip(isPhone(), 'the wide-layout preserve rule is the desktop project');
+    test.skip(isPhone(), 'the wide-layout clamp rule is the desktop project');
     const bad = collectConsole(page);
     await settle(page);
     await expectHeaders(page);
     const zoomBefore = await readZoom(page);
     const panBefore = await readPan(page);
 
-    // Engineering via pan: drag the view-mode background right ~260px —
-    // nodes are ungrabbable in view mode (B-116), so a BACKGROUND drag pans —
-    // putting the bridge arc's midpoint into the band the arc panel will
-    // take. The drag starts in the stage's empty bottom band (below the
-    // fitted content, clear of every element: a down on a node body is
-    // captured by the node, not the pan).
-    const canvasPre = await canvasBox(page);
-    const startX = canvasPre.x + canvasPre.width / 2;
-    const startY = canvasPre.y + canvasPre.height - 70;
-    await page.mouse.move(startX, startY);
-    await page.mouse.down();
-    await page.mouse.move(startX + 260, startY, { steps: 6 });
-    await page.mouse.up();
+    // Collapse the rail first (nothing selected ⇒ zero motion), then pan the
+    // bridge arc's box MIDPOINT into the band the EXPAND will reclaim —
+    // inside the collapsed canvas, past the post-expand right edge (the
+    // clamp anchors an edge at its rendered-box midpoint — the invariant's
+    // edge semantics).
+    await page.getByTestId('tme-rail-toggle').click();
     await settle(page);
-    const panPanned = await readPan(page);
-    expect(panPanned.x, 'engineering: the drag panned the view').not.toBe(panBefore.x);
-    expect(panPanned.y, 'the drag is horizontal').toBe(panBefore.y);
-
-    // The clamp anchors the arc's rendered-BOX MIDPOINT (an edge box can be
-    // longer than the chrome-free region — the invariant's edge semantics).
+    const canvasCollapsed = await canvasBox(page);
+    expect(await readZoom(page), 'collapse (stage grows): zoom byte-equal').toBe(zoomBefore);
+    const boxFit = expectBoxed(await readBox(page, BRIDGE_ARC.id), BRIDGE_ARC.id);
+    const midFitX = boxFit.x + boxFit.w / 2;
+    const dragDx = canvasCollapsed.width - 60 - midFitX;
+    if (dragDx > 5) await panByDrag(page, dragDx);
     const boxPre = expectBoxed(await readBox(page, BRIDGE_ARC.id), BRIDGE_ARC.id);
     const midPreX = boxPre.x + boxPre.w / 2;
-    expect(midPreX, 'engineering: the midpoint is still tappable (in-canvas)').toBeLessThan(canvasPre.width);
+    expect(midPreX, 'engineering: the midpoint is still tappable (in-canvas)').toBeLessThan(
+      canvasCollapsed.width,
+    );
+    expect(midPreX, 'engineering: the midpoint sits past the post-expand band').toBeGreaterThan(
+      canvasCollapsed.width - 100,
+    );
+    const panPanned = await readPan(page);
 
+    // Tap the midpoint ⇒ the ARC is selected and its panel FLOATS — the
+    // zero-motion invariant (D91): zoom and pan byte-untouched by the open.
     await tapEdgeMidpoint(page, BRIDGE_ARC);
     await expect(page.getByTestId('tme-arc-panel')).toBeVisible();
     await settle(page);
+    expect(await readZoom(page), 'zoom untouched by the floating panel open (D91)').toBe(zoomBefore);
+    const panOpen = await readPan(page);
+    expect(panOpen.x, 'pan untouched by the floating panel open (D91)').toBe(panPanned.x);
+    expect(panOpen.y, 'pan untouched by the floating panel open (D91)').toBe(panPanned.y);
+
+    // Expand the rail: the stage narrows ⇒ the midpoint falls outside ⇒ the
+    // clamp rescues it — ONE minimal pure-x pan bringing the MIDPOINT to the
+    // canvas's right edge (an edge's box may legally extend past the stage).
+    await page.getByTestId('tme-rail-toggle').click();
+    await settle(page);
     const canvasAfter = await canvasBox(page);
     const expectedDx = canvasAfter.width - midPreX;
-    expect(expectedDx, 'engineering: the midpoint sat in the panel band').toBeLessThan(0);
-
+    expect(expectedDx, 'engineering: the midpoint sat in the reclaimed band').toBeLessThan(0);
     expect(await readZoom(page), 'zoom untouched by the rescue').toBe(zoomBefore);
     const panAfter = await readPan(page);
     expect(panAfter.y, 'the rescue is pure-x').toBe(panPanned.y);
-    expect(Math.abs(panAfter.x - panPanned.x - expectedDx), 'pan moved by exactly the minimal rescue').toBeLessThanOrEqual(
-      EPS,
-    );
+    expect(
+      Math.abs(panAfter.x - panPanned.x - expectedDx),
+      'pan moved by exactly the minimal rescue',
+    ).toBeLessThanOrEqual(EPS);
 
     // Post-rescue: the box's MIDPOINT is in-canvas and point-clear of every
     // chrome rect (an edge's box may legally extend past the stage).
@@ -452,10 +527,10 @@ test.describe('selection-driven panel resizes preserve the viewport (PKG B-125, 
     expect(bad, 'console clean (housekeeping)').toEqual([]);
   });
 
-  test('wide, editor parity: the docked property panel and the arc→property swaps never move the viewport (D81)', async ({
+  test('wide, editor parity: the floating property panel and the arc→property swaps never move the viewport (D91)', async ({
     page,
   }) => {
-    test.skip(isPhone(), 'the wide-layout preserve rule is the desktop project');
+    test.skip(isPhone(), 'the wide-layout zero-motion rule is the desktop project');
     const bad = collectConsole(page);
     await settle(page);
     await expectHeaders(page);
@@ -467,8 +542,8 @@ test.describe('selection-driven panel resizes preserve the viewport (PKG B-125, 
     const panBefore = await readPan(page);
 
     // Arc → property swap: the node select closes the arc panel and opens
-    // the docked property panel — the castle node is far from every chrome
-    // band, so the clamp's common case (zero motion) must hold.
+    // the property panel — both FLOAT (D91), so the castle node far from
+    // every chrome band keeps the common case: zero motion.
     await tapNode(page, CASTLE_ID);
     await expect(page.getByTestId('tme-arc-panel')).toBeHidden();
     await expect(page.getByTestId('tme-property-panel')).toBeVisible();
@@ -479,8 +554,8 @@ test.describe('selection-driven panel resizes preserve the viewport (PKG B-125, 
     expect(panSwapped.y).toBe(panBefore.y);
 
     // Property → arc swap back: the edge select closes the property panel
-    // and re-opens the arc panel (equal column widths — the swap is
-    // layout-neutral or two resizes; both preserve).
+    // and re-opens the arc panel — overlays both, nothing resizes, both
+    // preserve.
     await tapEdgeMidpoint(page, CASTLE_ARC);
     await expect(page.getByTestId('tme-property-panel')).toBeHidden();
     await expect(page.getByTestId('tme-arc-panel')).toBeVisible();
@@ -494,7 +569,7 @@ test.describe('selection-driven panel resizes preserve the viewport (PKG B-125, 
     expect(bad, 'console clean (housekeeping)').toEqual([]);
   });
 
-  test('wide discriminator: a real viewport resize with a panel open still refits (D81 keeps the environmental class)', async ({
+  test('wide discriminator: a real viewport resize with a panel open still refits (D91 keeps the environmental class)', async ({
     page,
   }) => {
     test.skip(isPhone(), 'the desktop environmental cell mirrors resize-refit\'s desktop shrink');
@@ -524,10 +599,10 @@ test.describe('selection-driven panel resizes preserve the viewport (PKG B-125, 
     expect(bad, 'console clean (housekeeping)').toEqual([]);
   });
 
-  test('wide, no-selection close: background tap with the panel open closes it with ZERO motion (D81)', async ({
+  test('wide, no-selection close: background tap with the panel open closes it with ZERO motion (D91)', async ({
     page,
   }) => {
-    test.skip(isPhone(), 'the wide-layout preserve rule is the desktop project');
+    test.skip(isPhone(), 'the wide-layout zero-motion rule is the desktop project');
     const bad = collectConsole(page);
     await settle(page);
     await expectHeaders(page);
@@ -538,8 +613,8 @@ test.describe('selection-driven panel resizes preserve the viewport (PKG B-125, 
     const panBefore = await readPan(page);
 
     // A view-mode background tap clears the selection AND closes the panel —
-    // the stage widens with NOTHING selected ⇒ the clamp must not exist as
-    // even a pan (no selection ⇒ zero motion).
+    // an overlay vanishing with NOTHING selected ⇒ zero motion (D91: there
+    // is no resize to react to, not even a clamp).
     const canvas = await canvasBox(page);
     await tapPoint(page, canvas.x + canvas.width / 2, canvas.y + canvas.height - 60);
     await expect(page.getByTestId('tme-arc-panel')).toBeHidden();
@@ -554,43 +629,64 @@ test.describe('selection-driven panel resizes preserve the viewport (PKG B-125, 
     expect(bad, 'console clean (housekeeping)').toEqual([]);
   });
 
-  test('phone: arc select stacks the panel and the refit STILL runs — narrow keeps B-106 (D81, F52/D53)', async ({
+  test('phone: the arc panel overlays with zero motion — byte-equal zoom/pan and an unchanged canvas box across the open/close round-trip (D91, F52/D53)', async ({
     page,
   }) => {
-    test.skip(!isPhone(), 'the narrow-layout refit rule is the phone project');
+    test.skip(!isPhone(), 'the narrow-layout zero-motion rule is the phone project');
     const bad = collectConsole(page);
     await settle(page);
     await expectHeaders(page);
+    const zoomBefore = await readZoom(page);
     const panBefore = await readPan(page);
+    const canvasBefore = await canvasBox(page);
 
-    // Touch alone: the arc select stacks the panel BELOW the stage — the
-    // same panel-driven class, but the NARROW layout keeps the refit.
+    // Touch alone: the arc select opens the panel as a bottom-sheet OVERLAY
+    // (D91) — the canvas box must not move a pixel (the old stacked-region
+    // regime shrank the stage and refit; that resize class is GONE on
+    // narrow panel transitions too).
     await tapEdgeMidpoint(page, CASTLE_ARC);
     await expect(page.getByTestId('tme-arc-panel')).toBeVisible();
     await settle(page);
-    // Lead repair (post-rail): the phone fit is WIDTH-limited in the rail
-    // regime (the B-126 deviation-5 fact), so a height-only panel-open
-    // refit re-pans while holding one zoom — the zoom-delta proxy this cell
-    // once asserted is stale. The refit is pinned below by its real
-    // observables: the re-pan (:84) and the in-box content.
+    const canvasOpen = await canvasBox(page);
+    expect(canvasOpen.width, 'the canvas box never resizes for a panel open (D91)').toBe(canvasBefore.width);
+    expect(canvasOpen.height, 'the canvas box never resizes for a panel open (D91)').toBe(canvasBefore.height);
+    expect(await readZoom(page), 'zoom byte-equal across the open (D91 zero-motion)').toBe(zoomBefore);
+    const panOpen = await readPan(page);
+    expect(panOpen.x, 'pan.x byte-equal across the open (D91 zero-motion)').toBe(panBefore.x);
+    expect(panOpen.y, 'pan.y byte-equal across the open (D91 zero-motion)').toBe(panBefore.y);
 
-    // The refit is discriminating: the temple (the content's bottom) is
-    // in-box only because fitView re-ran for the shrunken stage.
-    const canvasAfter = await canvasBox(page);
-    const temple = expectPositioned(await readPosition(page, TEMPLE_ID), TEMPLE_ID);
-    expect(temple.x, 'temple x inside the shrunken canvas (refit ran)').toBeGreaterThanOrEqual(0);
-    expect(temple.x, 'temple x inside the shrunken canvas (refit ran)').toBeLessThanOrEqual(canvasAfter.width);
-    expect(temple.y, 'temple y inside the shrunken canvas (refit ran)').toBeGreaterThanOrEqual(0);
-    expect(temple.y, 'temple y inside the shrunken canvas (refit ran)').toBeLessThanOrEqual(canvasAfter.height);
-    const panAfter = await readPan(page);
-    expect(panAfter.y, 'the refit re-pans (vs the pre-open pan)').not.toBe(panBefore.y);
-
-    // Touch-alone interaction post-refit: a node tap still selects (the
-    // B-106 chain: content fitted AND tappable at any stage size).
-    await tapNode(page, CASTLE_ID);
+    // Close by node select (the arc panel's mutual exclusion — touch alone):
+    // the overlay vanishes, the viewport and the canvas box are still
+    // byte-put, and the selection is live (content stays tappable — the
+    // fitted content never moved).
+    // B-133 (D91) review fix: collapse the route sheet first — its blocked
+    // listing is content at boot (the auto-expand) and on the full-width
+    // overlay stage its body can cover the castle's tap point. A user
+    // collapses it via the sheet's own rail toggle; setup, not assertion.
+    if ((await page.getByTestId('tme-sheet-rail').getAttribute('aria-expanded')) === 'true') {
+      await page.getByTestId('tme-sheet-rail').click();
+      await expect(page.getByTestId('tme-sheet-rail')).toHaveAttribute('aria-expanded', 'false');
+      await page.waitForTimeout(200); // the collapse re-renders — a tap in the same tick can still hit the body
+    }
+    // Even collapsed, the route rail rides ABOVE the arc sheet in the
+    // bottom-anchored stack and can still cover the castle's point — clear
+    // the selection with a background tap on the visible canvas ABOVE the
+    // sheets (either outcome — empty-canvas clear or a node's mutual
+    // exclusion — closes the arc panel), then node-select the castle.
+    const closeBox = await canvasBox(page);
+    await tapPoint(page, closeBox.x + closeBox.width / 2, closeBox.y + 40);
     await expect(page.getByTestId('tme-arc-panel')).toBeHidden();
+    await tapNode(page, CASTLE_ID);
     await expect(page.getByTestId('tme-selection-chip')).toBeVisible();
     await expect(page.getByTestId('tme-selection-label')).toHaveText(CASTLE_LABEL);
+    await settle(page);
+    const canvasClosed = await canvasBox(page);
+    expect(canvasClosed.width, 'the canvas box never resizes for a panel close (D91)').toBe(canvasBefore.width);
+    expect(canvasClosed.height, 'the canvas box never resizes for a panel close (D91)').toBe(canvasBefore.height);
+    expect(await readZoom(page), 'zoom byte-equal across the close (D91 zero-motion)').toBe(zoomBefore);
+    const panClosed = await readPan(page);
+    expect(panClosed.x, 'pan.x byte-equal across the close (D91 zero-motion)').toBe(panBefore.x);
+    expect(panClosed.y, 'pan.y byte-equal across the close (D91 zero-motion)').toBe(panBefore.y);
 
     // D53: the panel cycle never forces horizontal scroll at 390px.
     const overflow = await page.evaluate(

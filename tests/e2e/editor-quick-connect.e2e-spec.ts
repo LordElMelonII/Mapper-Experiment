@@ -174,6 +174,22 @@ const settle = (page: Page): Promise<void> =>
 
 /** F52/D53: tap on the touch-emulated project, click on desktop (points). */
 const tapPoint = async (page: Page, point: Point): Promise<void> => {
+  // B-133 (D91) review fix: the panels are stage overlays — a tap aimed at a
+  // covered point lands on the sheet, not the canvas. If the aim point sits
+  // under the route sheet (the auto-expanded content overlay), collapse it
+  // first — the user's "the map didn't respond, close the sheet, tap again"
+  // flow; a selection below re-expands it (B-114).
+  const covered = await page.evaluate(([px, py]) => {
+    const el = document.elementFromPoint(px, py);
+    return el !== null && el.closest('tme-route-panel') !== null;
+  }, [point.x, point.y] as const);
+  if (covered) {
+    if ((await page.getByTestId('tme-sheet-rail').getAttribute('aria-expanded')) === 'true') {
+      await page.getByTestId('tme-sheet-rail').click();
+      await expect(page.getByTestId('tme-sheet-rail')).toHaveAttribute('aria-expanded', 'false');
+      await page.waitForTimeout(200); // the collapse re-renders — a tap in the same tick can still hit the body
+    }
+  }
   if (isPhone()) await page.touchscreen.tap(point.x, point.y);
   else await page.mouse.click(point.x, point.y);
 };

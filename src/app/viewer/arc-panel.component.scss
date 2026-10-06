@@ -1,12 +1,16 @@
 // PKG B-106 — component-scoped chrome only (D7: zero global leakage; the
 // graph's visual language is GRAPH_STYLESHEET data in graph.service.ts). The
-// host element is sized by the map viewer's flex layout (a third region,
-// beside the route panel on wide viewports / under it on narrow ones); here
-// it only guarantees its own content never forces horizontal overflow (D53)
+// host element was sized by the map viewer's flex layout; B-133 (D91) makes
+// it an OVERLAY — a bottom sheet in the .tme-sheets stack on narrow, and a
+// position:fixed FLOATER over the full-width stage on wide (the B-119
+// surface generalized: bottom-right default anchor, or bottom-left clearing
+// the rail column when the arc's anchor sits on the right half; a remembered
+// transform replaces the anchor; Maximize lifts the height cap). Here the
+// host guarantees its own content never forces horizontal overflow (D53)
 // and scrolls its own overflow vertically.
 :host {
   display: block;
-  min-width: 0; // never propagate content width into the flex layout (D53)
+  min-width: 0; // never propagate content width into the stack (D53)
   box-sizing: border-box;
   padding: 0.75rem;
   overflow-y: auto;
@@ -16,6 +20,110 @@
     400 0.875rem/1.5 system-ui,
     -apple-system,
     sans-serif;
+}
+
+// B-133 (D91): the wide floater's regime header — narrow-invisible (the
+// plain title carries the narrow sheet); the wide query shows it and hides
+// the duplicate title.
+.tme-float-head {
+  display: none;
+}
+
+.tme-float-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+// B-133: the Maximize/Restore regime button — one >= 44px tap target (F52),
+// narrow-invisible (the floater chrome is wide-world).
+.tme-regime {
+  display: none;
+  min-width: 44px; // F52
+  min-height: 44px;
+  padding: 0 0.625rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+@media (min-width: 700px) {
+  // B-133 (D91): the floating surface over the full-width stage (bottom-
+  // right default anchor; the stage is the viewport's full height on wide).
+  :host {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    bottom: 0.75rem;
+    right: 0.75rem;
+    z-index: 20; // above the map it legitimately overlaps
+    width: min(18rem, 100vw - 1.5rem); // FLOAT_WIDTH_PX — never offscreen-wide (D53)
+    max-height: min(26rem, 100dvh - 1.5rem);
+    padding: 0; // the head/body own their padding now
+    border: 1px solid rgba(174, 189, 211, 0.4);
+    border-radius: 8px;
+    background: #14171c; // opaque — the map underneath is occluded, not bled through
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    overflow: hidden; // the BODY scrolls (the head must stay reachable)
+  }
+
+  :host(.tme-anchor-start) {
+    right: auto;
+    left: calc(var(--tme-rail-w, 0px) + 0.75rem);
+  }
+
+  :host(.tme-placed) {
+    top: 0;
+    left: 0;
+    right: auto;
+    bottom: auto;
+  }
+
+  :host(.tme-maximized) {
+    // The maximized cap mirrors the property panel's arithmetic (100dvh −
+    // 7.75rem): the top chrome band (chip 6.5rem + the 8px clamp gap) stays
+    // clear above the 0.75rem bottom inset (F52 — the chip stays tappable).
+    max-height: calc(100dvh - 7.75rem);
+  }
+
+  // The regime header: the drag surface (touch-action none HERE ONLY — §6.2)
+  // and the maximize toggle.
+  .tme-float-head {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid rgba(174, 189, 211, 0.25);
+    touch-action: none;
+    cursor: move;
+    user-select: none;
+  }
+
+  .tme-regime {
+    display: inline-flex;
+  }
+
+  // The scrollable body: everything under the head.
+  .tme-body-scroll {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0.75rem;
+  }
+
+  .tme-title {
+    display: none; // the header carries it
+  }
 }
 
 .tme-title {
@@ -369,4 +477,16 @@
   margin: 0 0 0.25rem;
   color: #9aa7b8;
   font-size: 0.8125rem;
+}
+
+// B-133 review fix (lead, D91): the host's padding band is hit-testable but
+// visually empty — canvas taps aimed there died on it (a real dead zone).
+// The host never intercepts; the visible root section re-enables events for
+// its content (the stack wrapper is already none/auto).
+:host {
+  pointer-events: none; // B-133 review (D91) — see the note above
+}
+
+.tme-arc {
+  pointer-events: auto; // B-133 review (D91) — the visible sheet re-enables
 }

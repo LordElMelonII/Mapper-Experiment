@@ -272,6 +272,15 @@ test.describe('portals: badges, the entry gesture, the breadcrumb, and the F17 u
 
     // Double-activate the badge — F02's fixed gesture, touch-alone on phone.
     await settle(page);
+    // B-133 (D91): the wiring selection left the route sheet auto-expanded
+    // (B-114), and on the full-width overlay stage it can cover the badge —
+    // the taps would hit the sheet, not the canvas. A user dismisses the
+    // selection first (the chip dismiss also collapses the sheet); the
+    // gesture then runs on a clear map. Setup, not assertion.
+    if (await page.getByTestId('tme-selection-chip').isVisible()) {
+      await activateTestId(page, 'tme-selection-chip');
+      await expect(page.getByTestId('tme-selection-chip')).toBeHidden();
+    }
     const pos = await readRenderedPosition(page, PORTAL_BADGE_ID);
     if (pos === null) throw new Error('portal badge not rendered');
     const box = await page.getByTestId('tme-canvas').boundingBox();
@@ -397,6 +406,13 @@ test.describe('portals: badges, the entry gesture, the breadcrumb, and the F17 u
 
     await wireCastleTo(page, 'Misaki Town');
     await settle(page);
+    // B-133 (D91): dismiss the wiring selection first — the auto-expanded
+    // route sheet can cover the badge on the full-width overlay stage (the
+    // entry-gesture cell's note); the gesture runs on a clear map.
+    if (await page.getByTestId('tme-selection-chip').isVisible()) {
+      await activateTestId(page, 'tme-selection-chip');
+      await expect(page.getByTestId('tme-selection-chip')).toBeHidden();
+    }
     const pos = await readRenderedPosition(page, PORTAL_BADGE_ID);
     if (pos === null) throw new Error('portal badge not rendered');
     const box = await page.getByTestId('tme-canvas').boundingBox();

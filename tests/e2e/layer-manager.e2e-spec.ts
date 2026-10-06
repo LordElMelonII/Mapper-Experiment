@@ -196,6 +196,22 @@ const canvasBox = async (page: Page) => {
 
 /** F52/D53: genuine tap on the touch-emulated project, click on desktop. */
 const tapPoint = async (page: Page, x: number, y: number): Promise<void> => {
+  // B-133 (D91) review fix: the panels are stage overlays — a tap aimed at a
+  // covered point lands on the sheet, not the canvas. If the aim point sits
+  // under the route sheet (the auto-expanded content overlay), collapse it
+  // first — the user's "the map didn't respond, close the sheet, tap again"
+  // flow; a selection below re-expands it (B-114).
+  const covered = await page.evaluate(([px, py]) => {
+    const el = document.elementFromPoint(px, py);
+    return el !== null && el.closest('tme-route-panel') !== null;
+  }, [x, y] as const);
+  if (covered) {
+    if ((await page.getByTestId('tme-sheet-rail').getAttribute('aria-expanded')) === 'true') {
+      await page.getByTestId('tme-sheet-rail').click();
+      await expect(page.getByTestId('tme-sheet-rail')).toHaveAttribute('aria-expanded', 'false');
+      await page.waitForTimeout(200); // the collapse re-renders — a tap in the same tick can still hit the body
+    }
+  }
   if (isPhone()) await page.touchscreen.tap(x, y);
   else await page.mouse.click(x, y);
 };
@@ -312,7 +328,7 @@ test.describe('the layer-manager sheet, the Layer dropdown and Detach (PKG B-126
     expect(bad, 'console clean (housekeeping)').toEqual([]);
   });
 
-  test('phone: the sheet is a bottom sheet with a rail; the rail collapse refits (D81 narrow / B-114 pinned)', async ({
+  test('phone: the sheet overlays as a bottom sheet with a rail; collapse and close never resize the canvas (D91 narrow / B-114 pinned)', async ({
     page,
   }) => {
     test.skip(!isPhone(), 'the bottom-sheet form + rail collapse belong to the narrow viewport (D53)');
@@ -328,32 +344,36 @@ test.describe('the layer-manager sheet, the Layer dropdown and Detach (PKG B-126
     await expect(page.getByTestId('tme-layer-manager-body')).toBeVisible();
     await settle(page);
     const expandedCanvas = await canvasBox(page);
-    const expandedPanY = (await readPan(page)).y;
+    const expandedPan = await readPan(page);
 
-    // The rail collapse hides the body — the freed height returns to the
-    // canvas and the NARROW panel-driven resize REFITS (the B-114 pinned
-    // behavior; D81 keeps the narrow refit class). The fit is WIDTH-limited
-    // at the phone stage (FX1's content span), so the refit's observable is
-    // the RE-CENTERED PAN, not the zoom (found live: the width-limited fit
-    // holds one zoom across height changes).
+    // The rail collapse hides the body — and under D91 the sheet OVERLAYS
+    // the stage, so the canvas box is byte-identical collapsed and expanded
+    // (the old freed-height-returns-to-canvas refit is gone: sheet
+    // transitions resize nothing on narrow either — the re-pan observable
+    // below pins that the refit no longer fires).
     await activate(page, 'tme-layer-rail');
     await expect(page.getByTestId('tme-layer-manager-body')).toBeHidden();
     await expect(page.getByTestId('tme-layer-rail')).toHaveAttribute('aria-expanded', 'false');
     await settle(page);
     const collapsedCanvas = await canvasBox(page);
-    expect(collapsedCanvas.height, 'collapse returns the freed height to the canvas').toBeGreaterThan(
+    expect(collapsedCanvas.height, 'collapse never resizes the canvas (D91 zero-motion)').toBe(
       expandedCanvas.height,
     );
+    expect(collapsedCanvas.width, 'collapse never resizes the canvas (D91 zero-motion)').toBe(
+      expandedCanvas.width,
+    );
     const collapsedPan = await readPan(page);
-    expect(collapsedPan.y, 'the narrow panel-driven collapse refits (D81/B-114)').not.toBe(expandedPanY);
+    expect(collapsedPan.y, 'no resize ⇒ no refit ⇒ the pan stands (D91)').toBe(expandedPan.y);
     await expectHeaders(page);
 
-    // Escape closes the whole sheet; the stage is whole again.
+    // Escape closes the whole sheet; the canvas box still never moved.
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('tme-layer-manager')).toBeHidden();
     await settle(page);
     const closedCanvas = await canvasBox(page);
-    expect(closedCanvas.height, 'the closed sheet returns its whole band').toBeGreaterThan(collapsedCanvas.height);
+    expect(closedCanvas.height, 'the close never resizes the canvas (D91 zero-motion)').toBe(
+      expandedCanvas.height,
+    );
 
     // D53: the sheet cycle never forces horizontal scroll at 390px.
     const overflow = await page.evaluate(
@@ -508,6 +528,7 @@ test.describe('the layer-manager sheet, the Layer dropdown and Detach (PKG B-126
     await activate(page, 'tme-editor-toggle');
     await tapNode(page, OUTSKIRTS_ID);
     await expect(page.getByTestId('tme-property-panel')).toBeVisible();
+    // B-133 REVIEW DIAGNOSTIC (temporary): which node did the tap select?
     const dropdown = page.getByTestId('tme-node-layer');
     await expect(dropdown).toHaveValue(FUYUKI_LAYER_ID);
 

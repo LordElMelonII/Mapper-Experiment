@@ -8,15 +8,37 @@
      (ruling 1); everything the panel has ever rendered lives inside the ONE
      tme-sheet-body wrapper, shown while expanded / hidden while collapsed
      (the SCSS owns it under max-width: 699.98px) and always shown at ≥700px,
-     where the media query hides the rail. The sheet is the narrow form of
-     THIS panel — not a second panel (Q29 fence: no floating, no persistence,
-     no maximize). -->
+     where the media query hides the rail. B-133 (D91): at ≥700px the panel
+     is the FLOATING surface — the tme-float-head (drag handle + the
+     Maximize/Restore regime toggle) shows, the wide visibility is the
+     service's routePanelOpen (auto-float with content, the rail's Route
+     toggle summons it empty — a route-count-free empty state: the hint), and
+     the body's duplicate title hides there. The sheet is the narrow form of
+     THIS panel — not a second panel. -->
 <section
   class="tme-route"
   data-testid="tme-route-panel"
   aria-label="Route"
   [class.tme-collapsed]="!sheetExpanded()"
 >
+  <!-- B-133 (D91): the wide floater's regime header — the drag handle (the
+       pointerdown path, D2: the live position is a direct style transform
+       and the signal commits once on release) + the Maximize/Restore toggle
+       (>= 44px, F52). Hidden entirely at narrow widths (the media query
+       owns it): the sheet rail below is the narrow form's affordance. -->
+  <header class="tme-float-head" data-testid="tme-route-float-head" (pointerdown)="onDragStart($event)">
+    <h2 class="tme-float-title">Route</h2>
+    <button
+      type="button"
+      class="tme-regime"
+      data-testid="tme-route-panel-maximize"
+      [attr.aria-pressed]="maximized() ? 'true' : 'false'"
+      (click)="toggleMaximize()"
+    >
+      {{ maximized() ? 'Restore' : 'Maximize' }}
+    </button>
+  </header>
+
   <!-- B-114 (ruling 1): the sheet rail — one full-width button, ≥44px tall
        (F52), with the bound aria-expanded state and a CSS-rotated chevron
        glyph (no hover affordance; touch-action: manipulation in SCSS, §6.2).

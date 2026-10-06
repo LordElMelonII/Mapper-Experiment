@@ -370,6 +370,19 @@ test.describe('waypoint management: remove + promote-to-map (PKG B-110)', () => 
     await expect(page.getByTestId('tme-selection-label')).toHaveText(PROMOTED_LABEL);
 
     // Remove by touch: place a fresh waypoint, select it, Remove.
+    // B-133 (D91) review fix: clear the leftover state before placing — the
+    // promote step's selection would maximize the property panel over the
+    // placement point on the full-width overlay stage, and the route
+    // sheet's blocked listing is content at boot (the auto-expand). A user
+    // dismisses the chip and collapses the sheet; setup, not assertion.
+    if (await page.getByTestId('tme-selection-chip').isVisible()) {
+      await activate(page, 'tme-selection-chip');
+      await expect(page.getByTestId('tme-selection-chip')).toBeHidden();
+    }
+    if ((await page.getByTestId('tme-sheet-rail').getAttribute('aria-expanded')) === 'true') {
+      await activate(page, 'tme-sheet-rail');
+      await expect(page.getByTestId('tme-sheet-rail')).toHaveAttribute('aria-expanded', 'false');
+    }
     await placeWaypointViaEditor(page, BG_MODEL_POINT_2);
     await expect.poll(() => waypointCount(page)).toBe(1);
     await tapNode(page, 'wp-2');

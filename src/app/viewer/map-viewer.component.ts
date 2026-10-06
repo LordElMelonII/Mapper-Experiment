@@ -1,23 +1,24 @@
 // src/app/viewer/map-viewer.component.ts — PKG B-102, extended by B-105 (the
 // route panel joins the layout) and B-106 (the arc panel joins as a third
-// region — beside the route panel on wide viewports, under it on narrow
-// ones, rendered only while an edge is selected, ruling 1/3) and B-117 (the
-// property panel joins as the fourth region — editor mode with a node
-// selection only; the open/close gate lives inside the panel component,
-// which hides its host when it has no draft). The M1 viewer: canvas host for
-// the GraphService's cy instance (D3), per-layer background beneath it
-// (F03/D29/D69), snapshot header line (R1 — verbatim core strings). Zoneless
-// + OnPush (D2): only signal writes reach the template; the ResizeObserver
-// fires outside Angular and touches none. D81: the RO classifies resizes
-// through the service (the narrow layout + environmental resizes refit; a
-// wide-layout panel-driven resize preserves the viewport, rescuing the
-// selection pan-only) and feeds it this component's measured
-// interactive-chrome rects. B-127 (D86/F53): the editor toggle, the tool
-// group, the layer nav and the save dock MIGRATED onto the editor rail (a
-// region sibling — first child on wide, last child on narrow); the stage
-// keeps only the header, the selection chip and the draw-arc feedback
-// banner (D86's absorb list excludes them), and the clamp's measured chrome
-// set is the RAIL rect + the chip.
+// region — rendered only while an edge is selected, ruling 1/3) and B-117
+// (the property panel joins — editor mode with a node selection only; the
+// open/close gate lives inside the panel component, which hides its host
+// when it has no draft). The M1 viewer: canvas host for the GraphService's
+// cy instance (D3), per-layer background beneath it (F03/D29/D69), snapshot
+// header line (R1 — verbatim core strings). Zoneless + OnPush (D2): only
+// signal writes reach the template; the ResizeObserver fires outside Angular
+// and touches none. D81, narrowed by D91: the RO classifies resizes through
+// the service — the four panels are OVERLAYS (B-133) and open/close none of
+// them resizes anything, so the RO fires solely for the editor rail's
+// collapse/expand (wide: preserve + selection rescue; narrow: the B-106
+// refit) and for environmental resizes — and feeds the service this
+// component's measured interactive-chrome rects. B-127 (D86/F53): the editor
+// toggle, the tool group, the layer nav, the D91 Route toggle and the save
+// dock live on the editor rail (a region sibling — first child on wide, last
+// child on narrow); the stage keeps only the header, the breadcrumb, the
+// selection chip and the draw-arc feedback banner (D86's absorb list excludes
+// them), and the clamp's measured chrome set is the RAIL rect + the
+// breadcrumb + the chip.
 import {
   AfterViewInit,
   ChangeDetectionStrategy,
@@ -54,14 +55,15 @@ export class MapViewerComponent implements AfterViewInit, OnDestroy {
 
   /**
    * D81/B-127 (D86): the stage's INTERACTIVE chrome — the viewport-preserve
-   * clamp's avoidance targets. Post-rail this is the RAIL rect (the whole
-   * control surface, collapsed strip included — it is still the rail), the
-   * selection chip, and (B-128/D85) the breadcrumb bar (a crumb tap is a
-   * selectLayer — genuinely interactive); the header and the draw-arc
-   * feedback banner are deliberately absent (both are pointer-events: none
-   * — messages, not hit targets). The five pre-rail selectors left with the
-   * chrome they measured (the toggle/tools/layers/save-dock now live ON the
-   * rail, so the rail rect covers them all). Selectors mirror
+   * clamp's avoidance targets. The RAIL rect (the whole control surface,
+   * collapsed strip included — it is still the rail), the selection chip,
+   * and (B-128/D85) the breadcrumb bar (a crumb tap is a selectLayer —
+   * genuinely interactive); the header and the draw-arc feedback banner are
+   * deliberately absent (both are pointer-events: none — messages, not hit
+   * targets). D91: the four panels are overlays and are DELIBERATELY not in
+   * this set — they position to avoid the selection at placement time
+   * (best-effort, each panel's own clamp) and a floater drag must never
+   * fight the viewport clamp. Selectors mirror
    * map-viewer.component.html / editor-rail.component; the e2e mirror
    * constants (panel-resize-viewport / verify-d81-viewport
    * CHROME_SELECTORS) carry the same list.

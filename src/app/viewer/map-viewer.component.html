@@ -1,21 +1,21 @@
-<!-- PKG B-102 — the M1 map viewer (F01/F03/F07, D2/D3/D7, F52/D53), extended
-     by B-105: the route panel joins as a sibling REGION of the map stage —
-     beside it on wide viewports, stacked below it on narrow ones (ruling 5).
-     B-106: the arc panel joins as a third region — beside the route panel on
-     wide viewports, under it on narrow ones (ruling 3) — and renders ONLY
-     while an edge is selected (ruling 1: mutually exclusive with the node
-     selection, so the two panels never fight for the same slot). B-117:
-     the property panel joins as the fourth region — editor mode with a node
-     selection only (an edge selection never shows it: the B-106 mutual
-     exclusion); the panel hides its host entirely when it has no open
-     draft, so it occupies no slot otherwise. B-127 (D86/F53): the editor
-     rail joins as the control REGION — the FIRST child (left column) on
-     wide, the LAST child (bottom bar) on narrow, one component whose SCSS
-     owns its internal orientation. It absorbed the stage's scattered
-     chrome (editor toggle, tools, layer nav, save dock — D86: nothing
-     remains in duplicate); the stage below keeps exactly the canvas, the
-     per-layer background, the R1 header, the selection chip and the
-     draw-arc feedback banner. -->
+<!-- PKG B-102 — the M1 map viewer (F01/F03/F07, D2/D3/D7, F52/D53). The
+     panel regions landed across B-105/B-106/B-117/B-126/B-127 and were
+     REGIMENED by B-133 (D91): the stage is FULL-WIDTH at both breakpoints
+     and the four panels — route, arc, property, layer-manager — are
+     OVERLAYS. On wide viewports each panel floats over the stage (the
+     B-119 floating property regime generalized: remembered position per
+     panel kind, a maximize toggle, best-effort avoid-the-selection
+     placement — placement-only, never a pan); on narrow ones they overlay
+     as bottom sheets in the .tme-sheets stack anchored to the stage's
+     bottom (the B-129 cap arithmetic re-derived for the overlay world: the
+     stack caps against the STAGE, nothing subtracts from it). A panel
+     open/close never resizes the stage and never moves the viewport — the
+     ResizeObserver only ever fires for the rail's collapse/expand and
+     environmental resizes (D91's surviving resize classes). The stage keeps
+     the canvas, the per-layer background, the R1 header, the breadcrumb,
+     the selection chip and the draw-arc feedback banner; the editor rail
+     (B-127, D86) stays the one control REGION — the left column on wide,
+     the bottom bar on narrow. -->
 <figure class="tme-viewer">
   <div class="tme-stage">
     @if (graph.activeBackground(); as asset) {
@@ -58,6 +58,24 @@
       <span data-testid="tme-snapshot-layer">{{ graph.snapshot()?.layer ?? '' }}</span>
       <span class="tme-sep" aria-hidden="true">·</span>
       <span data-testid="tme-unit">{{ graph.snapshot()?.unit ?? '' }}</span>
+      <!-- B-116 (F45/D75) via the B-133 review (D91): the save dock — the
+           app-bar pill form. It lived in the rail until the review showed a
+           rail-flow dock resizes the narrow band on every dirty flip (the
+           stage yields, the RO fires, a commit moves the viewport — B-124's
+           commit-neutral pin). The header band is an absolute overlay that
+           never joins the stage's flex flow (its own growth costs a sliver
+           of canvas top, never a resize), so the dock here is commit-neutral
+           by construction; the pill is pointer-events:auto inside the
+           pointer-events:none header. The testid is unchanged. -->
+      @if (graph.unsavedChanges()) {
+        <aside class="tme-save-dock" data-testid="tme-save-dock" role="status" aria-label="Unsaved map changes">
+          <span data-testid="tme-unsaved">Unsaved changes</span>
+          @if (graph.saveError(); as err) {
+            <span class="tme-save-error" data-testid="tme-save-error">{{ err }}</span>
+          }
+          <button type="button" class="tme-save" data-testid="tme-save" (click)="graph.saveMap()">Save</button>
+        </aside>
+      }
     </header>
 
     <!-- B-128 (D85/F02): the breadcrumb bar — the ACTIVE layer's ancestor
@@ -113,46 +131,55 @@
         {{ feedback }}
       </p>
     }
+
+    <!-- B-133 (D91): the four PANEL SURFACES — overlays over this stage.
+         NARROW (the default): .tme-sheets is the bottom-sheet STACK anchored
+         to the stage's bottom edge (absolute, pointer-events none on the
+         stack, auto on the sheets — the uncovered stage stays fully
+         interactive); the sheets cap against the stage via the stack, and
+         the stage's height never depends on them (a sheet open/close resizes
+         nothing — D91). WIDE (>= 700px): the stack dissolves (display:
+         contents) and each panel host floats position:fixed over the stage
+         under its own component SCSS (the B-119 surface generalized). DOM
+         order = stack paint order (route, arc, property, manager). Panel
+         CONTENT testids are byte-verbatim from the region era; only the
+         regime wrappers changed. -->
+    <div class="tme-sheets">
+      <!-- B-105: the route panel — wide: auto-floats while it has content
+           (routes / blocked listings from the snapshot projection), summoned
+           empty by the rail's Route toggle (tme-route-toggle); narrow: the
+           B-114 bottom sheet with its always-visible rail, unchanged. -->
+      <tme-route-panel class="tme-panel" />
+
+      <!-- B-106 (rulings 1/3): the arc panel — rendered only while an edge
+           is selected (an edge tap cleared the node selection, so the
+           chip/route target are already gone — the panels never fight over
+           one selection). -->
+      @if (graph.edgeSelection()) {
+        <tme-arc-panel class="tme-arc-panel" />
+      }
+
+      <!-- B-117 (§5 Phase 3 M1/F40/F46): the property panel — editor mode
+           with a node selection only (the draft gate lives inside the
+           component; an edge selection — the arc panel's surface — can
+           never coexist with a node selection, B-106). -->
+      <tme-property-panel class="tme-property-panel" />
+
+      <!-- B-126 (§5 Phase 3 M3/D82): the layer-manager sheet — the Manage
+           affordance's surface; the component hides its host entirely while
+           closed (the B-117 precedent), so closed it is not even painted. -->
+      <tme-layer-manager class="tme-layer-manager" />
+    </div>
   </div>
-
-  <!-- B-105 (ruling 5): the route sidebar — beside the stage on wide
-       viewports, stacked below it on narrow ones (the SCSS owns which). -->
-  <tme-route-panel class="tme-panel" />
-
-  <!-- B-106 (rulings 1/3): the arc panel — beside the route panel on wide
-       viewports, under it on narrow ones; rendered only while an edge is
-       selected (an edge tap cleared the node selection, so the chip/route
-       target are already gone — the two panels never coexist on one
-       selection). -->
-  @if (graph.edgeSelection()) {
-    <tme-arc-panel class="tme-arc-panel" />
-  }
-
-  <!-- B-117 (§5 Phase 3 M1/F40/F46): the property panel — the fourth region,
-       beside the others on wide viewports, stacked under them on narrow ones
-       (the SCSS owns which). Editor mode + node selection only (the draft
-       gate lives inside the component; an edge selection — the arc panel's
-       slot — can never coexist with a node selection, B-106). -->
-  <tme-property-panel class="tme-property-panel" />
-
-  <!-- B-126 (§5 Phase 3 M3/D82): the layer-manager sheet — the FIFTH region,
-       beside the other panels on wide viewports, a bottom sheet (the B-114
-       rail pattern) on narrow ones. The component hides its host entirely
-       while the sheet is closed (the B-117 precedent), so the map shares
-       space with it exactly while it is open. A region never overlays the
-       canvas: it joins NO clamp chrome set (the rail+chip set stays — D81's
-       settled reading), and its open/close rides the existing resize
-       discriminator unchanged (preserve on wide, refit on narrow). -->
-  <tme-layer-manager class="tme-layer-manager" />
 
   <!-- B-127 (§5 Phase 3 M3/D86/F53): the editor rail — the app's single
        control surface (editor/view mode, the tool picks, the layer switcher
-       + Manage, the zoom trio, the save dock). DOM-LAST so the NARROW
-       default (no media query needed) is the bottom bar after the panel
-       stack; the wide media query moves it FIRST (order: -1, the left
+       + Manage + the D91 Route toggle, the zoom trio, the save dock). The
+       NARROW default (no media query needed) is the bottom bar under the
+       stage; the wide media query moves it FIRST (order: -1, the left
        column). Its host rect is the clamp's measured chrome ('.tme-rail'),
-       and its collapse/expand is a panel-driven resize the D81
-       discriminator classifies unchanged (preserve on wide, refit on
+       and its collapse/expand is the ONE panel-driven resize the D91
+       discriminator classifies (preserve + rescue clamp on wide, refit on
        narrow). Renders in BOTH modes — the mode toggle lives on it. -->
   <tme-editor-rail class="tme-rail" data-testid="tme-rail" />
 </figure>

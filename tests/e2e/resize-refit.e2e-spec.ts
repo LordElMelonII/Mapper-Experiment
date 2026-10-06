@@ -10,23 +10,25 @@
 // pins what neither earlier spec could: that after a resize the map content
 // is still TAPPABLE, for both resize shapes.
 //
-// D81 scoping: this refit guarantee is the NARROW layout plus the
-// ENVIRONMENTAL classes — on the wide layout a PANEL-driven resize (the
-// container changed while the viewport did not) preserves the viewport
-// instead (tests/e2e/panel-resize-viewport.e2e-spec.ts); both cells below
-// stay in the refit classes (the desktop cell resizes the viewport itself,
-// the phone cell is the narrow layout's panel-open).
+// D91 scoping (B-133): the four panels are OVERLAYS — a panel open/close
+// resizes NOTHING on either layout, so the phone panel cell re-derives to
+// the ZERO-MOTION invariant (the canvas box and the viewport are byte-put
+// across the panel round-trip). The refit guarantee itself now belongs to
+// the ENVIRONMENTAL classes (the desktop cell resizes the viewport) and the
+// rail's collapse/expand (editor-rail.e2e-spec.ts pins the rail cells); the
+// narrow rail collapse keeps the B-106 refit (layer-manager/sheet-panel
+// companion specs cover the sheet world's rotation survival).
 //
 // Cited IDs:
 //   §6.1 (canvas-sizing row) — ResizeObserver → cy.resize() keeps the canvas
 //             matched to its container; the refit (B-106) keeps the fitted
 //             layer visible AND tappable at any stage size. The
-//             container-only case below is the shape ST's animating drawers
-//             will exercise in Phase 4 (container resizes, viewport does not
-//             — the drawer specifics stay Phase 4; this only pins the app
-//             side the RO already serves).
+//             container-only shape ST's animating drawers will exercise in
+//             Phase 4 is the rail's collapse/expand (the surviving
+//             panel-driven class — editor-rail.e2e-spec.ts).
 //   §6.2     — "panels survive a live viewport resize and orientation
 //             change": surviving means usable — a node tap still selects.
+//   D91      — panel open/close is a pure overlay transition: zero motion.
 //   D2       — the RO callback and every cy-level handler write NO signals —
 //             zero change detection; the refit is pure canvas state, which
 //             is why it can run outside Angular's knowledge entirely.
@@ -42,6 +44,8 @@ import { expect, test, type Page, type Point } from '@playwright/test';
 
 interface TmeE2EHook {
   nodeRenderedPosition(id: string): { x: number; y: number } | null;
+  zoom(): number;
+  pan(): { x: number; y: number };
 }
 
 /** FX1 arc facts: id + its two endpoint node ids (the edge-tap anchors). */
@@ -68,6 +72,20 @@ const readPosition = (page: Page, id: string): Promise<{ x: number; y: number } 
     if (hook === undefined) throw new Error('window.__TME_E2E__ missing — dev harness not loaded');
     return hook.nodeRenderedPosition(nodeId);
   }, id);
+
+const readZoom = (page: Page): Promise<number> =>
+  page.evaluate((): number => {
+    const hook = (window as unknown as { __TME_E2E__?: TmeE2EHook }).__TME_E2E__;
+    if (hook === undefined) throw new Error('window.__TME_E2E__ missing — dev harness not loaded');
+    return hook.zoom();
+  });
+
+const readPan = (page: Page): Promise<{ x: number; y: number }> =>
+  page.evaluate(() => {
+    const hook = (window as unknown as { __TME_E2E__?: TmeE2EHook }).__TME_E2E__;
+    if (hook === undefined) throw new Error('window.__TME_E2E__ missing — dev harness not loaded');
+    return hook.pan();
+  });
 
 const canvasBox = async (page: Page) => {
   const box = await page.getByTestId('tme-canvas').boundingBox();
@@ -179,42 +197,63 @@ test.describe('resize → refit → content tappable (PKG B-112)', () => {
     await expect(page.getByTestId('tme-unit')).toHaveText('min');
   });
 
-  test('phone: container-only resize (arc panel open) shrinks the canvas, not the viewport, and content stays tappable (§6.1/§6.2, D2)', async ({
+  test('phone: the arc panel overlays with ZERO motion — the canvas box and the viewport are untouched and content stays tappable (§6.1/§6.2, D91, D2)', async ({
     page,
   }) => {
     test.skip(
       !isPhone(),
-      'desktop runs the >= 700px row layout, where the arc panel takes WIDTH beside the stage, not height — no container-height resize exists to observe there (map-viewer.component.scss breakpoint)',
+      'the phone cell pins the D91 zero-motion invariant on the narrow layout, where the panel used to stack and shrink the stage (map-viewer.component.scss breakpoint)',
     );
 
-    // CONTAINER-only shrink: open the arc panel — at narrow width it stacks
-    // BELOW the stage, so the stage (and the canvas host inside it) shrinks
-    // in height while the viewport never moves. This is the resize shape
-    // ST's animating drawers will drive in Phase 4.
+    // PANEL open: under D91 the arc panel is a bottom-sheet OVERLAY — the
+    // canvas box (height AND width) and the viewport must not move a byte.
+    // The old regime stacked the panel below the stage and refit; that
+    // resize class no longer exists on narrow panel transitions.
     const before = await canvasBox(page);
     const clientWidthBefore = await page.evaluate(() => document.documentElement.clientWidth);
+    const zoomBefore = await readZoom(page);
+    const panBefore = await readPan(page);
 
     await tapEdgeMidpoint(page, CASTLE_ARC);
     await expect(page.getByTestId('tme-arc-panel')).toBeVisible();
+    await settle(page);
 
     const after = await canvasBox(page);
-    expect(after.height, 'canvas shrank in HEIGHT with the panel (container resize)').toBeLessThan(
-      before.height,
-    );
-    expect(after.height, 'canvas survived the shrink (§6.1: never 0×0)').toBeGreaterThan(0);
+    expect(after.width, 'canvas width untouched by the panel open (D91 zero-motion)').toBe(before.width);
+    expect(after.height, 'canvas height untouched by the panel open (D91 zero-motion)').toBe(before.height);
+    expect(after.height, 'canvas survived (§6.1: never 0×0)').toBeGreaterThan(0);
     const clientWidthAfter = await page.evaluate(() => document.documentElement.clientWidth);
     expect(
       clientWidthAfter,
-      'documentElement.clientWidth unchanged — a CONTAINER resize, not a viewport one (§6.1 Phase-4 drawer shape)',
+      'documentElement.clientWidth unchanged — no layout shift at all (§6.1)',
     ).toBe(clientWidthBefore);
+    expect(await readZoom(page), 'zoom byte-equal across the open (D91 zero-motion)').toBe(zoomBefore);
+    const panAfter = await readPan(page);
+    expect(panAfter.x, 'pan.x byte-equal across the open (D91 zero-motion)').toBe(panBefore.x);
+    expect(panAfter.y, 'pan.y byte-equal across the open (D91 zero-motion)').toBe(panBefore.y);
 
-    // The RO → notifyResize → cy.resize() + refit path ran for this
-    // container-only resize: a node tap still selects after the shrink.
+    // Content stays tappable through the overlay: a node tap still selects.
+    // B-133 (D91) review fix: collapse the route sheet first — its blocked
+    // listing is content at boot (the auto-expand) and on the full-width
+    // overlay stage its body can cover the castle's tap point. A user
+    // collapses it via the sheet's own rail toggle; setup, not assertion.
+    if ((await page.getByTestId('tme-sheet-rail').getAttribute('aria-expanded')) === 'true') {
+      await page.getByTestId('tme-sheet-rail').click();
+      await expect(page.getByTestId('tme-sheet-rail')).toHaveAttribute('aria-expanded', 'false');
+      await page.waitForTimeout(200); // the collapse re-renders — a tap in the same tick can still hit the body
+    }
+    // Even collapsed, the route rail rides ABOVE the arc sheet in the
+    // bottom-anchored stack and can still cover the castle's point — clear
+    // the selection with a background tap on the visible canvas ABOVE the
+    // sheets (either outcome closes the arc panel), then node-select.
+    const closeBox = await canvasBox(page);
+    await tapPoint(page, closeBox.x + closeBox.width / 2, closeBox.y + 40);
+    await expect(page.getByTestId('tme-arc-panel')).toBeHidden();
     await tapNode(page, CASTLE_ID);
     await expect(page.getByTestId('tme-selection-chip')).toBeVisible();
     await expect(page.getByTestId('tme-selection-label')).toHaveText(CASTLE_LABEL);
 
-    // R1: the header strings survive the container resize verbatim.
+    // R1: the header strings survive the overlay transition verbatim.
     await expect(page.getByTestId('tme-location')).toHaveText('Emiya Residence');
     await expect(page.getByTestId('tme-snapshot-layer')).toHaveText('Fuyuki City');
     await expect(page.getByTestId('tme-unit')).toHaveText('min');

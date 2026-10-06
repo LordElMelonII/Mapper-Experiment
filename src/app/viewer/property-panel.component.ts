@@ -51,25 +51,30 @@
 // pick, the panel narrates. Done/Cancel and Escape leave the edit body
 // showing the committed draft (connect commits edges, never node fields).
 //
-// B-119 (Q29 panel regime, EXECUTION-PLAN §8 item 3's settled reading): the
-// panel is a STANDING panel — MAXIMIZED BY DEFAULT in the editor (the docked
-// region form, exactly as landed), with a ≥44px header Maximize/Restore
-// toggle (F52): Restore floats it over the stage at its remembered position,
-// Maximize returns it to the dock. Floating, the header is the drag handle —
-// pointer events unify mouse/touch (D53, one code path); the pointermove
-// listener exists only WHILE dragging (attached on dragstart, detached on
-// pointerup/pointercancel) and applies the live position as a DIRECT style
-// transform — a purely presentational write that never touches a signal and
-// never triggers change detection (D2; the B-113 zoom-handler precedent) —
-// committing the final clamped position to the service's panelPosition
-// signal ONCE on release. The clamp is plain containment in the stage bounds
-// below/left of the top-right chrome stack (the header stays reachable — the
-// only clamp that must always hold; NOT F46's fenced canvas snapping: no
-// targets, no edges, no magnetism). The regime state lives in GraphService
-// (frontend viewer memory; the facade gains no command — §9 reserves
-// preference persistence for Phase 4's host). All B-117/B-118 behavior is
-// untouched: the draft rule, the C30 refusal display, the Connect flow, the
-// ≥44px sweep.
+// B-119 (Q29 panel regime, EXECUTION-PLAN §8 item 3's settled reading),
+// re-plumbed by B-133 (D91): the panel is a STANDING panel — MAXIMIZED BY
+// DEFAULT in the editor. Under D91 both forms are overlays: maximized is
+// the tall surface anchored inside the stage's bottom edge on wide (the old
+// flex-region dock is gone — the stage is full-width and every panel
+// overlays it; open/close resizes nothing) and the in-stack bottom sheet on
+// narrow; the compact FLOATING form (all widths, B-119 verbatim) renders at
+// its remembered position. The ≥44px header Maximize/Restore toggle (F52)
+// switches the forms: Restore floats at the remembered (stage-clamped)
+// position, Maximize returns to the maximized form. Floating, the header is
+// the drag handle — pointer events unify mouse/touch (D53, one code path);
+// the pointermove listener exists only WHILE dragging (attached on
+// dragstart, detached on pointerup/pointercancel) and applies the live
+// position as a DIRECT style transform — a purely presentational write that
+// never touches a signal and never triggers change detection (D2; the B-113
+// zoom-handler precedent) — committing the final clamped position to the
+// service's panelPosition signal ONCE on release. The clamp is plain
+// containment in the stage bounds below/left of the top chrome band (the
+// header stays reachable — the only clamp that must always hold; NOT F46's
+// fenced canvas snapping: no targets, no edges, no magnetism). The regime
+// state lives in GraphService (frontend viewer memory; the facade gains no
+// command — §9 reserves preference persistence for Phase 4's host). All
+// B-117/B-118 behavior is untouched: the draft rule, the C30 refusal
+// display, the Connect flow, the ≥44px sweep.
 import {
   ChangeDetectionStrategy,
   Component,
@@ -190,6 +195,11 @@ interface NodeDraft {
     // chrome off it (and keeps the closed panel hidden: display:none still
     // wins, the floating rules require .tme-open too).
     '[class.tme-floating]': 'graph.panelFloating()',
+    // B-133 (D91): the maximized overlay form's avoid-the-selection default
+    // anchor (bottom-left of the stage when the selection sits on the right
+    // half — placement-only, never a pan). The compact floating form ignores
+    // it (its remembered transform owns placement).
+    '[class.tme-anchor-start]': 'anchorStart()',
     // B-119: the floating panel's rendered position — translate(x, y) of the
     // remembered viewport position. The DRAG bypasses this binding entirely
     // (direct style.transform writes, D2); the binding re-renders the same
@@ -250,14 +260,30 @@ export class PropertyPanelComponent {
 
   /**
    * B-119: the floating panel's rendered transform — `translate(x, y)` of
-   * the remembered viewport position (null while docked: no transform). The
-   * drag's direct style writes land on the same property; the one signal
-   * write per drag end re-renders the committed value here.
+   * the remembered viewport position (null while maximized: the CSS anchor
+   * applies). The drag's direct style writes land on the same property; the
+   * one signal write per drag end re-renders the committed value here.
    */
   protected readonly floatTransform = computed<string | null>(() => {
     if (!this.graph.panelFloating()) return null;
     const pos = this.graph.panelPosition();
     return pos === null ? null : `translate(${pos.x}px, ${pos.y}px)`;
+  });
+
+  /**
+   * B-133 (D91): the maximized overlay form's avoid-the-selection default
+   * anchor — an UNPLACED maximized panel anchors away from the selection's
+   * rendered anchor (the service's selectionRenderedSide, the rescue clamp's
+   * own anchor semantics; placement-only, never a pan). The compact floating
+   * form never uses it (a remembered transform is the authority, D10). The
+   * selection signals are read first so the computed re-runs exactly when
+   * they change (D2).
+   */
+  protected readonly anchorStart = computed(() => {
+    if (this.graph.panelFloating()) return false;
+    void this.graph.selection();
+    void this.graph.edgeSelection();
+    return this.graph.selectionRenderedSide() === 'right';
   });
 
   /** The drag currently in progress, or null — a plain field (D2: the
@@ -605,7 +631,13 @@ export class PropertyPanelComponent {
     const refused = this.graph.setNodeLayer(d.id, value);
     if (refused !== null) {
       this.refusals.set(refused.issues);
-      return; // the effect's clear reverts the select — never silently re-parented (D83)
+      // B-133 review fix (D91): the afterRenderEffect's self-clear stopped
+      // landing its second render deterministically under the overlay regime
+      // (the D83 revert assert flapped) — sequence it explicitly: the pick's
+      // render paints, one frame later the clear drives the revert render.
+      // The effect's own clear stays (idempotent — the first pass wins).
+      requestAnimationFrame(() => this.pendingLayer.set(null));
+      return; // the revert — never silently re-parented (D83)
     }
     this.refusals.set([]);
   }
@@ -634,7 +666,11 @@ export class PropertyPanelComponent {
     const refused = this.graph.setPortal(d.id, target);
     if (refused !== null) {
       this.refusals.set(refused.issues);
-      return; // the effect's clear reverts the select — never silently rewired
+      // B-133 review fix (D91): the onLayerChange twin — the explicit frame-
+      // sequenced clear (see onLayerChange; the D85 revert assert shares the
+      // mechanism and the regime).
+      requestAnimationFrame(() => this.pendingPortal.set(null));
+      return; // the revert — never silently rewired
     }
     this.refusals.set([]);
   }
@@ -698,12 +734,13 @@ export class PropertyPanelComponent {
 
   /**
    * The header's regime toggle (the template's only write path, R3): floating
-   * → Maximize returns to the docked region form (one signal write); docked →
-   * Restore floats the panel at its remembered position, clamped against the
-   * CURRENT stage. A never-dragged panel takes the stage's top-left inset as
-   * its base — the clamp itself decides whether that sits below the chrome
-   * stack. Degrades honestly (C32 spirit): no readable stage floats the
-   * panel with the remembered position untouched rather than not at all.
+   * → Maximize returns to the maximized overlay form (one signal write);
+   * maximized → Restore floats the compact panel at its remembered position,
+   * clamped against the CURRENT stage. A never-dragged panel takes the
+   * stage's top-left inset as its base — the clamp itself decides whether
+   * that sits below the chrome band. Degrades honestly (C32 spirit): no
+   * readable stage floats the panel with the remembered position untouched
+   * rather than not at all.
    */
   protected toggleFloat(): void {
     if (this.graph.panelFloating()) {
@@ -735,6 +772,9 @@ export class PropertyPanelComponent {
     const target = event.target as HTMLElement | null;
     if (target?.closest('button') !== null) return; // buttons tap, they don't drag
     if (!event.isPrimary) return; // one pointer owns the drag
+    // The FLOATING form is the drag surface (both layouts — the B-119
+    // regime verbatim); the maximized form's header is plain chrome (the
+    // old dock's semantics: no drag until Restore).
     if (!this.open() || !this.graph.panelFloating() || this.drag !== null) return;
     const rect = this.host.nativeElement.getBoundingClientRect();
     const frame = this.readFrame(rect.width);
@@ -789,11 +829,13 @@ export class PropertyPanelComponent {
 
   /**
    * Snapshot the clamp geometry — the stage rect (the panel floats over the
-   * viewer's stage, found through its own figure), the top-right chrome
-   * stack's union rect (the editor toggle, the selection chip and the save
-   * dock; all conditional, all optional), the header height, and the width
-   * to clamp against (the live measured width while dragging, the SCSS
-   * maximum at Restore time). Null when no stage is reachable (C32 spirit).
+   * viewer's stage), the top chrome band's union rect (the selection chip
+   * and, since B-133, the breadcrumb bar — both conditional, both optional;
+   * B-127 fallout note: the editor toggle and the save dock migrated onto
+   * the editor RAIL, a sibling outside the stage, so the band is
+   * stage-overlay chrome only), the header height, and the width to clamp
+   * against (the live measured width while dragging, the SCSS maximum at
+   * Restore time). Null when no stage is reachable (C32 spirit).
    */
   private readFrame(width: number): ClampFrame | null {
     const stage =
@@ -805,14 +847,13 @@ export class PropertyPanelComponent {
       header === null ? HEADER_FALLBACK_PX : header.getBoundingClientRect().height;
     let chromeLeft = Number.POSITIVE_INFINITY;
     let chromeBottom = Number.NEGATIVE_INFINITY;
-    // B-127 (D86) fallout, lead cleanup: the editor toggle and the save dock
-    // migrated onto the editor RAIL (a sibling region outside the stage) —
-    // the selection chip is the only stage-overlay chrome left to clear.
-    for (const el of stage.querySelectorAll<HTMLElement>('.tme-chip')) {
-      if (el.offsetParent === null) continue; // not rendered (conditional chrome)
-      const r = el.getBoundingClientRect();
-      chromeLeft = Math.min(chromeLeft, r.left);
-      chromeBottom = Math.max(chromeBottom, r.bottom);
+    for (const selector of ['.tme-chip', '.tme-breadcrumb']) {
+      for (const el of stage.querySelectorAll<HTMLElement>(selector)) {
+        if (el.offsetParent === null) continue; // not rendered (conditional chrome)
+        const r = el.getBoundingClientRect();
+        chromeLeft = Math.min(chromeLeft, r.left);
+        chromeBottom = Math.max(chromeBottom, r.bottom);
+      }
     }
     return {
       stageLeft: stageRect.left,
