@@ -4,15 +4,20 @@
 // ones, rendered only while an edge is selected, ruling 1/3) and B-117 (the
 // property panel joins as the fourth region — editor mode with a node
 // selection only; the open/close gate lives inside the panel component,
-// which hides its host when it has no draft). The M1 viewer:
-// canvas host for the GraphService's cy instance (D3), per-layer background
-// beneath it (F03/D29/D69), snapshot header line (R1 — verbatim core
-// strings) and the layer switcher (F01/FX1). Zoneless + OnPush (D2): only
-// signal writes reach the template; the ResizeObserver fires outside Angular
-// and touches none. D81: the RO classifies resizes through the service (the
-// narrow layout + environmental resizes refit; a wide-layout panel-driven
-// resize preserves the viewport, rescuing the selection pan-only) and feeds
-// it this component's measured interactive-chrome rects.
+// which hides its host when it has no draft). The M1 viewer: canvas host for
+// the GraphService's cy instance (D3), per-layer background beneath it
+// (F03/D29/D69), snapshot header line (R1 — verbatim core strings). Zoneless
+// + OnPush (D2): only signal writes reach the template; the ResizeObserver
+// fires outside Angular and touches none. D81: the RO classifies resizes
+// through the service (the narrow layout + environmental resizes refit; a
+// wide-layout panel-driven resize preserves the viewport, rescuing the
+// selection pan-only) and feeds it this component's measured
+// interactive-chrome rects. B-127 (D86/F53): the editor toggle, the tool
+// group, the layer nav and the save dock MIGRATED onto the editor rail (a
+// region sibling — first child on wide, last child on narrow); the stage
+// keeps only the header, the selection chip and the draw-arc feedback
+// banner (D86's absorb list excludes them), and the clamp's measured chrome
+// set is the RAIL rect + the chip.
 import {
   AfterViewInit,
   ChangeDetectionStrategy,
@@ -23,14 +28,16 @@ import {
   viewChild,
 } from '@angular/core';
 import { GraphService } from '../graph/graph.service';
-import type { ChromeRect, EditorTool } from '../graph/graph.service';
+import type { ChromeRect } from '../graph/graph.service';
 import { ArcPanelComponent } from './arc-panel.component';
+import { EditorRailComponent } from './editor-rail.component';
+import { LayerManagerComponent } from './layer-manager.component';
 import { PropertyPanelComponent } from './property-panel.component';
 import { RoutePanelComponent } from './route-panel.component';
 
 @Component({
   selector: 'tme-map-viewer',
-  imports: [RoutePanelComponent, ArcPanelComponent, PropertyPanelComponent],
+  imports: [EditorRailComponent, RoutePanelComponent, ArcPanelComponent, PropertyPanelComponent, LayerManagerComponent],
   templateUrl: './map-viewer.component.html',
   styleUrl: './map-viewer.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -46,19 +53,23 @@ export class MapViewerComponent implements AfterViewInit, OnDestroy {
   private readonly canvasHost = viewChild.required<ElementRef<HTMLDivElement>>('canvasHost');
 
   /**
-   * D81: the stage's INTERACTIVE chrome — the viewport-preserve clamp's
-   * avoidance targets. The header and the draw-arc feedback banner are
-   * deliberately absent (both are pointer-events: none — messages, not hit
-   * targets); the bottom-left layer nav never moves on a panel resize but
-   * stays a valid avoidance target. Selectors mirror
-   * map-viewer.component.scss.
+   * D81/B-127 (D86): the stage's INTERACTIVE chrome — the viewport-preserve
+   * clamp's avoidance targets. Post-rail this is the RAIL rect (the whole
+   * control surface, collapsed strip included — it is still the rail), the
+   * selection chip, and (B-128/D85) the breadcrumb bar (a crumb tap is a
+   * selectLayer — genuinely interactive); the header and the draw-arc
+   * feedback banner are deliberately absent (both are pointer-events: none
+   * — messages, not hit targets). The five pre-rail selectors left with the
+   * chrome they measured (the toggle/tools/layers/save-dock now live ON the
+   * rail, so the rail rect covers them all). Selectors mirror
+   * map-viewer.component.html / editor-rail.component; the e2e mirror
+   * constants (panel-resize-viewport / verify-d81-viewport
+   * CHROME_SELECTORS) carry the same list.
    */
   private static readonly INTERACTIVE_CHROME: readonly string[] = [
-    '.tme-layers',
+    '.tme-rail',
+    '.tme-breadcrumb',
     '.tme-chip',
-    '.tme-editor-toggle',
-    '.tme-save-dock',
-    '.tme-tools',
   ];
 
   // Charter lifecycle: container resizes (panel layouts, rotation) re-size cy.
@@ -84,10 +95,12 @@ export class MapViewerComponent implements AfterViewInit, OnDestroy {
    * D81: measure the interactive chrome and translate it into the CANVAS
    * coordinate space the service's rendered boxes live in (viewport-px
    * getBoundingClientRect minus the canvas origin — the consumer owns the
-   * conversion). Conditional chrome not currently rendered (chip, save dock,
-   * editor tools) yields no rect; hidden chrome measures 0×0 and is skipped;
-   * any measurement failure degrades to undefined — the canvas-rect-only
-   * clamp (C32 spirit, never a throw).
+   * conversion). Conditional chrome not currently rendered (chip) yields no
+   * rect; the rail is a SIBLING region, so its rect may legitimately sit
+   * outside the canvas box (negative-x on wide, below on narrow) — the clamp
+   * treats it generically; hidden chrome measures 0×0 and is skipped; any
+   * measurement failure degrades to undefined — the canvas-rect-only clamp
+   * (C32 spirit, never a throw).
    */
   private measureInteractiveChrome(): ChromeRect[] | undefined {
     try {
@@ -112,11 +125,6 @@ export class MapViewerComponent implements AfterViewInit, OnDestroy {
     }
   }
 
-  /** F52/D53: one tap path for every project — no hover-only affordances. */
-  protected selectLayer(layerId: string): void {
-    this.graph.selectLayer(layerId);
-  }
-
   /**
    * B-103: chip dismiss — clears selection through the same signal path as a
    * background tap; the tme-selected canvas accent follows the signal via the
@@ -127,31 +135,12 @@ export class MapViewerComponent implements AfterViewInit, OnDestroy {
   }
 
   /**
-   * B-116 (§5 Phase 3 M1): the editor toggle — enters/exits editor mode
-   * through the service's single write paths (R2/R3: no canvas or DOM writes
-   * here, only the signal + the core-wide grabbable switch the service owns).
+   * B-128 (D85/F02): a breadcrumb crumb's tap — the layer switch through the
+   * service's single write path (R2/R3; selectLayer's explicit fit stands,
+   * D85/D81). The active crumb is a non-interactive span (aria-current), so
+   * only ancestor crumbs reach here.
    */
-  protected toggleEditor(): void {
-    if (this.graph.editorMode()) this.graph.exitEditor();
-    else this.graph.enterEditor();
-  }
-
-  /**
-   * B-120 (D76): the segmented tool control's tap path — the service's
-   * single write path for the editor tool (R2/R3, the toggleEditor pattern:
-   * one signal write, the template follows).
-   */
-  protected setEditorTool(tool: EditorTool): void {
-    this.graph.setEditorTool(tool);
-  }
-
-  /**
-   * B-116 (F45/C29/D75): the save bar's Save — the facade's explicit save
-   * through the service (R2). A C30 refusal surfaces user-visibly via the
-   * service's saveError signal (rendered in the save dock), never
-   * console-only.
-   */
-  protected saveMap(): void {
-    this.graph.saveMap();
+  protected selectLayer(layerId: string): void {
+    this.graph.selectLayer(layerId);
   }
 }

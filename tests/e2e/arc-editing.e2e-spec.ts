@@ -837,8 +837,26 @@ test.describe('arc editing: the M2 sections + measure this arc (PKG B-123)', () 
       const toggle = await page.getByTestId('tme-editor-toggle').boundingBox();
       const tools = await page.getByTestId('tme-editor-tools').boundingBox();
       const layers = await page.getByTestId('tme-layer-layer-fuyuki').boundingBox();
-      const rightEdge = Math.min(toggle?.x ?? Infinity, tools?.x ?? Infinity) - 16;
-      const bottomEdge = layers?.y ?? box.y + box.height;
+      // B-127 (D86) aiming repair: the migrated chrome lives ON the rail — a
+      // SIBLING of the canvas, never an overlay — so only chrome boxes that
+      // still INTERSECT the canvas band constrain the pinch; off-canvas
+      // chrome (the rail bar below the canvas) yields to the canvas's edges.
+      // The CHIP is the one overlay that stayed on the stage: a pinch finger
+      // starting on it releases as its tap (dismisses the selection — found
+      // live), so its live box joins the right-edge constraints.
+      const inCanvasBand = (b: { y: number; height: number } | null): boolean =>
+        b !== null && b.y < box.y + box.height && b.y + b.height > box.y;
+      const chip = (await page.getByTestId('tme-selection-chip').count()) > 0
+        ? await page.getByTestId('tme-selection-chip').boundingBox()
+        : null;
+      const rightEdge =
+        Math.min(
+          ...(toggle !== null && inCanvasBand(toggle) ? [toggle.x] : []),
+          ...(tools !== null && inCanvasBand(tools) ? [tools.x] : []),
+          ...(chip !== null && inCanvasBand(chip) ? [chip.x] : []),
+          box.x + box.width,
+        ) - 16;
+      const bottomEdge = layers !== null && inCanvasBand(layers) ? layers.y : box.y + box.height;
       const center = {
         x: box.x + (12 + rightEdge) / 2,
         y: box.y + Math.max(64, Math.min(box.height * 0.45, bottomEdge - box.y - 20)),

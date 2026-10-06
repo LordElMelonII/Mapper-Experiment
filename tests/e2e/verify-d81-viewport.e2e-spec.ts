@@ -71,8 +71,8 @@ const BADGE_ID = `tme-badge-${CROSS_LAYER_ARC}`;
 const FUYUKI_LAYER_BUTTON = 'tme-layer-layer-fuyuki';
 const MISAKI_LAYER_BUTTON = 'tme-layer-layer-misaki';
 
-/** D81: the five INTERACTIVE chrome surfaces (map-viewer.component). */
-const CHROME_SELECTORS = ['.tme-layers', '.tme-chip', '.tme-editor-toggle', '.tme-save-dock', '.tme-tools'];
+/** D81/B-127/B-128 (D86/D85): the measured INTERACTIVE chrome surfaces (map-viewer.component — the rail, the breadcrumb bar and the chip). */
+const CHROME_SELECTORS = ['.tme-rail', '.tme-breadcrumb', '.tme-chip'];
 
 const R1_HEADERS: ReadonlyArray<[string, string]> = [
   ['tme-location', 'Emiya Residence'],
@@ -480,17 +480,21 @@ test.describe('D81 verifier cells (PKG B-125 close)', () => {
     const bad = collectConsole(page);
     await settle(page);
     await expectHeaders(page);
-    const zoomBefore = await readZoom(page);
+    const panBefore = await readPan(page);
 
     // Touch alone: arc select stacks the panel below the stage — narrow +
     // panel-driven ⇒ the B-106 refit (NOT preserve): the shrunken stage
-    // re-fits (zoom moves, the temple fits the shorter canvas).
+    // re-fits. Lead repair (post-rail): the phone fit is WIDTH-limited in
+    // the rail regime (the B-126 deviation-5 fact), so a height-only
+    // panel-open refit re-pans while holding one zoom — the zoom-delta
+    // proxy this cell once asserted is stale; the refit is pinned by the
+    // re-pan + the in-box temple below.
     await tapEdgeMidpoint(page, CASTLE_ARC);
     await expect(page.getByTestId('tme-arc-panel')).toBeVisible();
     await settle(page);
     const canvasShrunk = await canvasBox(page);
-    const zoomOpen = await readZoom(page);
-    expect(zoomOpen, 'narrow + panel-driven still refits (D81 keeps B-106)').not.toBe(zoomBefore);
+    const panOpen = await readPan(page);
+    expect(panOpen.y, 'narrow + panel-driven still refits — the re-pan (D81 keeps B-106)').not.toBe(panBefore.y);
     const temple = expectPositioned(await readPosition(page, TEMPLE_ID), TEMPLE_ID);
     expect(temple.y, 'temple in-box after the open refit').toBeGreaterThanOrEqual(0);
     expect(temple.y, 'temple in-box after the open refit').toBeLessThanOrEqual(canvasShrunk.height);

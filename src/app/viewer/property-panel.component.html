@@ -101,6 +101,38 @@
         }
       </select>
 
+      <!-- B-126 (D83): the Layer dropdown — the ONE way to move a node
+           between layers. NOT a draft field: a pick is a complete discrete
+           intent and commits immediately through the service's setNodeLayer
+           wrapper (R2). The selected option is the LIVE node's layer (a
+           refused stranding move reverts here — never silently re-parented);
+           the five draft fields and their commit path are untouched. All
+           layers by NAME (C23). -->
+      <label class="tme-field-label" for="tme-node-layer">Layer</label>
+      <select id="tme-node-layer" class="tme-input" data-testid="tme-node-layer" (change)="onLayerChange($event)">
+        @for (layer of graph.layerNames(); track layer.id) {
+          <option [value]="layer.id" [selected]="layerSelectValue() === layer.id">{{ layer.name }}</option>
+        }
+      </select>
+
+      <!-- B-128 (D85/F02): the "Opens layer" dropdown — portal WIRING, the
+           ONE surface that authors nodes[i].portal (R2: the service's
+           setPortal wrapper commits the pick immediately — a discrete
+           intent, never a draft field). The selected option is the LIVE
+           node's wiring (None when unwired; a refused wiring reverts here —
+           the two-pass revert, never silently rewired); every OTHER layer by
+           NAME (C23) — the node's own layer never renders (a portal cannot
+           target its own layer). Success makes the portal badge appear on
+           the canvas (the rebuild owns that); the hierarchy (the breadcrumb)
+           derives from this wiring. -->
+      <label class="tme-field-label" for="tme-node-portal">Opens layer</label>
+      <select id="tme-node-portal" class="tme-input" data-testid="tme-node-portal" (change)="onPortalChange($event)">
+        <option value="" [selected]="portalSelectValue() === ''">None</option>
+        @for (layer of portalOptions(); track layer.id) {
+          <option [value]="layer.id" [selected]="portalSelectValue() === layer.id">{{ layer.name }}</option>
+        }
+      </select>
+
       <span class="tme-field-label" id="tme-aliases-label">Aliases</span>
       <div class="tme-aliases" role="group" aria-labelledby="tme-aliases-label">
         @for (alias of d.aliases; track $index) {
@@ -155,8 +187,12 @@
 
       <!-- F46: delete-and-redo IS the workflow — direct, no confirm dialog.
            Done (in the header) commits the whole draft as ONE upsertNode;
-           Connect (also in the header) starts the quick-connect flow. -->
+           Connect (also in the header) starts the quick-connect flow.
+           B-126 (D82/F54): the danger zone — Detach from arcs beside Delete,
+           immediate, no confirm (the F46 precedent: the cascade confirm
+           exists because a LAYER dies, not because arcs do). -->
       <div class="tme-actions">
+        <button type="button" class="tme-detach" data-testid="tme-node-detach" (click)="detach()">Detach from arcs</button>
         <button type="button" class="tme-delete" data-testid="tme-node-delete" (click)="remove()">Delete</button>
       </div>
     }

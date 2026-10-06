@@ -4,21 +4,30 @@
      B-106: the arc panel joins as a third region — beside the route panel on
      wide viewports, under it on narrow ones (ruling 3) — and renders ONLY
      while an edge is selected (ruling 1: mutually exclusive with the node
-     selection, so the two panels never fight for the same slot). B-116 (§5
-     Phase 3 M1): editor chrome joins the stage's top-right chrome stack —
-     the editor toggle above the selection chip, and the F45 save dock below
-     it (rendered only while the facade holds unsaved editor edits). B-117:
+     selection, so the two panels never fight for the same slot). B-117:
      the property panel joins as the fourth region — editor mode with a node
      selection only (an edge selection never shows it: the B-106 mutual
      exclusion); the panel hides its host entirely when it has no open
-     draft, so it occupies no slot otherwise. -->
+     draft, so it occupies no slot otherwise. B-127 (D86/F53): the editor
+     rail joins as the control REGION — the FIRST child (left column) on
+     wide, the LAST child (bottom bar) on narrow, one component whose SCSS
+     owns its internal orientation. It absorbed the stage's scattered
+     chrome (editor toggle, tools, layer nav, save dock — D86: nothing
+     remains in duplicate); the stage below keeps exactly the canvas, the
+     per-layer background, the R1 header, the selection chip and the
+     draw-arc feedback banner. -->
 <figure class="tme-viewer">
   <div class="tme-stage">
     @if (graph.activeBackground(); as asset) {
       <!-- F03/D29/D69: the active layer's background — fitted + centered
            (object-fit contain letterboxes aspect mismatch), never interactive;
-           the node graph is always the interface on top. -->
-      <img class="tme-bg" data-testid="tme-bg" [src]="asset" alt="" />
+           the node graph is always the interface on top. B-130 (D84/C32):
+           a failed load degrades to NO background — the backgroundFailed
+           flag hides the img (one [TravelMapper] warn, the canvas untouched);
+           the flag re-arms on any src change, so a retry succeeds silently. -->
+      @if (!graph.backgroundFailed()) {
+        <img class="tme-bg" data-testid="tme-bg" [src]="asset" alt="" (error)="graph.backgroundLoadFailed()" />
+      }
     }
 
     <!-- D53/§6.2: touch-action: none lives in the SCSS on this host so canvas
@@ -36,28 +45,41 @@
       <span data-testid="tme-unit">{{ graph.snapshot()?.unit ?? '' }}</span>
     </header>
 
-    <!-- F01/F02 (M1 scope): layer switcher only — the breadcrumb is F02's full
-         scope in Phase 3. One button per layer, >= 44px tap target (F52). -->
-    <nav class="tme-layers" aria-label="Map layers">
-      @for (layer of graph.layerNames(); track layer.id) {
-        <button
-          type="button"
-          class="tme-layer-button"
-          [class.tme-active]="layer.id === graph.activeLayer()"
-          [attr.data-testid]="'tme-layer-' + layer.id"
-          (click)="selectLayer(layer.id)"
-        >
-          {{ layer.name }}
-        </button>
-      }
-    </nav>
+    <!-- B-128 (D85/F02): the breadcrumb bar — the ACTIVE layer's ancestor
+         chain derived from the portal wiring (no separate parent field),
+         rendered only when the chain is longer than one (a root layer has
+         no bar). Plain name buttons (C23, >= 44px touch-alone F52/D53);
+         a crumb tap = selectLayer(that layer) — the same viewport switch
+         the rail's nav performs; the ACTIVE layer's crumb is the non-
+         interactive tail (aria-current="page"). The chain and its names
+         are the service's breadcrumb computed — authored words, no ids
+         (R1/C23). Interactive chrome: joined the D81 clamp set (the
+         component's INTERACTIVE_CHROME). -->
+    @if (graph.breadcrumb().length > 1) {
+      <nav class="tme-breadcrumb" data-testid="tme-breadcrumb" aria-label="Layer path">
+        @for (crumb of graph.breadcrumb(); track crumb.id; let last = $last) {
+          @if (last) {
+            <span class="tme-crumb tme-crumb-active" data-testid="tme-crumb" aria-current="page">{{ crumb.name }}</span>
+          } @else {
+            <button type="button" class="tme-crumb" data-testid="tme-crumb" (click)="selectLayer(crumb.id)">
+              {{ crumb.name }}
+            </button>
+          }
+          @if (!last) {
+            <span class="tme-crumb-sep" aria-hidden="true">›</span>
+          }
+        }
+      </nav>
+    }
 
     <!-- B-103 selection chip (D2/D53/F52): template-bound to the selection
          signal — visible only while a node is selected. The whole chip is ONE
          >= 44px tap target that dismisses the selection (the x is the visual
          dismiss affordance), so touch alone needs no hover (F52/D53);
          touch-action: manipulation in SCSS kills double-tap zoom on the chrome
-         (§6.2). -->
+         (§6.2). D86: the chip is NOT on the rail (it names the live selection
+         beside the canvas) — it stays on the stage and stays a clamp chrome
+         rect. -->
     @if (graph.selection(); as sel) {
       <button type="button" class="tme-chip" data-testid="tme-selection-chip" (click)="dismissSelection()">
         <span data-testid="tme-selection-label">{{ sel.label }}</span>
@@ -65,95 +87,16 @@
       </button>
     }
 
-    <!-- B-116 (§5 Phase 3 M1/D53/F52): the editor toggle — always visible, one
-         >= 44px tap target whose pressed state (aria-pressed + the gold
-         tme-active class bound to the editorMode signal, R3) tells the author
-         that canvas taps place nodes and node drags persist. Plain words
-         (C23); touch alone operates it (tap, no hover). -->
-    <button
-      type="button"
-      class="tme-editor-toggle"
-      data-testid="tme-editor-toggle"
-      [class.tme-active]="graph.editorMode()"
-      [attr.aria-pressed]="graph.editorMode() ? 'true' : 'false'"
-      (click)="toggleEditor()"
-    >
-      {{ graph.editorMode() ? 'Editing' : 'Edit' }}
-    </button>
-
-    <!-- B-120 (D76/F52/D53): the editor's segmented TOOL control — what an
-         editor-mode background/compound-box tap places: Node (default, the
-         B-116 authored-node behavior) or Waypoint (the B-109 chat-waypoint
-         semantics, kNN and all). B-122 (§5 M2): the third segment Arc — leaf
-         taps pick arc endpoints (tap source, tap target) and the background
-         tap places NOTHING while it is active (the tool owns the gesture).
-         Editor chrome only (view mode never renders it — view mode is purely
-         navigational, nothing is ever placed); one >= 44px segment per tool;
-         the pressed state (aria-pressed + the gold tme-active class bound to
-         the editorTool signal, R3) makes the active placement kind visible —
-         no invisible affordance (D53). Plain words (C23); touch alone
-         operates it. -->
-    @if (graph.editorMode()) {
-      <div class="tme-tools" role="group" aria-label="Editor tools" data-testid="tme-editor-tools">
-        <button
-          type="button"
-          class="tme-tool"
-          data-testid="tme-tool-node"
-          [class.tme-active]="graph.editorTool() === 'node'"
-          [attr.aria-pressed]="graph.editorTool() === 'node' ? 'true' : 'false'"
-          (click)="setEditorTool('node')"
-        >
-          Node
-        </button>
-        <button
-          type="button"
-          class="tme-tool"
-          data-testid="tme-tool-waypoint"
-          [class.tme-active]="graph.editorTool() === 'waypoint'"
-          [attr.aria-pressed]="graph.editorTool() === 'waypoint' ? 'true' : 'false'"
-          (click)="setEditorTool('waypoint')"
-        >
-          Waypoint
-        </button>
-        <button
-          type="button"
-          class="tme-tool"
-          data-testid="tme-tool-arc"
-          [class.tme-active]="graph.editorTool() === 'arc'"
-          [attr.aria-pressed]="graph.editorTool() === 'arc' ? 'true' : 'false'"
-          (click)="setEditorTool('arc')"
-        >
-          Arc
-        </button>
-      </div>
-    }
-
     <!-- B-122 (F17/C3 + C23): the draw-arc refusal banner — why the last
          Arc-tool tap refused (the cross-layer fence), plain words, rendered
          only while the Arc tool is active and a refusal stands. A status
          message, not a control: pointer-events none so a dismissive
-         background tap still reaches the canvas (and cancels the pick). -->
+         background tap still reaches the canvas (and cancels the pick).
+         D86: the banner is not rail chrome — it stays where it is. -->
     @if (graph.editorMode() && graph.editorTool() === 'arc' && graph.drawArcFeedback(); as feedback) {
       <p class="tme-draw-feedback" data-testid="tme-draw-feedback" role="status">
         {{ feedback }}
       </p>
-    }
-
-    <!-- B-116 (F45/D75): the save dock — the F45 unsaved-changes indicator
-         (the core's dirty flag is the single truth, R1) PLUS the Save button,
-         rendered exactly while the facade still holds unsaved editor edits,
-         so it survives editor-mode toggles (F45: edits live until saveMap).
-         A C30 save refusal surfaces user-visibly through graph.saveError
-         (the established signal → template message path, never console-only)
-         while the dock stays (dirty remains true after a refusal). -->
-    @if (graph.unsavedChanges()) {
-      <aside class="tme-save-dock" data-testid="tme-save-dock" role="status" aria-label="Unsaved map changes">
-        <span data-testid="tme-unsaved">Unsaved changes</span>
-        @if (graph.saveError(); as err) {
-          <span class="tme-save-error" data-testid="tme-save-error">{{ err }}</span>
-        }
-        <button type="button" class="tme-save" data-testid="tme-save" (click)="saveMap()">Save</button>
-      </aside>
     }
   </div>
 
@@ -176,4 +119,25 @@
        gate lives inside the component; an edge selection — the arc panel's
        slot — can never coexist with a node selection, B-106). -->
   <tme-property-panel class="tme-property-panel" />
+
+  <!-- B-126 (§5 Phase 3 M3/D82): the layer-manager sheet — the FIFTH region,
+       beside the other panels on wide viewports, a bottom sheet (the B-114
+       rail pattern) on narrow ones. The component hides its host entirely
+       while the sheet is closed (the B-117 precedent), so the map shares
+       space with it exactly while it is open. A region never overlays the
+       canvas: it joins NO clamp chrome set (the rail+chip set stays — D81's
+       settled reading), and its open/close rides the existing resize
+       discriminator unchanged (preserve on wide, refit on narrow). -->
+  <tme-layer-manager class="tme-layer-manager" />
+
+  <!-- B-127 (§5 Phase 3 M3/D86/F53): the editor rail — the app's single
+       control surface (editor/view mode, the tool picks, the layer switcher
+       + Manage, the zoom trio, the save dock). DOM-LAST so the NARROW
+       default (no media query needed) is the bottom bar after the panel
+       stack; the wide media query moves it FIRST (order: -1, the left
+       column). Its host rect is the clamp's measured chrome ('.tme-rail'),
+       and its collapse/expand is a panel-driven resize the D81
+       discriminator classifies unchanged (preserve on wide, refit on
+       narrow). Renders in BOTH modes — the mode toggle lives on it. -->
+  <tme-editor-rail class="tme-rail" data-testid="tme-rail" />
 </figure>

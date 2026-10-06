@@ -225,6 +225,21 @@ function checkNodeFields(
   if (node['origin'] !== undefined && !oneOf(ORIGINS, node['origin'])) {
     push(issues, `${path}.origin`, `must be one of: ${ORIGINS.join(', ')}`);
   }
+
+  // D85: portal wiring — the per-node rules. A portal names the layer the node
+  // opens: it must exist and cannot be the node's own layer. The
+  // ONE-entry-node-per-layer UNIQUENESS rule is validateWorldMap's map-scope
+  // pass (below) — a per-node check cannot see its siblings.
+  const portal = node['portal'];
+  if (portal !== undefined) {
+    if (!isNonEmptyString(portal)) {
+      push(issues, `${path}.portal`, 'must be a non-empty layer id string');
+    } else if (!layerIds.has(portal)) {
+      push(issues, `${path}.portal`, `must reference an existing layer id ('${portal}' not found)`);
+    } else if (portal === layer) {
+      push(issues, `${path}.portal`, `a portal cannot target its own layer ('${portal}')`);
+    }
+  }
 }
 
 interface EdgeContext {
@@ -373,6 +388,24 @@ export function validateWorldMap(data: unknown): WorldMapData {
         layerIds.add(id);
       }
       requireNonEmptyString(issues, layer['name'], `${path}.name`);
+      // D84: a background reference carries EXACTLY ONE source arm, each a
+      // non-empty string — both arms or neither is one field-precise defect.
+      const background = layer['background'];
+      if (background !== undefined) {
+        if (!isObject(background)) {
+          push(issues, `${path}.background`, 'must be an object with exactly one of assetId or url');
+        } else {
+          const hasAsset = background['assetId'] !== undefined;
+          const hasUrl = background['url'] !== undefined;
+          if (hasAsset === hasUrl) {
+            push(issues, `${path}.background`, 'must carry exactly one of assetId or url (D84)');
+          } else if (hasAsset) {
+            requireNonEmptyString(issues, background['assetId'], `${path}.background.assetId`);
+          } else {
+            requireNonEmptyString(issues, background['url'], `${path}.background.url`);
+          }
+        }
+      }
     });
   }
 
@@ -549,6 +582,25 @@ export function validateWorldMap(data: unknown): WorldMapData {
       for (const id of chain) chainState.set(id, cyclic);
       if (cyclic) {
         push(issues, `nodes[${rec.index}].parent`, `parent chain is cyclic: ${chain.join(' -> ')}`);
+      }
+    }
+
+    // nodes — pass 3 (D85): at most ONE entry node per layer. Duplicate wiring
+    // reports EVERY offender field-precisely, naming the sibling paths.
+    const portalWiring = new Map<string, number[]>(); // target layer id → indices of nodes wiring it
+    nodes.forEach((node, i) => {
+      if (!isObject(node)) return;
+      const portal = node['portal'];
+      if (!isNonEmptyString(portal)) return; // field defects already reported in pass 1
+      const wired = portalWiring.get(portal) ?? [];
+      wired.push(i);
+      portalWiring.set(portal, wired);
+    });
+    for (const [target, indices] of portalWiring) {
+      if (indices.length < 2) continue;
+      const siblings = indices.map((i) => `nodes[${i}]`).join(', ');
+      for (const i of indices) {
+        push(issues, `nodes[${i}].portal`, `at most one node may open layer '${target}' (wired by ${siblings})`);
       }
     }
   }

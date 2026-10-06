@@ -155,6 +155,70 @@
 // rendered id is valid by construction, but the surface must exist) is
 // caught and surfaced user-visibly through `travelModeRefusal` (the
 // saveError/arcBlockRefusal pattern), never an uncaught throw (C32).
+// B-126 (§5 Phase 3 M3 — D82/D83/F54): the layer-manager surfaces. (1) The
+// sheet's open state (`layerManagerOpen` — FRONTEND viewer state, the
+// panelFloating class: the facade carries no command for it; closed by
+// loadMap and the sheet's own Escape/X/Manage affordances). (2) The five
+// layer-command wrappers (upsertLayer / removeLayer / reorderLayers /
+// setNodeLayer / detachNode) — R2 seams: the components never touch the
+// facade directly; each returns C30 refusals as the panel-renderable
+// NodeEditRefusal shape (nodeEditRefusal), marks only `dirty` (F45/D75:
+// dirty-never-stale — no graphRevision bump, no snapshot refresh; the save
+// dock is the visual) and feeds the B-121 draft log (a moved node joins;
+// a removeLayer's portal-unwired survivors join; removed ids LEAVE — the
+// removeEdge precedent). (3) `layerRemovalImpact` — the R1 read the
+// delete-confirm dialog renders (the ENGINE's N/M/K, never UI counting),
+// with `testLayerRemovalImpact` as its harness seam. The active-layer
+// reset rides D69/D82: deleting the active layer mirrors the facade's
+// reset (survivors' first layer) into the signal and re-projects.
+// B-127 (§5 Phase 3 M3 — D86/F53): the editor rail's zoom trio — `zoomIn` /
+// `zoomOut` (one ×1.25 multiplicative step about the VIEWPORT CENTER via
+// `cy.zoom({ level, renderedPosition })`, cropped by the runtime to its
+// min/max zoom) and `fitToView` (the PUBLIC user Fit — the user is the
+// authority, D10 — calling the ONE internal fit site, B-120/D81). All
+// three are the notifyResize class: NO signal writes, no logging (D2);
+// the only follower is the B-113 `zoom`-event cull handler.
+// B-130 (§5 Phase 3 M3 — D84/D29/C32): layer backgrounds go live end-to-end.
+// (1) `setLayerBackground` — the R2 wrapper over the facade command (the
+// B-126 layer-wrapper discipline: NodeEditRefusal shape, editorRevision bump
+// only — the background is NOT a cy projection element, so no rebuild and no
+// B-121 entry). (2) `activeBackground` gains the editorRevision dependency
+// (C24 — the in-place layer-object swap precedent, the layerNames note) and
+// `layerBackground(id)` exposes the ARM-level live read the manager sheet's
+// state lines render. (3) The C32 load degrade: the tme-bg img's error lands
+// in `backgroundLoadFailed()` — ONE `[TravelMapper] background load failed`
+// warn, the `backgroundFailed` view flag hides the img, and the constructor
+// effect re-arms it on any src change (a retry succeeds silently); a hostile
+// URL never throws and never breaks the canvas (F03).
+// B-128 (§5 Phase 3 M3 — D85/F02/F17): portals go live. (1) PORTAL BADGES —
+// buildPortalBadges (layer-elements.ts) merges one `tme-portal-badge` pseudo-
+// node per wired node into the rebuild batch beside the arc badges (the
+// shared `tme-badge` class keeps B-115 cull-coherence; the distinct class
+// carries the depth hue); single taps stay no-ops (the waypoint/badge tap
+// precedent). (2) THE ENTRY GESTURE (F02's fixed one): dblclick + dbltap on
+// `node.tme-portal-badge` ⇒ selectLayer(portal target of that node) —
+// available in BOTH modes (D85 fences nothing; a kept draw pick narrates,
+// below); a single tap selects nothing, so a double's two taps never select;
+// a stale badge (node/target gone mid-rebuild) degrades to a no-op (C32).
+// Verified against the installed runtime: the mouse double-click path fires
+// BOTH names (cytoscape.umd.js:26441 `["dblclick", "dbltap", "vdblclick"]`),
+// the touch path fires dbltap (:27431) — re-entry is an idempotent
+// selectLayer of the same target. EventNames is plain `string`
+// (@types/cytoscape 3.21.9 index.d.ts:3719), so the names typecheck as-is.
+// (3) THE BREADCRUMB: the layer chain derives from the wiring — the service
+// exposes the pure breadcrumbChain through the `breadcrumb` computed
+// (root → active, names joined, rendered by the viewer when length > 1);
+// crumb taps are selectLayer. (4) THE F17 UN-FENCE (D85): selectLayer with a
+// pending draw pick KEEPS it and narrates ("Drawing from <label> — tap where
+// its arc lands") — the silent mid-pick die-at-the-fence regime ends — and
+// the B-122 cross-layer guard RETIRES: a target tap whose layer differs from
+// the source's COMMITS cross-layer (plain commitDrawArc; C3 badges it);
+// DRAW_ARC_CROSS_LAYER and its constant are gone. loadMap/editor-exit clear,
+// the compound-box and self-tap cancels stand. (5) THE WIRING SEAM:
+// `setPortal(nodeId, layerId | null)` — the R2 wrapper over A-017's facade
+// command (immediate discrete intent, the setNodeLayer precedent; C30
+// refusals field-precise; the node joins the B-121 log — a node edit; rebuild,
+// no fit, B-120). The pure projection and builders stay R1-clean.
 // The ONE cytoscape instance (D3): created headless
 // in the constructor, `mount()`/`unmount()` on demand — computation works with
 // the UI closed. Zoneless (D2): the service writes signals; the ONLY canvas
@@ -185,6 +249,8 @@ import type {
 import { Injectable, OnDestroy, computed, effect, signal } from '@angular/core';
 import type {
   ChatMapOverlay,
+  LayerBackground,
+  LayerRemovalImpact,
   MapEdgeData,
   MapNodeData,
   MapSnapshot,
@@ -196,7 +262,13 @@ import type {
 } from '../../core/api';
 import type { MapFacade } from '../../core/facade';
 import { MapValidationError, isPinEligible, resolveModeLabel } from '../../core/model/validate';
-import { buildCrossLayerBadges, buildLayerElements, crossLayerAnchors } from './layer-elements';
+import {
+  breadcrumbChain,
+  buildCrossLayerBadges,
+  buildLayerElements,
+  buildPortalBadges,
+  crossLayerAnchors,
+} from './layer-elements';
 
 /** Switcher label: the id the facade validates + the C23 human name. */
 export interface LayerLabel {
@@ -444,6 +516,22 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
     },
   },
   {
+    // B-128 (D85/F02): the PORTAL badge's depth hue — one visual language
+    // with the arc badges (the shared `tme-badge` entry above owns the
+    // body/z-index/cull-coherent text sizing; B-115), a DISTINCT color so
+    // "there is depth here" reads apart from a cross-layer arc badge. The
+    // single overridden property is `color` — the label text IS the badge's
+    // visible paint. Declared AFTER the shared base (the cascade's last-match
+    // rule, the B-111 precedent) and BEFORE the draft entry, which must keep
+    // its ability to override the text hue on a drafted badge (cascade
+    // safety, though portal badges never carry tme-draft — the B-121 log
+    // stores the NODE id, and `tme-portal-badge-<id>` never matches the
+    // draft projection's `tme-badge-<id>` lookup). No `min-zoomed-font-size`
+    // (the B-107 hide-floor gotcha, binding).
+    selector: 'node.tme-portal-badge',
+    style: { color: '#8fd3b6' },
+  },
+  {
     // B-121 (D77): a cross-layer arc with unsaved edits drafts its BADGE —
     // the badge IS the arc's whole canvas surface (B-107), and its visible
     // paint is the label TEXT, so the draft treatment here is the same
@@ -580,6 +668,16 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
 const FIT_PADDING = 40;
 
 /**
+ * B-127 (D86): the rail's zoom step — one multiplicative ×1.25 in (and its
+ * exact reciprocal out), the cytoscape zoom()'s own factor convention. A
+ * factor, not a UI-displayed number (R1 not engaged); the runtime crops the
+ * level to its min/max zoom itself (cytoscape.esm.mjs getZoomedViewport:
+ * `zoom > maxZoom ? maxZoom : zoom < minZoom ? minZoom : zoom`), so the
+ * command needs no clamp of its own.
+ */
+const ZOOM_STEP = 1.25;
+
+/**
  * D81: the WIDE-layout query — a MIRROR of the SCSS's 700px row/column
  * switch (map-viewer.component.scss `@media (min-width: 700px)`); the SCSS
  * owns the layout, this only classifies resizes for the preserve/refit
@@ -626,15 +724,6 @@ export interface NodeEditRefusal {
 const BUILT_IN_MODES: readonly TravelMode[] = ['walk', 'car', 'train'];
 
 /**
- * B-122 (F17/C3 fence + C23 plain words): the cross-layer refusal — M2
- * draws SAME-layer arcs only (cross-layer creation is the M3/M4 layer &
- * library UX's home). Surfaced user-visibly through the draw-arc banner
- * with the pending pick KEPT (the author re-aims); never a throw (C32).
- */
-const DRAW_ARC_CROSS_LAYER =
-  'Arcs connect places on one layer — the picked start is on another layer.';
-
-/**
  * B-118 (C23 plain words): the connect banner's tap feedback. One generic
  * line for every unpickable tap — a container, a node with children, a
  * foreign-layer node (data guard; the projection only shows the active
@@ -642,6 +731,15 @@ const DRAW_ARC_CROSS_LAYER =
  */
 const CONNECT_BAD_TARGET = 'Only a location, hub or waypoint on this layer can be picked.';
 const CONNECT_SELF_TARGET = "The starting place can't connect to itself.";
+
+/**
+ * B-128 (D85 — F17 un-fence, C23 plain words): the kept-pick line selectLayer
+ * narrates when a draw pick rides a layer switch. Plain words naming the
+ * source (the authored label); the fence refusal this replaces is RETIRED —
+ * cross-layer arc creation commits now (D85).
+ */
+const DRAW_PICK_KEPT = (sourceLabel: string): string =>
+  `Drawing from ${sourceLabel} — tap where its arc lands`;
 
 /**
  * B-117: normalize any facade throw into the panel's refusal shape (C30
@@ -826,18 +924,22 @@ export class GraphService implements OnDestroy {
    * signal (the connectPicks discipline): the pick accent is a projection of
    * it inside projectSelectionClasses (R3 — the constructor's class effect
    * re-runs per pick change, and every rebuild re-projects it), never a
-   * stray style write. Kept across a layer switch (a mid-pick switch is the
-   * F17/C3 fence's refusal path, not a cancel); cleared by the commit, a
+   * stray style write. Kept across a layer switch (B-128/D85: the switch
+   * narrates the kept pick and the cross-layer tap commits — never a
+   * cancel); cleared by the commit, a
    * source/background/compound-box tap cancel, a tool switch, editor exit
    * and map load.
    */
   readonly drawArcSourceId = signal<string | null>(null);
 
   /**
-   * B-122 (C23): why the last draw-arc tap refused — today exactly the
-   * F17/C3 cross-layer fence line. Rendered by the viewer's draw-arc banner
-   * (the connectFeedback precedent: user-visible, never console-only);
-   * cleared by the next successful pick/commit and every pick cancel.
+   * B-122 (C23): why the last draw-arc tap needs attention — since B-128
+   * (D85) exactly the kept-pick line a mid-pick layer switch narrates ("the
+   * pick rides along — its cross-layer commit is legal now") or a C30 commit
+   * refusal. The B-122 cross-layer fence line is RETIRED (D85). Rendered by
+   * the viewer's draw-arc banner (the connectFeedback precedent:
+   * user-visible, never console-only); cleared by the next successful
+   * pick/commit and every pick cancel.
    */
   readonly drawArcFeedback = signal<string | null>(null);
 
@@ -910,18 +1012,85 @@ export class GraphService implements OnDestroy {
   /** Facade-held viewer state mirrored for the switcher's active highlight. */
   readonly activeLayer = signal<string | null>(null);
 
+  /**
+   * B-126 (D82): the layer-manager SHEET's open state. FRONTEND viewer
+   * chrome, in-memory only (the B-119 panelFloating class — the facade
+   * carries no command for it; §9 reserves preference persistence for
+   * Phase 4's host). Written by the Manage affordance's toggle
+   * (toggleLayerManager) and the sheet's Escape/X close (the component);
+   * loadMap closes it (a fresh map starts unmanaged — the loadMap precedent
+   * for stale viewer state). Available in BOTH view and editor modes: every
+   * mutation inside is chrome-driven through the facade (dirty + the save
+   * dock appear), and D76's "view mode is purely navigational" fences
+   * CANVAS gestures, not management chrome.
+   */
+  readonly layerManagerOpen = signal(false);
+
   /** The latest facade snapshot (R1: every header string originates here). */
   readonly snapshot = signal<MapSnapshot | null>(null);
 
-  /** Switcher labels derived from the loaded map — names never hardcoded. */
-  readonly layerNames = computed((): readonly LayerLabel[] =>
-    (this.map()?.layers ?? []).map((layer) => ({ id: layer.id, name: layer.name })),
-  );
+  /**
+   * Switcher labels derived from the loaded map — names never hardcoded.
+   * B-126 (C24): the layer commands mutate `map.layers` IN PLACE (push on
+   * create, splice/reassign on delete, reassign on reorder), so the
+   * editorRevision counter (bumped by every layer wrapper) is the recompute
+   * dependency — the modeRows/scaleNow precedent for in-place map reads.
+   */
+  readonly layerNames = computed((): readonly LayerLabel[] => {
+    void this.editorRevision(); // dependency: a layer create/delete/reorder re-reads (C24)
+    return (this.map()?.layers ?? []).map((layer) => ({ id: layer.id, name: layer.name }));
+  });
 
-  /** F03: the active layer's background assetId, or null when it has none. */
+  /**
+   * F03/D84: the active layer's background reference (assetId or URL arm), or null when it has none.
+   * B-130 (C24): setLayerBackground replaces the layer OBJECT in place
+   * (map.layers[index] = fresh — the D75 seam), so the editorRevision bump
+   * is the recompute dependency (the layerNames precedent). The returned
+   * string is the `<img>` src verbatim — both arms feed the same rendering
+   * path ("two sources, one rendering path", D84): a URL arm's URL, or the
+   * stored assetId (the BackgroundStore contract makes the key a directly
+   * loadable src — the harness store's key IS its object URL;
+   * src/app/graph/background-store.ts).
+   */
   readonly activeBackground = computed((): string | null => {
+    void this.editorRevision(); // B-130 (C24): the in-place layer swap re-reads
     const layer = this.map()?.layers.find((l) => l.id === this.activeLayer());
-    return layer?.background?.assetId ?? null;
+    const background = layer?.background;
+    if (background === undefined) return null;
+    return 'assetId' in background ? background.assetId : background.url;
+  });
+
+  /**
+   * B-130 (D84/C32): the background <img>'s load-failure view state — true
+   * while the CURRENT src failed to load, hiding the img (the degrade is
+   * "no background", never a broken-image glyph over the canvas; the node
+   * graph stays the interface regardless, F03). Cleared by the constructor
+   * effect on ANY src change — a retry succeeds silently. Plain view state,
+   * not truth: the truth is the map's background reference (activeBackground).
+   */
+  readonly backgroundFailed = signal(false);
+
+  /**
+   * B-128 (D85/F02): the ACTIVE layer's breadcrumb chain, root → active,
+   * each crumb as id + authored NAME (C23 — the words render, the id is the
+   * tap key). Derives from the portal wiring through the pure
+   * `breadcrumbChain` (no separate parent field, D85; cycles are legal data
+   * and just end the chain). Empty while no map/layer — the viewer renders
+   * the bar only when the chain is longer than one (a root layer has no bar).
+   * Computed over DISCRETE signals only (D2): activeLayer (a switch re-reads)
+   * and editorRevision (in-place wiring/renames re-read — C24, the
+   * layerNames precedent). A crumb whose layer vanished degrades out of the
+   * rendered row (C32 spirit) — the pure walk can only emit known layers,
+   * but the name join assumes nothing.
+   */
+  readonly breadcrumb = computed((): readonly { id: string; name: string }[] => {
+    void this.editorRevision(); // dependency: an in-place wiring/rename re-reads (C24)
+    const map = this.map();
+    const layerId = this.activeLayer();
+    if (map === null || layerId === null) return [];
+    return breadcrumbChain(map, layerId)
+      .map((id) => ({ id, name: map.layers.find((layer) => layer.id === id)?.name ?? '' }))
+      .filter((crumb) => crumb.name !== '');
   });
 
   /**
@@ -1278,6 +1447,25 @@ export class GraphService implements OnDestroy {
       this.applyLabelCull();
     });
 
+    // B-128 (D85/F02): the portal ENTRY GESTURE — double-activation on a
+    // portal badge switches the viewport to the badge's target layer (F02's
+    // fixed gesture; D85 fences nothing — available in BOTH modes; a kept
+    // draw pick narrates through selectLayer). Verified against the installed
+    // runtime: the mouse double-click trigger fires BOTH event names
+    // (cytoscape.umd.js:26441 `["dblclick", "dbltap", "vdblclick"]`), the
+    // touch double-tap fires dbltap (:27431) — so one handler serves both
+    // worlds (D53) and a desktop double-click may invoke it twice; re-entry
+    // is an idempotent selectLayer of the SAME target (a repeated fit), the
+    // ponytail answer to the double-name overlap. `EventNames` is plain
+    // `string` (@types/cytoscape 3.21.9 index.d.ts:3719), so the names are
+    // type-honest as written. Single taps stay no-ops — the two taps of a
+    // double never select anything (the tme-badge branch above swallows them:
+    // portal badges carry no `arcId`), so the gesture is the ONLY surface.
+    // A discrete double-activation writes signals only through selectLayer (D2).
+    this.cy.on('dblclick dbltap', 'node.tme-portal-badge', (event) => {
+      this.enterPortal(event.target as NodeSingular);
+    });
+
     // R3: the tme-selected / tme-edge-selected accents follow the SIGNALS —
     // the classes are a projection of selection state, so tap-select,
     // background-tap clear and chip dismiss stay consistent without
@@ -1312,6 +1500,15 @@ export class GraphService implements OnDestroy {
         this.exitConnectMode();
       }
     });
+
+    // B-130 (C32): the background img re-arms on ANY src change — a layer
+    // switch, a set, a remove. The failed flag belongs to the src that
+    // failed it; a fresh src gets a fresh load (and its own error handler
+    // pass if IT fails). One discrete read per background change (D2).
+    effect(() => {
+      void this.activeBackground(); // dependency: the src changed
+      this.backgroundFailed.set(false);
+    });
   }
 
   ngOnDestroy(): void {
@@ -1336,6 +1533,7 @@ export class GraphService implements OnDestroy {
     this.selection.set(null);
     this.edgeSelection.set(null);
     this.clearDrawPick(); // B-122: a pending pick is the same class of stale state — cleared with the selections
+    this.layerManagerOpen.set(false); // B-126: a fresh map starts unmanaged — the sheet closes with the selections
     // B-116 (D75): a fresh load carries no unsaved editor edits (the facade
     // clears its dirty flag in loadMap) — recompute the F45 bar and drop any
     // stale save refusal from the previous session.
@@ -1382,6 +1580,77 @@ export class GraphService implements OnDestroy {
     this.cy.unmount();
   }
 
+  // --- B-127 (D86/F53): the rail's viewport commands --------------------------
+  // The zoom trio's write paths (R2 spirit: viewer state, no facade command —
+  // zoom/pan are cy-level viewport state like the user's own wheel/pinch, so
+  // the rail buttons are the same gesture class). All three write NO signals
+  // and log nothing (D2 — the notifyResize class): cy.zoom()/cy.fit emit the
+  // core `zoom` event, whose B-113 handler (applyLabelCull) is the only
+  // follower and itself writes no signals.
+
+  /**
+   * B-127 (D86): zoom IN one ×1.25 step about the VIEWPORT CENTER (the rail
+   * button has no cursor position to honor — the center is the neutral
+   * anchor). Verified against @types/cytoscape 3.21.9 index.d.ts:751-755 —
+   * `zoom({ level, renderedPosition })` zooms keeping the given RENDERED
+   * point fixed (renderedPosition is canvas-relative px). The runtime crops
+   * the level to its min/max zoom and no-ops when the cropped level equals
+   * the current one (the clamp's own behavior — C32 spirit, never a throw).
+   */
+  zoomIn(): void {
+    this.zoomByCenter(ZOOM_STEP);
+  }
+
+  /** B-127 (D86): zoom OUT one step — the exact reciprocal (÷1.25). */
+  zoomOut(): void {
+    this.zoomByCenter(1 / ZOOM_STEP);
+  }
+
+  /** B-127: the shared step — one multiplicative factor about the center. */
+  private zoomByCenter(factor: number): void {
+    if (!this.mounted) return; // headless has no viewport to zoom (C32 spirit)
+    this.cy.zoom({
+      level: this.cy.zoom() * factor,
+      renderedPosition: { x: this.cy.width() / 2, y: this.cy.height() / 2 },
+    });
+  }
+
+  /**
+   * B-127 (D86): the PUBLIC user Fit command — the rail's Fit button. It
+   * calls the ONE internal fit site (fitView, B-120's single-site ruling
+   * refined by D81: a user command is a legitimate new fit TRIGGER — the user
+   * is the authority, D10 — while fitView stays the only fit SITE, re-basing
+   * the cull threshold inside it, B-113 ruling 1). Instant, signal-free (D2).
+   */
+  fitToView(): void {
+    if (!this.mounted) return; // headless has no viewport to fit (C32 spirit)
+    this.fitView();
+  }
+
+  /**
+   * B-128 (D85/F02): the portal entry gesture's write path — a viewport
+   * switch ONLY (the fixed F02 ruling): selectLayer of the badge node's
+   * wired target. Routing, the snapshot and the pin are layer-agnostic and
+   * untouched (D16/F02 restated); selectLayer's explicit fit stands (D85:
+   * the D81 fit-site list unchanged). The target is re-read off the LIVE
+   * map at gesture time by the badge's `nodeId` data (never parsed out of
+   * the pseudo-node id — the B-108 precedent): a stale badge whose node was
+   * deleted or unwired mid-rebuild, or whose target layer is gone (both
+   * unreachable through the facade, but the reference read assumes nothing),
+   * degrades to a no-op (C32 spirit).
+   */
+  private enterPortal(node: NodeSingular): void {
+    const map = this.map();
+    if (map === null) return; // no core behind the gesture (C32 spirit)
+    const nodeId: unknown = node.data('nodeId');
+    if (typeof nodeId !== 'string' || nodeId.length === 0) return;
+    const wired = map.nodes.find((nd) => nd.id === nodeId);
+    const target = wired?.portal;
+    if (wired === undefined || target === undefined) return; // stale badge — no-op (C32 spirit)
+    if (!map.layers.some((layer) => layer.id === target)) return;
+    this.selectLayer(target);
+  }
+
   /**
    * Switch the visible layer: through the facade (R2 — it validates the id
    * and owns viewer state), then mirror into the signal and rebuild the
@@ -1389,10 +1658,21 @@ export class GraphService implements OnDestroy {
    * EXPLICITLY here, no longer riding rebuildElements' tail (which never
    * fits now): a fresh layer's default view is the fitted, label-visible
    * one (fitView also re-bases the cull threshold, B-113 ruling 1).
+   * B-128 (D85 — the F17 un-fence, half a): a pending draw pick is KEPT
+   * across the switch (never silently cancelled) and the banner narrates
+   * the kept pick in plain words — the target tap on this new layer now
+   * COMMITS cross-layer (handleDrawArcTap; C3 badges it). A pick whose
+   * source vanished (the orphan case commitDrawArc already cancels on)
+   * narrates nothing (degrade, never a false promise, C32/C23 spirit).
    */
   selectLayer(layerId: string): void {
     this.facade?.setActiveLayer(layerId);
     this.activeLayer.set(layerId);
+    const sourceId = this.drawArcSourceId(); // B-128: the mid-pick switch keeps its pick
+    if (sourceId !== null) {
+      const source = this.map()?.nodes.find((nd) => nd.id === sourceId);
+      if (source !== undefined) this.drawArcFeedback.set(DRAW_PICK_KEPT(source.label));
+    }
     this.rebuildElements();
     this.fitView();
     this.refreshSnapshot();
@@ -1907,6 +2187,344 @@ export class GraphService implements OnDestroy {
     return null;
   }
 
+  // --- Layer management (PKG B-126, §5 Phase 3 M3 — D82/D83/F54/D75/D77) ------
+  //
+  // The layer-manager sheet's and the property panel's layer surfaces — the
+  // R2 seams over A-017's facade commands. Every wrapper follows the B-117
+  // editor discipline: the ONLY mutation is the facade command; a C30
+  // refusal comes back as the collected field-precise NodeEditRefusal with
+  // NOTHING touched (reject-before-mutate); a success marks only `dirty`
+  // (F45/D75: dirty-never-stale — NO graphRevision bump, NO snapshot
+  // refresh; the SAVED graph serves routing and the header until saveMap),
+  // bumps the editorRevision (the save dock lights; layerNames re-reads —
+  // C24) and rebuilds the projection where projected elements actually
+  // change (never a fit — B-120).
+
+  /**
+   * B-126 (D82): the layer-manager sheet's open/close toggle — the Manage
+   * affordance's single write path (R3, the toggleEditor pattern). A pure
+   * signal write; the region/sheet form and any resize ride the template
+   * and the D81 discriminator (a region open/close is a panel-driven
+   * resize: preserved on wide, refit on narrow — zero new resize code).
+   */
+  toggleLayerManager(): void {
+    this.layerManagerOpen.update((open) => !open);
+  }
+
+  /**
+   * B-126 (D82/R1): the delete-confirm dialog's counts — the facade's pure
+   * `layerRemovalImpact` (N places, M same-layer arcs, K cross-layer arcs
+   * from surviving layers), read LIVE (R4). The UI NEVER counts (R1); the
+   * dialog renders these three numbers in plain words. Null when no map is
+   * loaded or the id is unknown (degrade, never throw — C32 spirit; the
+   * dialog never renders for such a row anyway).
+   */
+  layerRemovalImpact(layerId: string): LayerRemovalImpact | null {
+    try {
+      return this.facade?.layerRemovalImpact(layerId) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * B-128 (D85): the layer's ENTRY NODE as the manager sheet's read-only
+   * mirror line needs it — the first node wired `portal === layerId` with
+   * its authored label and the name of the layer it LIVES on (C23: the two
+   * words the line renders; the UI never maps ids to words itself, R1
+   * spirit). Null when no entry node exists ("No entry from another layer")
+   * or no map is loaded (degrade, never throw — C32 spirit). A live
+   * filtered read (R4), never a copy; the sheet's computed carries the
+   * editorRevision dependency so an in-place wiring re-reads (C24).
+   */
+  portalEntryOf(layerId: string): { nodeLabel: string; layerName: string } | null {
+    const map = this.map();
+    if (map === null) return null;
+    const entry = map.nodes.find((nd) => nd.portal === layerId);
+    if (entry === undefined) return null;
+    return {
+      nodeLabel: entry.label,
+      layerName: map.layers.find((layer) => layer.id === entry.layer)?.name ?? '',
+    };
+  }
+
+  /**
+   * B-126 (D82/C5): create (`id: ''`) or rename (PUT by known id) a layer.
+   * On success the command edits NO element — an empty fresh layer projects
+   * nothing and a rename changes no projected string — so the post-sequence
+   * is the editorRevision bump ALONE (the nav/rows re-read via layerNames'
+   * C24 dependency; the save dock lights — dirty is the visual). No
+   * recordUnsaved: the B-121 log is an ELEMENT log, and no element was
+   * touched (D82: "upsertLayer/reorderLayers edit no element"). The
+   * background arm stays out of this wrapper's type: the facade's REPLACE is
+   * absent-and-preserve on it (gate-verifier finding 2, M3 gate) — the image
+   * has its own command (D84's setLayerBackground), so no upsertLayer caller
+   * ever needs the arm.
+   */
+  upsertLayer(layer: { id: string; name: string }): NodeEditRefusal | null {
+    const facade = this.facade;
+    if (facade === null) return { issues: [{ path: '', message: 'No map is loaded.' }] };
+    try {
+      facade.upsertLayer(layer);
+    } catch (error) {
+      return nodeEditRefusal(error);
+    }
+    this.editorRevision.update((n) => n + 1); // F45/C24: the dock lights; the nav and sheet rows re-read
+    return null;
+  }
+
+  /**
+   * B-126 (D82): the informed-cascade delete — ONE `removeLayer` deletes the
+   * layer (its background with it), every node resident on it in BOTH
+   * planes, every arc with a dying endpoint, and unwires every surviving
+   * portal that targeted it. Pre-command bookkeeping over the LIVE
+   * references (R4 — id sets, never copies): the dying nodes/edges whose
+   * ids LEAVE the B-121 log (the removeEdge precedent), and the
+   * portal-unwired SURVIVORS that JOIN it (their node objects were swapped
+   * — they differ from the saved map now, so they draft: D82 ruling 4).
+   * Selection cleanup rides the removeUserNode precedent: a selection on a
+   * dying node/arc clears, so the chip and panels close with it.
+   * D69/D82: deleting the ACTIVE layer — the facade reset its viewer state
+   * to the survivors' first layer; the service mirrors the reset (the live
+   * map's first layer), re-projects, and takes the ONE new fit — the reset
+   * is a selectLayer-equivalent transition (a fresh active layer's default
+   * view is the fitted, label-visible one — the selectLayer rationale;
+   * fitView also re-bases the cull threshold, B-113 ruling 1). A surviving
+   * active layer needs no fit — the projection re-projects in place (a
+   * badge/arc update, the rebuild-never-fits rule, B-120).
+   */
+  removeLayer(layerId: string): NodeEditRefusal | null {
+    const facade = this.facade;
+    const map = this.map();
+    const overlay = this.overlay;
+    if (facade === null || map === null || overlay === null) {
+      return { issues: [{ path: '', message: 'No map is loaded.' }] };
+    }
+    // The facade's own dying-set definition, read pre-command (id
+    // bookkeeping — not R1 math; the DIALOG's numbers come from
+    // layerRemovalImpact).
+    const dying = new Set([
+      ...map.nodes.filter((nd) => nd.layer === layerId).map((nd) => nd.id),
+      ...overlay.userNodes.filter((nd) => nd.layer === layerId).map((nd) => nd.id),
+    ]);
+    const dyingEdges = new Set(
+      [...map.edges, ...overlay.userEdges]
+        .filter((e) => dying.has(e.source) || dying.has(e.target))
+        .map((e) => e.id),
+    );
+    const unwiredSurvivors = map.nodes
+      .filter((nd) => nd.portal === layerId && nd.layer !== layerId)
+      .map((nd) => nd.id);
+    const wasActive = this.activeLayer() === layerId;
+    try {
+      facade.removeLayer(layerId);
+    } catch (error) {
+      return nodeEditRefusal(error);
+    }
+    for (const id of dying) this.forgetUnsaved(id); // B-121: removed ids LEAVE the log
+    for (const id of dyingEdges) this.forgetUnsaved(id);
+    for (const id of unwiredSurvivors) this.recordUnsaved(id); // B-121: the portal-unwired survivors JOIN
+    if (wasActive) {
+      // D69: the facade reset to the survivors' first layer — mirror it.
+      this.activeLayer.set(map.layers[0]?.id ?? null);
+      this.rebuildElements();
+      this.fitView();
+    } else {
+      // A surviving active layer: its projection still changes (cross-layer
+      // badges of dying arcs vanish) — re-project, never fit (B-120).
+      this.rebuildElements();
+    }
+    this.editorRevision.update((n) => n + 1); // F45/C24: the dock lights; the nav re-reads
+    const nodeSel = this.selection();
+    if (nodeSel !== null && dying.has(nodeSel.id)) {
+      this.selection.set(null); // the removeUserNode precedent
+    }
+    const edgeSel = this.edgeSelection();
+    if (edgeSel !== null && dyingEdges.has(edgeSel.id)) {
+      this.edgeSelection.set(null);
+    }
+    return null;
+  }
+
+  /**
+   * B-126 (D82): array/nav order only — the sheet's Up/Down buttons commit
+   * the swapped FULL id array (array shuffling is UI state, not R1 math).
+   * The command touches ORDER and nothing else: no projected element
+   * changes, so the post-sequence is the editorRevision bump alone (the
+   * nav and sheet rows re-read; dirty lights the dock) — no rebuild, no
+   * draft-log entry (D82: "reorderLayers edits no element").
+   */
+  reorderLayers(layerIds: readonly string[]): NodeEditRefusal | null {
+    const facade = this.facade;
+    if (facade === null) return { issues: [{ path: '', message: 'No map is loaded.' }] };
+    try {
+      facade.reorderLayers(layerIds);
+    } catch (error) {
+      return nodeEditRefusal(error);
+    }
+    this.editorRevision.update((n) => n + 1); // F45/C24: the dock lights; the nav re-reads
+    return null;
+  }
+
+  // --- Layer backgrounds (PKG B-130, §5 Phase 3 M3 — D84/D29/C32/F03) ---------
+
+  /**
+   * B-130 (R4): the layer's background REFERENCE — the arm-level live read
+   * the manager sheet's state lines render (`{ assetId }` vs `{ url }` vs
+   * none; C23: the URL arm's string is the user's own words). A lookup,
+   * never a copy — callers render it, never write into it. Template
+   * consumers carry the editorRevision dependency (C24 — the in-place swap
+   * precedent), exactly like layerNames.
+   */
+  layerBackground(layerId: string): LayerBackground | null {
+    return this.map()?.layers.find((layer) => layer.id === layerId)?.background ?? null;
+  }
+
+  /**
+   * B-130 (D84): the manager sheet's background command — the R2 wrapper
+   * over `facade.setLayerBackground(layerId, source)` (`{ assetId }` upload
+   * | `{ url }` remote | `null` clear; exactly-one-arm is the VALIDATOR's
+   * C30 rule, so a bad shape refuses field-precisely with nothing touched —
+   * reject-before-mutate). The B-126 layer-wrapper discipline: on success
+   * the background is NOT a cy projection element (no rebuild) and no
+   * element was edited (no B-121 entry), so the post-sequence is the
+   * editorRevision bump ALONE — the save dock lights (F45/D75), the sheet's
+   * reads and `activeBackground` re-read (C24). A C30 refusal returns the
+   * collected field-precise issues for the sheet's refusals area (the
+   * upsertLayer precedent).
+   */
+  setLayerBackground(layerId: string, source: LayerBackground | null): NodeEditRefusal | null {
+    const facade = this.facade;
+    if (facade === null) return { issues: [{ path: '', message: 'No map is loaded.' }] };
+    try {
+      facade.setLayerBackground(layerId, source);
+    } catch (error) {
+      return nodeEditRefusal(error);
+    }
+    this.editorRevision.update((n) => n + 1); // F45/C24: the dock lights; activeBackground re-reads
+    return null;
+  }
+
+  /**
+   * B-130 (D84/C32): the tme-bg img's error path — the load DEGRADES to no
+   * background (the `backgroundFailed` flag hides the img; the canvas and
+   * every affordance stay untouched, F03) plus ONE console warn (the
+   * `[TravelMapper]` discipline; user-visible surface stays the empty
+   * background, not an error banner — a background is decoration, C32).
+   * One warn per failed src: a repeat error while the flag stands is
+   * swallowed; the constructor effect re-arms the flag on any src change,
+   * so a retry succeeds silently. The logged src is the TRUTH's current
+   * background string (activeBackground), never a parsed machine name (C23).
+   */
+  backgroundLoadFailed(): void {
+    const src = this.activeBackground();
+    if (src === null || this.backgroundFailed()) return; // nothing to name / already reported
+    this.backgroundFailed.set(true);
+    console.warn(`[TravelMapper] background load failed: ${src}`);
+  }
+
+  /**
+   * B-126 (D83): the property panel's Layer dropdown — the ONE way to move
+   * a node between layers. A dropdown pick is a COMPLETE discrete intent
+   * (the Connect-button precedent), never a draft field: the change event
+   * fires this wrapper immediately. C3 rides the facade unchanged — no edge
+   * is touched (a cross-layer arc to the moved node re-badges by DERIVING
+   * from the endpoints in the next rebuild; a same-layer arc over the move
+   * becomes cross-layer and back, no arc edit). A C30 stranding/portal
+   * refusal returns field-precise with nothing touched — the PANEL renders
+   * the issues and reverts its select to the live layer (never silently
+   * re-parented, D83). The same-layer no-op is guarded HERE too (the
+   * facade's own no-op leaves dirty untouched — the wrapper must not draft
+   * or bump past it either): a no-change pick is not an edit (the B-116
+   * no-move precedent).
+   */
+  setNodeLayer(nodeId: string, layerId: string): NodeEditRefusal | null {
+    const facade = this.facade;
+    if (facade === null) return { issues: [{ path: '', message: 'No map is loaded.' }] };
+    if (this.map()?.nodes.find((nd) => nd.id === nodeId)?.layer === layerId) {
+      return null; // already there — the facade's validating no-op (dirty untouched)
+    }
+    try {
+      facade.setNodeLayer(nodeId, layerId);
+    } catch (error) {
+      return nodeEditRefusal(error);
+    }
+    this.recordUnsaved(nodeId); // B-121: the moved node is drafted (a node edit — D82 ruling 4)
+    this.rebuildElements(); // the node leaves the old layer's projection, joins the new one's (no fit, B-120)
+    this.editorRevision.update((n) => n + 1); // F45/C24: the dock lights
+    return null;
+  }
+
+  /**
+   * B-128 (D85/F02): the property panel's "Opens layer" dropdown — portal
+   * WIRING (and unwiring with null), the ONE surface that authors
+   * `nodes[i].portal`. A dropdown pick is a COMPLETE discrete intent (the
+   * setNodeLayer precedent), never a draft field: the change event fires
+   * this wrapper immediately. R2: the ONLY mutation is the facade command
+   * `setPortal` — a fresh-object swap whose C30 clone gate refuses all three
+   * wiring violations field-precisely (unknown target / the node's own
+   * layer / a second node onto an already-wired target); a refusal returns
+   * the collected issues with NOTHING touched (reject-before-mutate — the
+   * panel renders them and reverts its select). The same-layer no-change
+   * pick is guarded HERE (the validating no-op must not draft or bump —
+   * the B-116 no-move precedent). On success the node JOINS the B-121 log
+   * (a node edit — the moved-node precedent: its object was swapped, so it
+   * differs from the saved map now) and the rebuild makes the badge
+   * appear/vanish — no fit (B-120); the editorRevision bump lights the save
+   * dock and re-reads the live reads (C24).
+   */
+  setPortal(nodeId: string, layerId: string | null): NodeEditRefusal | null {
+    const facade = this.facade;
+    if (facade === null) return { issues: [{ path: '', message: 'No map is loaded.' }] };
+    if (this.map()?.nodes.find((nd) => nd.id === nodeId)?.portal === layerId) {
+      return null; // already wired exactly so (or already unwired) — the validating no-op
+    }
+    try {
+      facade.setPortal(nodeId, layerId);
+    } catch (error) {
+      return nodeEditRefusal(error);
+    }
+    this.recordUnsaved(nodeId); // B-121: the wired node is drafted (a node edit)
+    this.rebuildElements(); // the portal badge appears/vanishes — no fit (B-120)
+    this.editorRevision.update((n) => n + 1); // F45/C24: the dock lights; the live reads re-read
+    return null;
+  }
+
+  /**
+   * B-126 (D82/F54): the standing Detach tool — every arc incident to the
+   * node dies in BOTH planes (chat blocks with them, F50); the node itself
+   * survives byte-identical (the facade swaps NOTHING on it). Draft-log
+   * discipline: the DYING arcs' ids LEAVE the log (the removeEdge
+   * precedent) and the node NEVER JOINS — detach is not a node edit, so
+   * the node does not light the draft hue (D82 ruling 6). A zero-arc node
+   * is the facade's validating no-op (dirty untouched): the wrapper's
+   * revision bump re-reads a still-clean dirty flag, so the save dock does
+   * NOT appear — a no-op stays invisible. The selection is untouched: the
+   * node stays selected, its panel stays open, its arcs vanish from the
+   * projection in the rebuild below.
+   */
+  detachNode(nodeId: string): NodeEditRefusal | null {
+    const facade = this.facade;
+    const map = this.map();
+    const overlay = this.overlay;
+    if (facade === null || map === null || overlay === null) {
+      return { issues: [{ path: '', message: 'No map is loaded.' }] };
+    }
+    // The incident edge ids, read pre-command (R4) — the log's leavers.
+    const incident = [...map.edges, ...overlay.userEdges]
+      .filter((e) => e.source === nodeId || e.target === nodeId)
+      .map((e) => e.id);
+    try {
+      facade.detachNode(nodeId);
+    } catch (error) {
+      return nodeEditRefusal(error);
+    }
+    for (const id of incident) this.forgetUnsaved(id); // B-121: the dying arcs' ids leave the log
+    this.rebuildElements(); // the arcs (and any cross-layer badges riding them) vanish — no fit (B-120)
+    this.editorRevision.update((n) => n + 1); // F45/C24: the dock lights on a real teardown
+    return null;
+  }
+
   // --- Quick-connect (PKG B-118, §5 Phase 3 M1 — D42/F16/C1/§6.2/F46/F45) -----
 
   /**
@@ -2066,7 +2684,8 @@ export class GraphService implements OnDestroy {
    * waypoint} AND childless — exactly the C1 leaf rule validateWorldMap
    * enforces on edge endpoints, so a commit can never be refused on it).
    * Branches, in order:
-   *   - badge pseudo-node: not an endpoint — a no-op that KEEPS the pick;
+   *   - badge pseudo-node (arc OR portal — both carry tme-badge): not an
+   *     endpoint — a no-op that KEEPS the pick;
    *   - compound parent (the box, B-120's no-op branch): CANCEL the pick;
    *   - the pending source itself: CANCEL the pick;
    *   - a waypoint or any non-eligible/foreign-layer leaf: a no-op that
@@ -2074,13 +2693,13 @@ export class GraphService implements OnDestroy {
    *   - eligible leaf + no pending source: SET the pick (stale feedback
    *     clears — the connectFeedback precedent);
    *   - eligible leaf + an ORPHANED source (removed mid-pick): CANCEL the
-   *     stale pick — never the fence message (it would be false);
-   *   - eligible leaf + pending source on a DIFFERENT layer (the only
-   *     physical cross-layer shape is a mid-pick layer switch — the
-   *     projection only ever shows the active layer's leaves): F17/C3
-   *     fence — REFUSE visibly through drawArcFeedback, pick KEPT (the
-   *     author re-aims);
-   *   - eligible leaf + same-layer source: COMMIT (commitDrawArc).
+   *     stale pick — never a narrated line that would be false;
+   *   - eligible leaf + pending source (ANY layer — B-128 un-fenced the
+   *     cross-layer pair): COMMIT (commitDrawArc). The only physical
+   *     cross-layer shape is a mid-pick layer switch — the pick is kept and
+   *     narrated by selectLayer, and the tap on the new layer commits (D85;
+   *     C3 badges the arc). The B-122 refusal fence and its constant are
+   *     RETIRED (D85).
    * F46: no selection is ever written here — picks are arc endpoints, not
    * editing selections.
    */
@@ -2114,17 +2733,14 @@ export class GraphService implements OnDestroy {
     if (source === undefined) {
       // The pending source was REMOVED mid-pick (the B-117 delete seam can
       // still reach it through the property panel's stale selection) — the
-      // pick is orphaned: cancel it. NOT the fence refusal (that message
-      // would be false — C23 spirit); the next tap starts a fresh pick.
+      // pick is orphaned: cancel it. A narrated line here would be false
+      // (C23 spirit); the next tap starts a fresh pick.
       this.clearDrawPick();
       return;
     }
-    if (source.layer !== authored.layer) {
-      // F17/C3: cross-layer arc CREATION is fenced out of M2 — refuse
-      // visibly, keep the pick (never a throw, C32).
-      this.drawArcFeedback.set(DRAW_ARC_CROSS_LAYER);
-      return;
-    }
+    // B-128 (D85 — the F17 un-fence): a source on another layer is the KEPT
+    // mid-pick pick (selectLayer narrated it) — the cross-layer tap COMMITS.
+    // The B-122 fence refusal (DRAW_ARC_CROSS_LAYER) is retired with it.
     this.commitDrawArc(sourceId, id);
   }
 
@@ -2171,14 +2787,24 @@ export class GraphService implements OnDestroy {
    * stays on — consecutive arcs), and the new arc is SELECTED through the
    * existing edgeSelection signal so the arc panel opens on it (B-106 mutual
    * exclusion: the node selection clears — an edge tap's exact semantics).
-   * A C30 refusal is unreachable by construction (eligible leaves, same
-   * layer, registry-derived modes) but degrades to the banner, never a
-   * throw (C32).
+   * B-128 (D85): the commit is LAYER-AGNOSTIC now — a kept mid-pick pick
+   * commits cross-layer (C3: the arc projects as BADGES on both ends, never
+   * as an edge), and the created arc's id reaches the B-121 log through the
+   * known-ids fallback below. A C30 refusal is otherwise unreachable by
+   * construction (eligible leaves, registry-derived modes) but degrades to
+   * the banner, never a throw (C32).
    */
   private commitDrawArc(source: string, target: string): void {
     const facade = this.facade;
     if (facade === null) return; // no core to commit into — pick kept (C32 spirit)
     const beforeEdgeIds = this.projectedEdgeIds;
+    // B-128 (D85): the KNOWN-arc-ids snapshot over the live references (R4) —
+    // the discovery fallback for a CROSS-LAYER commit, which B-128's un-fence
+    // now creates: such an arc never joins the projection (C3), so the
+    // projected-edge delta below is empty exactly when the un-fence fired.
+    const knownIds = new Set(
+      [...(this.map()?.edges ?? []), ...(this.overlay?.userEdges ?? [])].map((e) => e.id),
+    );
     try {
       facade.upsertEdge({ id: '', source, target, modes: this.defaultArcModes() });
     } catch (error) {
@@ -2192,6 +2818,15 @@ export class GraphService implements OnDestroy {
         createdId = id;
         break;
       }
+    }
+    if (createdId === null) {
+      // B-128: the cross-layer discovery — exactly ONE library edge joined the
+      // live map (one create per commit; C4 keeps parallel siblings distinct),
+      // and its id must reach the B-121 log even though it projects as badges
+      // only (the badge IS the arc's whole canvas surface — the draft hue
+      // lands on its badges through projectDraftClasses).
+      const fresh = (this.map()?.edges ?? []).filter((edge) => !knownIds.has(edge.id));
+      if (fresh.length === 1) createdId = fresh[0].id;
     }
     if (createdId !== null) this.recordUnsaved(createdId); // B-121 (D77): every editor command records here
     this.clearDrawPick();
@@ -2547,6 +3182,29 @@ export class GraphService implements OnDestroy {
     return badge.length === 0 ? null : String(badge.data('label') ?? '');
   }
 
+  /**
+   * B-128 (D85): one PORTAL badge's label (the target layer's authored NAME,
+   * C23) by its WIRE NODE's id, or null when no portal badge for that node
+   * is projected (unwired / other layer / unknown id). A read-only seam —
+   * no mutation path (R2/R4 hold); the testBadgeText precedent.
+   */
+  testPortalBadgeText(nodeId: string): string | null {
+    const badge = this.cy.getElementById(`tme-portal-badge-${nodeId}`);
+    return badge.length === 0 ? null : String(badge.data('label') ?? '');
+  }
+
+  /**
+   * B-128 (D85): the ACTIVE layer's breadcrumb chain exactly as rendered —
+   * the pure `breadcrumbChain` ids through the `breadcrumb` computed's name
+   * join is template state, so this seam reads the COMPUTED (the rendered
+   * crumb row's truth), as ids in chain order. Empty pre-load / a root
+   * layer's length-1 chain included — the spec asserts the length too. A
+   * read-only seam (R2/R4 hold); the testBadgeText precedent.
+   */
+  testBreadcrumbChain(): string[] {
+    return this.breadcrumb().map((crumb) => crumb.id);
+  }
+
   /** Resolved line-style of one edge ('solid' | 'dashed' | ...), or null. */
   testEdgeLineStyle(id: string): string | null {
     const edge = this.cy.getElementById(id);
@@ -2589,6 +3247,17 @@ export class GraphService implements OnDestroy {
    */
   testDraftedIds(): string[] {
     return [...this.unsavedIds];
+  }
+
+  /**
+   * B-126 (D82/R1): the facade's layer-removal counts for the e2e spec —
+   * the dialog's three numbers asserted against the ENGINE's own answer
+   * (never a spec-side recount). Null when no map is loaded or the id is
+   * unknown (degrade, C32 spirit). Read-only, no mutation path (R2/R4
+   * hold) — the testDraftedIds precedent.
+   */
+  testLayerRemovalImpact(layerId: string): LayerRemovalImpact | null {
+    return this.layerRemovalImpact(layerId);
   }
 
   /**
@@ -2849,12 +3518,20 @@ export class GraphService implements OnDestroy {
     // badge IS the arc's whole canvas surface: its tap opens the arc panel
     // (B-108 finding 1), its text carries block state and cost (finding 1.2).
     const badges = buildCrossLayerBadges(map, this.overlay, layerId, this.badgeRoutes(map, layerId));
+    // B-128 (D85/F02): this layer's PORTAL badges join the same batch — one
+    // pseudo-node per wired node (the shared B-107 machinery: same anchor
+    // assembly, same cull-coherent class; the distinct tme-portal-badge class
+    // carries the depth hue). F02's "there is depth here" is ONE visual
+    // language: a badge. The portal badge is display-only on single taps
+    // (the badge branch above swallows them — no arcId); its double-activation
+    // is the entry gesture (the constructor's binding).
+    const portalBadges = buildPortalBadges(map, layerId);
     // B-116 (C5/D75): record the node ids of the projection being installed —
     // the pre-command set the place-command's id delta reads (placeNodeAt).
     // Derived from the same pure builders' output, so it can never drift from
     // what cy actually holds. B-121: the EDGE ids join it — doneConnect's
     // committed-arc discovery reads that delta.
-    const projected = [...elements, ...badges];
+    const projected = [...elements, ...badges, ...portalBadges];
     this.projectedNodeIds = new Set(
       projected.filter((el) => el.group === 'nodes').map((el) => String(el.data.id)),
     );
@@ -2863,7 +3540,7 @@ export class GraphService implements OnDestroy {
     );
     this.cy.batch(() => {
       this.cy.elements().remove();
-      this.cy.add([...elements, ...badges]);
+      this.cy.add([...elements, ...badges, ...portalBadges]);
       // The swap drops ALL classes — re-project the selection accents INSIDE
       // this same batch so the signals stay the single truth (R3; B-106:
       // block/lift rebuilds included) without a second render pass (§6.1

@@ -1,0 +1,303 @@
+// PKG B-127 (D86/F53) — component-scoped chrome only (D7: zero global
+// leakage). The HOST is the map viewer's rail REGION (a left column on the
+// wide layout, a bottom bar on narrow — the map-viewer SCSS owns the region
+// placement, order and flex-basis; it also styles the slim collapsed strip
+// off this component's tme-collapsed host class). This file owns the rail's
+// INTERNAL orientation, mirroring the SAME 700px breakpoint (the D81
+// mirror-constant discipline): sections stack top-to-bottom in the wide
+// column, flow left-to-right with WRAP in the narrow bar — never horizontal
+// scroll (D53). Every control is >= 44px and touch-alone (F52/D53); no
+// hover affordance anywhere.
+:host {
+  display: flex;
+  flex-wrap: wrap; // narrow: the bar wraps into bands, never sideways scroll
+  align-items: center;
+  gap: 0.375rem;
+  box-sizing: border-box;
+  padding: 0.375rem 0.5rem;
+  min-width: 0;
+  color: #e6ebf2;
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+}
+
+@media (min-width: 700px) {
+  :host {
+    flex-direction: column; // the wide column: sections top-to-bottom
+    flex-wrap: nowrap;
+    align-items: stretch;
+  }
+}
+
+// The body wrapper: every section lives inside it; the collapse toggle is
+// its sibling, so the collapsed rail is exactly the slim strip + the expand
+// affordance. Wide: the column's sections may outgrow a short window, so
+// the BODY scrolls its own overflow (never the page, D53).
+.tme-rail-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+@media (min-width: 700px) {
+  .tme-rail-body {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+// Collapsed (either orientation): every section is gone; only the toggle
+// strip remains (the map-viewer SCSS sizes the strip: wide flex-basis,
+// narrow content height).
+:host(.tme-collapsed) .tme-rail-body,
+:host(.tme-collapsed) .tme-zoom,
+:host(.tme-collapsed) .tme-save-dock {
+  display: none;
+}
+
+// --- The migrated stage chrome (styles moved with the elements) --------------
+
+// The editor toggle — one always-visible >= 44px tap target (F52/D53); the
+// active state mirrors the editorMode signal, the established gold accent.
+.tme-editor-toggle {
+  min-width: 44px; // F52: >= 44px tap targets, touch-only parity
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font: inherit;
+  cursor: pointer;
+  // §6.2: the canvas host owns touch-action none; non-canvas interactive
+  // chrome uses manipulation so double-taps never zoom it.
+  touch-action: manipulation;
+}
+
+.tme-editor-toggle.tme-active {
+  border-color: #ffd166;
+  color: #ffd166;
+}
+
+// The segmented tool control — one >= 44px segment per tool, joined as one
+// control (shared border collapsed, outer corners rounded): a ROW in the
+// narrow bar, a COLUMN in the wide column (the orientation mirror).
+.tme-tools {
+  display: flex;
+}
+
+@media (min-width: 700px) {
+  .tme-tools {
+    flex-direction: column;
+  }
+}
+
+.tme-tool {
+  min-width: 44px; // F52: >= 44px tap targets, touch-only parity
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+.tme-tools .tme-tool + .tme-tool {
+  margin-left: -1px; // collapse the shared border (one segmented control)
+}
+
+@media (min-width: 700px) {
+  .tme-tools .tme-tool + .tme-tool {
+    margin-left: 0;
+    margin-top: -1px; // the column form collapses vertically
+  }
+}
+
+.tme-tools .tme-tool:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.tme-tools .tme-tool:last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+@media (min-width: 700px) {
+  .tme-tools .tme-tool:first-child {
+    border-radius: 8px 8px 0 0;
+  }
+
+  .tme-tools .tme-tool:last-child {
+    border-radius: 0 0 8px 8px;
+  }
+}
+
+.tme-tool.tme-active {
+  border-color: #ffd166;
+  color: #ffd166;
+}
+
+// The layer switcher + Manage — inline in the narrow bar, stacked full-width
+// in the wide column.
+.tme-layers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+@media (min-width: 700px) {
+  .tme-layers {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+  }
+}
+
+.tme-layer-button {
+  min-width: 44px; // F52: >= 44px tap targets, touch-only parity
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+.tme-layer-button.tme-active {
+  border-color: #ffd166;
+  color: #ffd166;
+}
+
+// B-126 (D82): the nav's Manage affordance — the same >= 44px chrome as the
+// switch buttons, distinguished by the dashed border (it OPENS the
+// management sheet, it does not switch layers); its pressed state carries
+// the same gold accent as the active layer.
+.tme-layer-button.tme-manage {
+  border-style: dashed;
+}
+
+// B-127 (D86): the zoom trio — the same segmented-control language as the
+// tools (row in the bar, column in the wide rail).
+.tme-zoom {
+  display: flex;
+}
+
+@media (min-width: 700px) {
+  .tme-zoom {
+    flex-direction: column;
+  }
+}
+
+.tme-zoom-button {
+  min-width: 44px; // F52: >= 44px tap targets, touch-only parity
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+.tme-zoom .tme-zoom-button + .tme-zoom-button {
+  margin-left: -1px; // collapse the shared border (one segmented control)
+}
+
+@media (min-width: 700px) {
+  .tme-zoom .tme-zoom-button + .tme-zoom-button {
+    margin-left: 0;
+    margin-top: -1px; // the column form collapses vertically
+  }
+}
+
+.tme-zoom .tme-zoom-button:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.tme-zoom .tme-zoom-button:last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+@media (min-width: 700px) {
+  .tme-zoom .tme-zoom-button:first-child {
+    border-radius: 8px 8px 0 0;
+  }
+
+  .tme-zoom .tme-zoom-button:last-child {
+    border-radius: 0 0 8px 8px;
+  }
+}
+
+// B-116 (F45/D75): the save dock — indicator (+ refusal) and Save. A wrapped
+// row in the narrow bar; in the wide column the block stacks so long refusal
+// messages wrap INSIDE the dock, never widening the rail (D53).
+.tme-save-dock {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.9);
+  color: #e6ebf2;
+}
+
+@media (min-width: 700px) {
+  .tme-save-dock {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+// The C30 save refusal — user-visibly inside the dock (its own line in the
+// column; a wrapped line in the bar), never console-only.
+.tme-save-error {
+  flex-basis: 100%;
+  color: #c9564e;
+}
+
+// The Save button — the dock's commit control, >= 44px (F52), gold to read
+// as the primary action (the active toggle/chip accent).
+.tme-save {
+  min-width: 44px; // F52: >= 44px tap target
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid #ffd166;
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #ffd166;
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+// The rail's collapse toggle — one >= 44px tap target (F52), inline at the
+// bar's end on narrow, a full-width strip at the column's bottom on wide.
+.tme-rail-toggle {
+  min-width: 44px; // F52: >= 44px tap target
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}

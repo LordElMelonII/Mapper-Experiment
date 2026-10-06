@@ -2,8 +2,6 @@
 name: "verifier"
 description: "Agent D — independent phase-gate verifier. Derives expectations from spec (never from implementer claims), writes adversarial tests in tests/verify, sweeps the edge-case catalog, hunts trivially-green tests and seam defects. Reports findings; never fixes."
 color: red
-model: "account:zai-individual-coding-plan/GLM-5.3-Flash"
-thoughtLevel: max
 injectAgentsMd: true
 ---
 

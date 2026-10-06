@@ -109,15 +109,22 @@ const readStageBox = (page: Page): Promise<Box> =>
   });
 
 /**
- * The top-right chrome stack stays REACHABLE: for every rendered control of
- * the stack (editor toggle, selection chip, save dock), the element at its
- * center is itself or a descendant — the floating panel never covers it.
+ * The STAGE-overlay chrome stays REACHABLE: for the selection chip (the one
+ * interactive chrome still overlaid on the stage), the element at its center
+ * is itself or a descendant — the floating panel never covers it.
+ *
+ * Lead repair (post-rail, D86): the editor toggle and the save dock migrated
+ * onto the editor RAIL — a SIBLING region the B-119 clamp can never cover
+ * (it keeps the panel inside the stage) and which legitimately sits below
+ * the phone fold, where elementFromPoint is blind. A reachability check on
+ * rail chrome guarded the pre-rail world; the invariant this helper guards
+ * today is exactly the stage-overlay set: the chip.
  */
 const chromeReachable = (page: Page): Promise<boolean> =>
   page.evaluate((): boolean => {
-    for (const id of ['tme-editor-toggle', 'tme-selection-chip', 'tme-save-dock']) {
+    for (const id of ['tme-selection-chip']) {
       const el = document.querySelector(`[data-testid="${id}"]`);
-      if (el === null) continue; // conditional chrome (chip/dock) not rendered
+      if (el === null) continue; // conditional chrome (chip) not rendered
       const r = el.getBoundingClientRect();
       if (r.width <= 0 || r.height <= 0) continue;
       const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);

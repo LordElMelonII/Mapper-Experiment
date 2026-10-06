@@ -13,10 +13,22 @@ export type TravelMode = 'walk' | 'car' | 'train' | (string & {});
 export type Terrain = 'road' | 'plain' | 'river' | 'swamp' | 'mountain';
 export type NodeOrigin = 'authored' | 'user';   // user nodes live in the chat overlay (D21)
 
+/**
+ * D84 (additive amendment): a layer background's stored reference — EXACTLY ONE
+ * source arm. `{ assetId }` is the localforage-backed uploaded image (D29 —
+ * uploads are machine-local); `{ url }` is a remote image URL kept in the map
+ * data, so it travels with the saved map (D29's portability mitigation). One
+ * image per layer, one rendering path either way; LOADING it is app-side (C32
+ * degrade-never-throw governs there, not here). schemaVersion stays 2 — the
+ * D78 additive precedent; old `{ assetId }` data maps arm-to-arm (C31
+ * unengaged).
+ */
+export type LayerBackground = { assetId: string } | { url: string };
+
 export interface LayerData {
   id: string;
   name: string;                        // 'World', 'Fuyuki City', 'Misaki Town'
-  background?: { assetId: string };    // localforage-backed image (D29)
+  background?: LayerBackground;        // D84: uploaded asset or remote URL — one image per layer, contain-fitted by the renderer (F03/F43)
 }
 
 export interface MapNodeData {
@@ -30,6 +42,7 @@ export interface MapNodeData {
   aliases?: string[];                  // also used by toast matching (D11/D26)
   transit?: { type: 'train' | 'port' | 'subway'; line?: string };
   origin?: NodeOrigin;                 // default 'authored'
+  portal?: string;                     // D85: the layer this node opens (the badge entry node) — the layer hierarchy DERIVES from this wiring; no second structure (R4 spirit)
 }
 
 export interface ModeSpec {
@@ -105,6 +118,21 @@ export interface ChatMapOverlay {
 // `Handlebars.compile`; tests and the dev harness pass the npm devDependency;
 // the shipped bundle never embeds an engine.
 export type TemplateCompiler = (tpl: string) => (ctx: Record<string, unknown>) => string;
+
+/**
+ * D82/F42: the informed-cascade delete dialog's counts — R1's core-computed
+ * N/M/K, tallied across BOTH planes (map + overlay) exactly as removeLayer
+ * deletes them: `nodes` = library nodes + overlay waypoints on the layer;
+ * `sameLayerArcs` = arcs with BOTH endpoints dying; `crossLayerArcs` = arcs
+ * with EXACTLY ONE endpoint dying (lost from surviving layers). A pure query:
+ * it never mutates, never flips dirty, and never refuses on "last layer"
+ * (the dialog never offers that; the count is honest either way).
+ */
+export interface LayerRemovalImpact {
+  nodes: number;
+  sameLayerArcs: number;
+  crossLayerArcs: number;
+}
 
 // Route shape (C18): { ok, total, legs[] }; each leg carries arc id, from, to,
 // mode, cost, and an optional reason (blocked/detour). C17: ok:false carries a

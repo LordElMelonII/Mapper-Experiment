@@ -48,6 +48,10 @@ ng test
 
 This workspace has no e2e target configured — `ng e2e` fails with `Cannot find "e2e" target for the specified project`, and no e2e framework is installed yet. The repository reserves `tests/e2e/` for the Playwright specs that the UI phases will add.
 
+## Maps & storage
+
+Uploaded background images are machine-local: they are stored in your browser's localforage under this extension's own store (`travel-map-explorer` / `tme-background-assets`), and a saved or exported map carries only a reference key, not the image bytes. A map moved to another machine therefore keeps its URL-based backgrounds but loses uploaded ones until the images are uploaded again on that machine.
+
 ## Additional Resources
 
 For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.

@@ -62,11 +62,14 @@ const horseMap = (modes: ModeDeclaration[], over: Partial<WorldMapData> = {}): W
 // CORE.md §9 verbatim — the frozen command surface. D77's "deliberately NO
 // new facade surface" makes this list load-bearing: an edit-log query, a
 // draftIds accessor, or any other unsaved-state read would violate it.
+// A-017 (D82–D85) appended the §9 Layer-commands line; the list tracks the
+// landed spec line, nothing more.
 const SECTION9_COMMANDS: (keyof MapFacade)[] = [
   'loadMap', 'materialize', 'forkMap', 'saveForkToLibrary', 'validateImport', 'migrateData',
   'setCurrentLocation', 'setStatusNote', 'setTravelMode', 'setCorrective',
   'setBlocked', 'addUserNodeAt', 'removeUserNode', 'promoteUserNode',
   'upsertNode', 'upsertEdge', 'removeNode', 'removeEdge', 'calibrateScale', 'saveMap', 'hasUnsavedChanges',
+  'upsertLayer', 'removeLayer', 'reorderLayers', 'layerRemovalImpact', 'detachNode', 'setNodeLayer', 'setLayerBackground', 'setPortal',
   'findRoute', 'getSnapshot', 'renderTemplate', 'getPromptBlock',
   'setActiveLayer',
 ];

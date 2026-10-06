@@ -38,12 +38,22 @@
 // universe (built-ins ∪ registry ids): a registry-only arc is priceable in
 // default runs and never silently drops from C19's route list; explicit
 // modes stay strict (C14 row 2), the C14/C15 arithmetic stands, and a
-// no-registry map prices byte-identically (the trio IS its universe).
+// no-registry map prices byte-identically (the trio IS its universe). A-017
+// (P3 M3, D82–D85) adds the layer commands — the manager sheet's
+// create/rename/reorder/informed-cascade delete, the R1 impact query, the
+// node detach tool, the property panel's node move and portal wiring, and
+// the per-layer background reference. D16 restated: the pin, routing and
+// the snapshot are layer-agnostic — no layer command touches them, and none
+// ever rebuilds the effective graph (D75: dirty, never stale; saveMap owns
+// the rebuild).
 // Commands still unimplemented throw their exact TODO markers — never fake
 // data (Task 0 rule).
 
 import type {
   ChatMapOverlay,
+  LayerBackground,
+  LayerData,
+  LayerRemovalImpact,
   MapEdgeData,
   MapNodeData,
   MapSnapshot,
@@ -91,6 +101,15 @@ export interface MapFacade {
   calibrateScale(arcId: string, authoredDistance: number, unit?: { label: string; kind: 'distance' | 'time' }): void; // C13/D44/D45: unitPerPx = authored ÷ the arc's px length; a present unit seeds label+kind (C11's two kinds), absent ⇒ only unitPerPx moves
   saveMap(): void;
   hasUnsavedChanges(): boolean; // D75/F45: additive §9 extension — the unsaved-changes indicator's state lives in the core
+  // Layer commands (P3 M3 — D82–D85)
+  upsertLayer(layer: { id: string; name: string; background?: LayerBackground }): void; // D82: id '' ⇒ create ('layer-<n>', C5); else rename/background PUT by splice
+  removeLayer(layerId: string): void; // D82: the informed-cascade delete — atomic, both planes, background discarded with the layer
+  reorderLayers(layerIds: readonly string[]): void; // D82: exact permutation of the layer id set ⇒ the new array/nav order; active layer unchanged
+  layerRemovalImpact(layerId: string): LayerRemovalImpact; // D82/R1: the delete dialog's N/M/K — pure, core-computed
+  detachNode(nodeId: string): void; // D82/F54: every incident edge dies in both planes; the node survives byte-identical
+  setNodeLayer(nodeId: string, layerId: string): void; // D83: the property-panel move; C3 rides — no edge updates, ever
+  setLayerBackground(layerId: string, source: LayerBackground | null): void; // D84: store the reference (asset or URL); null clears
+  setPortal(nodeId: string, layerId: string | null): void; // D85: wire/unwire the entry node — at most one per layer
   // Queries
   findRoute(from: string, to: string, mode?: TravelMode): RouteResult;
   getSnapshot(): MapSnapshot;
@@ -178,6 +197,7 @@ export interface FacadeState {
   // commands never touch them (only saveMap/loadMap move the saved plane).
   savedNodeIds: Set<string>;
   savedEdgeIds: Set<string>;
+  savedLayerIds: Set<string>; // A-017 follow-up: gates addUserNodeAt's layer — waypoints bind only SAVED layers (F50)
   // A-015 (D75): the SAVED scale — what every pricing seam reads. calibrateScale
   // mutates the live map.scale in place (the editor draft the UI displays, C24);
   // pricing serves this snapshot until saveMap refreshes it. Same doctrine as
@@ -218,6 +238,7 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
     activeLayer: null, // F01/D69: viewer state — null until the first loadMap
     savedNodeIds: new Set<string>(), // A-014: empty until a loadMap/saveMap populates them
     savedEdgeIds: new Set<string>(),
+    savedLayerIds: new Set<string>(),
     savedScale: null, // A-015: null until the first loadMap snapshots it
     // D62: the template engine is injected (R5) — Handlebars-shaped. Absent
     // until the host (SillyTavern.libs) or the test/harness devDependency
@@ -363,12 +384,14 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
     return { ok: result.ok, total: result.total, legs, unit }; // D72
   };
 
-  // C5: ids belong to the engine — two per-facade monotonic counters, one per
-  // id space (§6.2 schemes 'wp-<n>' for user nodes, 'we-<n>' for user edges).
-  // Each candidate is bumped until free in the merged id set, so rapid taps
-  // (§6.2) and authored data that already uses the scheme can never collide.
+  // C5: ids belong to the engine — per-facade monotonic counters, one per id
+  // space (§6.2 schemes 'wp-<n>' for user nodes, 'we-<n>' for user edges;
+  // D82 adds 'layer-<n>' for layers). Each candidate is bumped until free in
+  // the merged id set, so rapid taps (§6.2) and authored data that already
+  // uses the scheme can never collide.
   let nextNodeId = 1;
   let nextEdgeId = 1;
+  let nextLayerId = 1;
 
   // A-009: the ONE render path for both §9 template commands (no parallel
   // math, §6.2). Builds the current snapshot through getSnapshot (§9 query
@@ -431,6 +454,7 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       // loadMap/saveMap.
       state.savedNodeIds = new Set(validatedMap.nodes.map((nd) => nd.id));
       state.savedEdgeIds = new Set(validatedMap.edges.map((e) => e.id));
+      state.savedLayerIds = new Set(validatedMap.layers.map((l) => l.id));
       // A-015: the pricing seams' scale snapshot — a clone, never the reference
       // (calibrateScale mutates the live object in place; a reference would
       // alias the draft straight into routing, breaking D75/F45). D78: the
@@ -596,8 +620,15 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       ensureFresh(); // C8 — the uniform prelude; the mutation reads the live references (C24)
       const { map, overlay } = state;
       if (map === null || overlay === null) throw new Error('[TravelMapper] no map loaded');
-      if (!map.layers.some((l) => l.id === layer)) {
-        throw new Error(`[TravelMapper] addUserNodeAt: unknown layer id '${layer}'`);
+      // A-014 discipline (A-017 follow-up, D82/F50): the layer gate reads the
+      // SAVED plane's universe, not the live map — a waypoint placed on a
+      // created-but-unsaved layer would persist a layer id the saved map
+      // lacks, and validateOverlay would refuse the WHOLE overlay at the next
+      // load (F50). saveMap admits new layers to the universe.
+      if (!state.savedLayerIds.has(layer)) {
+        throw new Error(
+          `[TravelMapper] addUserNodeAt: '${layer}' is not a saved layer id — a waypoint cannot bind a layer the saved map lacks (saveMap first; F50)`,
+        );
       }
 
       // C30/F50: the one runtime-supplied argument besides `layer` — a NaN or
@@ -979,6 +1010,7 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       // the SAVED plane, so the runtime commands' universes admit their ids.
       state.savedNodeIds = new Set(map.nodes.map((nd) => nd.id));
       state.savedEdgeIds = new Set(map.edges.map((e) => e.id));
+      state.savedLayerIds = new Set(map.layers.map((l) => l.id));
       state.savedScale = savedScaleOf(map); // A-015: the saved plane moves — pricing sees the calibrated scale from the next query on; D78: the speed table re-resolves over the saved registry
       state.dirty = false;
       state.stale = true; // C8 edit save
@@ -987,6 +1019,307 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
     // D75/F45: the F45 unsaved-changes indicator reads its state here —
     // nothing outside the core tracks dirtiness (R1).
     hasUnsavedChanges: () => state.map !== null && state.dirty,
+
+    // --- Layer commands (Phase 3 M3, PKG A-017 — D82–D85) -----------------------
+    //
+    // Shared semantics with the editor block above (D75): live-reference
+    // in-place mutation, C30 clone-validate-apply, FRESH objects on every
+    // replace (the D75 splice seam — the old object stays byte-identical for
+    // the effective graph until saveMap), and dirty, never stale — no layer
+    // command rebuilds the effective graph (D16 restated: the pin, routing
+    // and the snapshot are layer-agnostic and untouched).
+
+    upsertLayer: (layer) => {
+      const { map, overlay } = state;
+      if (map === null || overlay === null) throw new Error('[TravelMapper] no map loaded');
+      if (layer.id === '') {
+        // CREATE (C5): 'layer-<n>' over the shared counter, bumped until free —
+        // authored maps may already contain scheme-shaped layer ids. A fresh
+        // layer starts EMPTY (nodes arrive by setNodeLayer/upsertNode); it
+        // inherits the map's scale automatically — scale is map-level
+        // (WorldMapData.scale), there is no per-layer calibration (D82). The
+        // name/background rules (non-empty name, exactly-one background arm —
+        // D84) are the VALIDATOR's: the clone gate refuses, no ad-hoc checks.
+        const layerIds = new Set(map.layers.map((l) => l.id));
+        let n = nextLayerId;
+        while (layerIds.has(`layer-${n}`)) n += 1;
+        const id = `layer-${n}`;
+        // A FRESH object — never the caller's (the manager sheet binds drafts).
+        const fresh: LayerData = { id, name: layer.name };
+        if (layer.background !== undefined) fresh.background = { ...layer.background };
+        const clone = structuredClone(map);
+        clone.layers.push(fresh);
+        validateWorldMap(clone); // C30 — MapValidationError propagates; nothing touched
+        nextLayerId = n + 1;
+        map.layers.push(fresh);
+        state.dirty = true;
+        return;
+      }
+      const index = map.layers.findIndex((l) => l.id === layer.id);
+      if (index === -1) {
+        throw new Error(`[TravelMapper] upsertLayer: unknown layer id '${layer.id}' — pass '' to create (C5/D75)`);
+      }
+      // REPLACE (D82): rename / background entry in one command; a FRESH
+      // object swapped by index, id and position stable. Gate-verifier
+      // finding 2 (M3 gate): the background arm is ABSENT-AND-PRESERVE, not
+      // the node commands' undefined-clears (D75) — the rename caller
+      // (commitRename) does not manage the image, and a silent clear on
+      // omission would destroy authored work; the field has its OWN command
+      // (D84's setLayerBackground) whose explicit `null` owns clearing. A
+      // supplied arm still replaces (the entry path rides this command too).
+      const fresh: LayerData = { ...map.layers[index], name: layer.name };
+      if (layer.background !== undefined) fresh.background = { ...layer.background };
+      const clone = structuredClone(map);
+      clone.layers[index] = fresh;
+      validateWorldMap(clone); // C30
+      map.layers[index] = fresh;
+      state.dirty = true;
+    },
+
+    // D82: the informed-cascade delete — ONE atomic command deletes the layer
+    // (background discarded with it), every node resident on it in BOTH
+    // planes, every arc with a dying endpoint (same-layer AND cross-layer),
+    // the chat blocks on dying arcs, and unwires every surviving portal that
+    // targeted it. The confirm dialog's counts come from layerRemovalImpact
+    // (R1). The last remaining layer is never deletable; deleting the ACTIVE
+    // layer resets it exactly as loadMap does (D69 first paint).
+    removeLayer: (layerId) => {
+      const { map, overlay } = state;
+      if (map === null || overlay === null) throw new Error('[TravelMapper] no map loaded');
+      if (!map.layers.some((l) => l.id === layerId)) {
+        throw new Error(`[TravelMapper] removeLayer: unknown layer id '${layerId}'`);
+      }
+      if (map.layers.length === 1) {
+        throw new Error(
+          `[TravelMapper] removeLayer: '${layerId}' is the last remaining layer — the last remaining layer is never deletable (D82)`,
+        );
+      }
+      // The dying id set spans BOTH planes: map nodes on the layer plus the
+      // overlay's waypoints on it (a waypoint on a dead layer is a dangling
+      // ref — meaningless, it dies with the layer; the F50 both-planes rule).
+      const dying = new Set([
+        ...map.nodes.filter((nd) => nd.layer === layerId).map((nd) => nd.id),
+        ...overlay.userNodes.filter((nd) => nd.layer === layerId).map((nd) => nd.id),
+      ]);
+      // C30: the COMPLETE post-state map is built and validated FIRST — layer
+      // gone, resident nodes/arcs gone, surviving portals to it unwired.
+      const clone = structuredClone(map);
+      clone.layers = clone.layers.filter((l) => l.id !== layerId);
+      clone.nodes = clone.nodes.filter((nd) => nd.layer !== layerId);
+      clone.edges = clone.edges.filter((e) => !dying.has(e.source) && !dying.has(e.target));
+      for (const nd of clone.nodes) {
+        if (nd.portal === layerId) delete nd.portal; // a portal dies with its target (D85)
+      }
+      validateWorldMap(clone); // MapValidationError propagates; nothing touched
+      // Apply the identical edit to the live map …
+      map.layers = map.layers.filter((l) => l.id !== layerId);
+      map.nodes = map.nodes.filter((nd) => nd.layer !== layerId);
+      const dyingEdges = map.edges.filter((e) => dying.has(e.source) || dying.has(e.target));
+      map.edges = map.edges.filter((e) => !dying.has(e.source) && !dying.has(e.target));
+      // … the overlay cascade (the removeNode precedent): waypoints on the
+      // layer, their incident user edges, and the chat blocks on every dying
+      // edge in BOTH planes (F50 — a surviving blocked entry would fail
+      // validateOverlay at the next load).
+      const dyingUserEdges = overlay.userEdges.filter((e) => dying.has(e.source) || dying.has(e.target));
+      overlay.userNodes = overlay.userNodes.filter((nd) => nd.layer !== layerId);
+      overlay.userEdges = overlay.userEdges.filter((e) => !dying.has(e.source) && !dying.has(e.target));
+      for (const e of [...dyingEdges, ...dyingUserEdges]) delete overlay.blocked[e.id];
+      // Gate-verifier finding 1 (M3 gate): the saved-plane universes shrink
+      // with an un-undoable removal (F46 — the user who deleted the layer
+      // will not place waypoints on it, and the eventual saveMap must never
+      // persist overlay state naming ids the saved map lacks; a bind admitted
+      // here would brick the next loadMap's validateOverlay). The A-014
+      // doctrine's "only saveMap/loadMap move the saved plane" is thereby
+      // amended: un-undoable removals move it too.
+      state.savedLayerIds.delete(layerId);
+      for (const id of dying) state.savedNodeIds.delete(id);
+      for (const e of [...dyingEdges, ...dyingUserEdges]) state.savedEdgeIds.delete(e.id);
+      // Surviving portals to the dying layer are unwired by fresh-object swap
+      // (the D75 seam — the old node objects stay byte-identical).
+      map.nodes = map.nodes.map((nd) => {
+        if (nd.portal !== layerId) return nd;
+        const fresh: MapNodeData = { ...nd };
+        delete fresh.portal;
+        return fresh;
+      });
+      // D69: deleting the ACTIVE layer resets it to the survivors' first
+      // layer — exactly loadMap's first-paint rule; a surviving active layer
+      // is untouched (the active layer is an id, not an index).
+      if (state.activeLayer === layerId) state.activeLayer = map.layers[0].id;
+      state.dirty = true;
+    },
+
+    // D82: array/nav order only — the switcher, the breadcrumb siblings and
+    // the save order all read map.layers; the hierarchy itself derives from
+    // portal wiring (D85), so this command touches ORDER and nothing else.
+    reorderLayers: (layerIds) => {
+      const { map, overlay } = state;
+      if (map === null || overlay === null) throw new Error('[TravelMapper] no map loaded');
+      // C30/F50: a runtime caller can lie about the typed array — refuse
+      // field-precisely before anything is read (the calibrateScale guard
+      // discipline).
+      if (!Array.isArray(layerIds) || layerIds.some((id) => typeof id !== 'string')) {
+        throw new Error(
+          `[TravelMapper] reorderLayers: layerIds must be an array of layer id strings (got '${String(layerIds)}')`,
+        );
+      }
+      // An EXACT permutation of the current id set: same length, same
+      // membership, no duplicates — anything else names the mismatch (C30).
+      const current = new Set(map.layers.map((l) => l.id));
+      const seen = new Set<string>();
+      const duplicates: string[] = [];
+      const unknown: string[] = [];
+      for (const id of layerIds) {
+        if (seen.has(id)) duplicates.push(id);
+        else seen.add(id);
+        if (!current.has(id)) unknown.push(id);
+      }
+      const missing = [...current].filter((id) => !seen.has(id));
+      if (duplicates.length > 0 || unknown.length > 0 || missing.length > 0) {
+        const parts: string[] = [];
+        if (unknown.length > 0) parts.push(`unknown: ${unknown.join(', ')}`);
+        if (missing.length > 0) parts.push(`missing: ${missing.join(', ')}`);
+        if (duplicates.length > 0) parts.push(`duplicate: ${duplicates.join(', ')}`);
+        throw new Error(
+          `[TravelMapper] reorderLayers: not an exact permutation of the current layer ids — ${parts.join('; ')}`,
+        );
+      }
+      // A FRESH array in the given order; the element objects keep their
+      // identity (nothing about them changed). The active layer is an id, not
+      // an index — unchanged by construction.
+      const byId = new Map(map.layers.map((l) => [l.id, l] as const));
+      map.layers = layerIds.map((id) => byId.get(id)!);
+      state.dirty = true;
+    },
+
+    // D82/R1: the delete dialog's counts — core-computed, never UI math.
+    // PURE: reads only, no mutation, no dirty, no rebuild. Counts EXACTLY what
+    // removeLayer deletes, across BOTH planes, with the same dying-set
+    // definition. Never refuses on 'last layer' — the dialog never offers the
+    // delete there; the count is honest either way.
+    layerRemovalImpact: (layerId) => {
+      const { map, overlay } = state;
+      if (map === null || overlay === null) throw new Error('[TravelMapper] no map loaded');
+      if (!map.layers.some((l) => l.id === layerId)) {
+        throw new Error(`[TravelMapper] layerRemovalImpact: unknown layer id '${layerId}'`);
+      }
+      const dying = new Set([
+        ...map.nodes.filter((nd) => nd.layer === layerId).map((nd) => nd.id),
+        ...overlay.userNodes.filter((nd) => nd.layer === layerId).map((nd) => nd.id),
+      ]);
+      let sameLayerArcs = 0;
+      let crossLayerArcs = 0;
+      for (const edge of [...map.edges, ...overlay.userEdges]) {
+        const dyingEndpoints = (dying.has(edge.source) ? 1 : 0) + (dying.has(edge.target) ? 1 : 0);
+        if (dyingEndpoints === 2) sameLayerArcs += 1;
+        else if (dyingEndpoints === 1) crossLayerArcs += 1;
+      }
+      return { nodes: dying.size, sameLayerArcs, crossLayerArcs };
+    },
+
+    // D82/F54: the node detach tool — ONE teardown semantic with the delete
+    // cascade, two surfaces. Every incident edge dies in BOTH planes (map
+    // edges + user edges) and their chat blocks die with them (F50); the node
+    // itself survives byte-identical — no swap, it is untouched. Zero
+    // incident edges ⇒ a validating no-op: dirty stays untouched.
+    detachNode: (nodeId) => {
+      const { map, overlay } = state;
+      if (map === null || overlay === null) throw new Error('[TravelMapper] no map loaded');
+      if (!map.nodes.some((nd) => nd.id === nodeId)) {
+        throw new Error(`[TravelMapper] detachNode: unknown node id '${nodeId}'`);
+      }
+      const incident = (e: MapEdgeData): boolean => e.source === nodeId || e.target === nodeId;
+      if (!map.edges.some(incident) && !overlay.userEdges.some(incident)) return; // nothing changes
+      const clone = structuredClone(map); // C30: clone-validate-apply
+      clone.edges = clone.edges.filter((e) => !incident(e));
+      validateWorldMap(clone);
+      const dyingEdges = map.edges.filter(incident);
+      map.edges = map.edges.filter((e) => !incident(e));
+      const dyingUserEdges = overlay.userEdges.filter(incident);
+      overlay.userEdges = overlay.userEdges.filter((e) => !incident(e));
+      for (const e of [...dyingEdges, ...dyingUserEdges]) delete overlay.blocked[e.id];
+      // Gate-verifier finding 1 (M3 gate): the saved-edge universe shrinks
+      // with the un-undoable detach (F46) — same seam as removeLayer's
+      // cascade above; a setBlocked on a detached id must refuse, never
+      // persist into the F50 brick.
+      for (const e of [...dyingEdges, ...dyingUserEdges]) state.savedEdgeIds.delete(e.id);
+      state.dirty = true;
+    },
+
+    // D83: the node property panel's Layer dropdown — the ONE way to move a
+    // node between layers. C3 rides unchanged: cross-layer-ness DERIVES from
+    // endpoint layers, so NO edge is touched before, during or after (the
+    // edges are ordinary arcs throughout). The stranding refusals (a compound
+    // relation left across layers — parent or child) and the portal-own-layer
+    // refusal ride the C30 clone gate: the validator's parent-same-layer and
+    // portal rules refuse field-precisely; nothing is ever silently
+    // re-parented. The D75 splice seam applies — a FRESH node object swaps
+    // in, the old one stays byte-identical for the effective graph.
+    setNodeLayer: (nodeId, layerId) => {
+      const { map, overlay } = state;
+      if (map === null || overlay === null) throw new Error('[TravelMapper] no map loaded');
+      const index = map.nodes.findIndex((nd) => nd.id === nodeId);
+      if (index === -1) {
+        throw new Error(`[TravelMapper] setNodeLayer: unknown node id '${nodeId}'`);
+      }
+      if (!map.layers.some((l) => l.id === layerId)) {
+        throw new Error(`[TravelMapper] setNodeLayer: unknown layer id '${layerId}'`);
+      }
+      if (map.nodes[index].layer === layerId) return; // already there — dirty untouched
+      const fresh: MapNodeData = { ...map.nodes[index], layer: layerId };
+      const clone = structuredClone(map); // C30: clone-validate-apply
+      clone.nodes[index] = fresh;
+      validateWorldMap(clone); // the stranding/portal refusals propagate; nothing touched
+      map.nodes[index] = fresh;
+      state.dirty = true;
+    },
+
+    // D84: store the background REFERENCE — `{ assetId }` (localforage
+    // upload, D29) or `{ url }` (remote URL, travels with the saved map). The
+    // core never loads images: the localforage adapter and URL loading are
+    // app-side; C32's degrade-never-throw governs that LOAD path, command-
+    // time validation throws per C30 (the standing regime). Exactly-one-arm
+    // is the VALIDATOR's rule — the clone gate refuses both/neither/ad-hoc
+    // shapes field-precisely, and `null` clears.
+    setLayerBackground: (layerId, source) => {
+      const { map, overlay } = state;
+      if (map === null || overlay === null) throw new Error('[TravelMapper] no map loaded');
+      const index = map.layers.findIndex((l) => l.id === layerId);
+      if (index === -1) {
+        throw new Error(`[TravelMapper] setLayerBackground: unknown layer id '${layerId}'`);
+      }
+      // PUT: null clears — the fresh object simply carries no background.
+      const fresh: LayerData = { id: layerId, name: map.layers[index].name };
+      if (source !== null) fresh.background = { ...source };
+      const clone = structuredClone(map); // C30: clone-validate-apply
+      clone.layers[index] = fresh;
+      validateWorldMap(clone); // the background arm rule refuses field-precisely
+      map.layers[index] = fresh;
+      state.dirty = true;
+    },
+
+    // D85: wire (or unwire, null) the portal — the layer's ONE entry node.
+    // All three wiring violations (unknown target, own layer, a second node
+    // onto an already-wired layer) are the VALIDATOR's portal rules — the C30
+    // clone gate refuses each field-precisely at nodes[i].portal, no ad-hoc
+    // checks. Fresh-object swap (the D75 seam). The hierarchy DERIVES from
+    // this wiring — there is no second structure to maintain (R4 spirit).
+    setPortal: (nodeId, layerId) => {
+      const { map, overlay } = state;
+      if (map === null || overlay === null) throw new Error('[TravelMapper] no map loaded');
+      const index = map.nodes.findIndex((nd) => nd.id === nodeId);
+      if (index === -1) {
+        throw new Error(`[TravelMapper] setPortal: unknown node id '${nodeId}'`);
+      }
+      const fresh: MapNodeData = { ...map.nodes[index] };
+      if (layerId === null) delete fresh.portal; // unwire
+      else fresh.portal = layerId;
+      const clone = structuredClone(map); // C30: clone-validate-apply
+      clone.nodes[index] = fresh;
+      validateWorldMap(clone); // the portal rules refuse field-precisely
+      map.nodes[index] = fresh;
+      state.dirty = true;
+    },
 
     // --- Queries -----------------------------------------------------------------
 

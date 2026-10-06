@@ -2,8 +2,6 @@
 name: "st-integration"
 description: "Agent C — SillyTavern Integration implementer. Executes task packets for manifest, bootstrap, settings UI, injection channels, toast scanner, persistence, build pipeline, README. Owns the M0 walking skeleton."
 color: green
-model: "account:zai-individual-coding-plan/GLM-5.3-Flash"
-thoughtLevel: max
 injectAgentsMd: true
 ---
 

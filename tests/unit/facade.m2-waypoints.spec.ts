@@ -158,7 +158,11 @@ describe('addUserNodeAt — placement and kNN connection (C5, C7, D21, §6.2)', 
 
   it('unknown layer ⇒ field-precise refusal, nothing placed (C30, §6.2)', () => {
     const { f, map, overlay } = load(waypointMap());
-    expect(() => f.addUserNodeAt('layer-nowhere', { x: 0, y: 0 })).toThrow(/unknown layer id 'layer-nowhere'/);
+    // A-017 follow-up: the gate reads the SAVED layer universe (A-014
+    // discipline, F50) — an unknown id and an unsaved layer refuse alike.
+    expect(() => f.addUserNodeAt('layer-nowhere', { x: 0, y: 0 })).toThrow(
+      /\[TravelMapper\] addUserNodeAt: 'layer-nowhere' is not a saved layer id/,
+    );
     expect(overlay.userNodes).toHaveLength(0);
     expect(overlay.userEdges).toHaveLength(0);
     expectStillValid(map, overlay);

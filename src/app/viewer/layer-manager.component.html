@@ -1,0 +1,257 @@
+<!-- PKG B-126 (§5 Phase 3 M3, D82) — the layer-manager SHEET: create /
+     rename / up-down reorder / informed-cascade delete, one row per layer
+     in map.layers ARRAY order (the one truth — the same order the nav
+     renders). The active layer's row carries a marker; the sheet does NOT
+     switch layers (the nav stays the switcher — no duplicate affordance).
+     B-128 (D85): each row carries the read-only PORTAL MIRROR line under
+     its name (how the layer is entered from another — words only, no
+     affordance). B-130 (D84/D29): each row carries the BACKGROUND entry —
+     the current state in words, the Upload label (store ⇒ { assetId }),
+     the URL input + Set (⇒ { url }; disabled while empty or a no-change),
+     and Remove (⇒ null; only when a background exists). One image per
+     layer: replace = set again. R1: the confirm's three counts are the
+     ENGINE's layerRemovalImpact in plain words (C23). R2: every command
+     goes through GraphService's wrappers. F52/D53: every control >= 44px,
+     touch-alone, no hover affordance; the rail (B-114 pattern) is the
+     narrow form's collapse affordance — wide hides it and always shows
+     the body. -->
+@if (open()) {
+  <section
+    class="tme-manager"
+    data-testid="tme-layer-manager"
+    aria-label="Manage layers"
+    [class.tme-collapsed]="collapsed()"
+  >
+    <header class="tme-manager-head">
+      <h2 class="tme-title">Layers</h2>
+      <button
+        type="button"
+        class="tme-close"
+        data-testid="tme-layer-manager-close"
+        aria-label="Close layer management"
+        (click)="close()"
+      >
+        ×
+      </button>
+    </header>
+
+    <!-- B-114 (ruling 1): the sheet rail — one full-width >= 44px toggle
+         (F52), narrow-only (the media query hides it on wide). -->
+    <button
+      type="button"
+      class="tme-sheet-rail"
+      data-testid="tme-layer-rail"
+      [attr.aria-expanded]="!collapsed()"
+      aria-controls="tme-layer-manager-body"
+      (click)="toggleRail()"
+    >
+      <span class="tme-sheet-title">{{ collapsed() ? 'Show' : 'Hide' }}</span>
+      <span class="tme-sheet-chevron" aria-hidden="true">▾</span>
+    </button>
+
+    <div class="tme-manager-body" id="tme-layer-manager-body" data-testid="tme-layer-manager-body">
+      <!-- Ruling 2: the Create row — name input + Add; the engine assigns
+           the id (C5). Add is disabled while the trimmed name is empty (C30
+           honesty — the facade stays the authority). -->
+      <label class="tme-field-label" for="tme-layer-create-input">New layer name</label>
+      <div class="tme-create-row">
+        <input
+          id="tme-layer-create-input"
+          class="tme-input tme-create-input"
+          type="text"
+          autocomplete="off"
+          data-testid="tme-layer-create-input"
+          [value]="createValue()"
+          (input)="onCreateInput($event)"
+        />
+        <button
+          type="button"
+          class="tme-button tme-add"
+          data-testid="tme-layer-create"
+          [disabled]="!canCreate()"
+          (click)="add()"
+        >
+          Add
+        </button>
+      </div>
+
+      <!-- Ruling 2: one row per layer, array order (the one truth). Each
+           row is exactly one of: the view row, its rename form, or the
+           delete-confirm block. -->
+      @for (layer of rows(); track layer.id; let i = $index) {
+        <div class="tme-layer-row" data-testid="tme-layer-row">
+          @if (renamingId() === layer.id) {
+            <label class="tme-field-label" [attr.for]="'tme-layer-rename-input-' + layer.id">Layer name</label>
+            <div class="tme-create-row">
+              <input
+                [attr.id]="'tme-layer-rename-input-' + layer.id"
+                class="tme-input tme-create-input"
+                type="text"
+                autocomplete="off"
+                data-testid="tme-layer-rename-input"
+                [value]="renameValue()"
+                (input)="onRenameInput($event)"
+              />
+              <button
+                type="button"
+                class="tme-button tme-save"
+                data-testid="tme-layer-rename-save"
+                [disabled]="!canRename()"
+                (click)="commitRename()"
+              >
+                Save
+              </button>
+              <button type="button" class="tme-button" data-testid="tme-layer-rename-cancel" (click)="cancelRename()">
+                Cancel
+              </button>
+            </div>
+          } @else if (confirmingId() === layer.id) {
+            <!-- Ruling 3: the INLINE informed-cascade confirm — the engine's
+                 three counts in plain words (R1/C23), one Delete commits the
+                 whole cascade, Cancel restores the row. -->
+            <p class="tme-impact" data-testid="tme-layer-impact" role="status">{{ impactLine() }}</p>
+            <div class="tme-create-row">
+              <button type="button" class="tme-button tme-delete" data-testid="tme-layer-delete-confirm" (click)="confirmDelete()">
+                Delete
+              </button>
+              <button type="button" class="tme-button" data-testid="tme-layer-delete-cancel" (click)="cancelDelete()">
+                Cancel
+              </button>
+            </div>
+          } @else {
+            <div class="tme-layer-name-row">
+              <span class="tme-layer-name" data-testid="tme-layer-name">{{ layer.name }}</span>
+              @if (graph.activeLayer() === layer.id) {
+                <span class="tme-active-marker" data-testid="tme-layer-active-marker">Active</span>
+              }
+            </div>
+            <!-- B-128 (D85): the read-only portal mirror — how this layer is
+                 entered from another (or that it is not). Plain words (C23);
+                 no affordance, ever. -->
+            <p class="tme-layer-portal" data-testid="tme-layer-portal">
+              {{ portalLines().get(layer.id) }}
+            </p>
+            <div class="tme-layer-actions">
+              <button type="button" class="tme-button" data-testid="tme-layer-edit" (click)="startRename(layer.id, layer.name)">
+                Edit
+              </button>
+              <!-- Ruling 2: Up/Down reorder buttons — the boundary pair is
+                   disabled as a plain order fact (first Up, last Down).
+                   Drag handles are refused outright (D53). -->
+              <button
+                type="button"
+                class="tme-button"
+                data-testid="tme-layer-up"
+                [disabled]="$first"
+                (click)="moveLayer(i, -1)"
+              >
+                Up
+              </button>
+              <button
+                type="button"
+                class="tme-button"
+                data-testid="tme-layer-down"
+                [disabled]="$last"
+                (click)="moveLayer(i, 1)"
+              >
+                Down
+              </button>
+              <!-- Ruling 3: Delete opens the inline confirm — except the
+                   LAST remaining layer, whose Delete renders disabled with
+                   its reason in words (the facade would refuse; the UI shows
+                   the fence honestly). -->
+              <button
+                type="button"
+                class="tme-button tme-delete"
+                data-testid="tme-layer-delete"
+                [disabled]="rows().length === 1"
+                (click)="startDelete(layer.id)"
+              >
+                Delete
+              </button>
+            </div>
+            <!-- B-130 (D84/D29): the row's BACKGROUND entry. The state line
+                 speaks in words (none / the user's URL / "Uploaded image" +
+                 the stored file name — C23). Upload is a label-wrapped file
+                 input — the LABEL is the >= 44px tap target (F52/D53), the
+                 input itself is visually hidden but reachable for tests. Set
+                 is disabled while the trimmed URL is empty or a no-change
+                 (C30 honesty). Remove renders only when a background exists.
+                 One image per layer: any Set/Upload replaces. -->
+            <div class="tme-layer-bg" data-testid="tme-layer-bg">
+              <p class="tme-layer-bg-state" data-testid="tme-layer-bg-state">
+                {{ backgroundLines().get(layer.id) }}
+              </p>
+              <div class="tme-layer-bg-actions">
+                <!-- Gate-verifier finding 7 (M3 gate): id+name per input — the
+                     rename input's a11y pattern (the aria-label names the
+                     layer it belongs to; ids are per-row unique). -->
+                <label class="tme-button tme-bg-upload" data-testid="tme-layer-bg-upload">
+                  Upload
+                  <input
+                    class="tme-upload-input"
+                    data-testid="tme-layer-bg-file"
+                    type="file"
+                    accept="image/*"
+                    [id]="'tme-layer-bg-file-' + layer.id"
+                    [attr.aria-label]="'Upload a background image for ' + layer.name"
+                    (change)="onUpload($event, layer.id)"
+                  />
+                </label>
+                <input
+                  class="tme-input tme-bg-url"
+                  data-testid="tme-layer-bg-url"
+                  type="text"
+                  autocomplete="off"
+                  placeholder="Image URL"
+                  [id]="'tme-layer-bg-url-' + layer.id"
+                  [name]="'bg-url-' + layer.id"
+                  [attr.aria-label]="'Background image URL for ' + layer.name"
+                  [value]="bgUrlValue(layer.id)"
+                  (input)="onBgUrlInput($event, layer.id)"
+                />
+                <button
+                  type="button"
+                  class="tme-button tme-bg-set"
+                  data-testid="tme-layer-bg-set"
+                  [disabled]="!canSetUrl(layer.id)"
+                  (click)="setBgUrl(layer.id)"
+                >
+                  Set
+                </button>
+                @if (hasBackground(layer.id)) {
+                  <button
+                    type="button"
+                    class="tme-button tme-delete"
+                    data-testid="tme-layer-bg-remove"
+                    (click)="removeBackground(layer.id)"
+                  >
+                    Remove
+                  </button>
+                }
+              </div>
+            </div>
+            @if (rows().length === 1) {
+              <span class="tme-fence" data-testid="tme-layer-fence">The last remaining layer can't be deleted.</span>
+            }
+          }
+        </div>
+      }
+
+      <!-- C30: the last sheet command's field-precise refusal — user-visibly
+           rendered (never console-only), the B-117 pattern. -->
+      @if (refusals().length > 0) {
+        <div class="tme-errors" data-testid="tme-layer-errors" role="alert" aria-label="The map refused this layer change">
+          @for (issue of refusals(); track $index) {
+            <p class="tme-error" data-testid="tme-layer-error">
+              @if (issue.path !== '') {
+                <span class="tme-error-path">{{ issue.path }}</span>
+              }
+              <span>{{ issue.message }}</span>
+            </p>
+          }
+        </div>
+      }
+    </div>
+  </section>
+}

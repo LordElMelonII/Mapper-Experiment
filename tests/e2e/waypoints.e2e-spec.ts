@@ -254,6 +254,20 @@ const modelPoint = async (page: Page, model: { x: number; y: number }): Promise<
   );
 };
 
+
+/**
+ * B-127 (D86) aiming repair: modelPoint's CANVAS-RELATIVE result doubled as
+ * the SCREEN tap point while the canvas sat at the viewport origin; the wide
+ * rail column moved the canvas origin, so every tap/drag/click site converts
+ * through the live canvas box now (the comparison sites stay canvas-relative
+ * — rendered reads are canvas-relative).
+ */
+const screenModelPoint = async (page: Page, model: { x: number; y: number }): Promise<Point> => {
+  const point = await modelPoint(page, model);
+  const box = await canvasBox(page);
+  return { x: box.x + point.x, y: box.y + point.y };
+};
+
 /** Tap a canvas node through its rendered position (seam + canvas box). */
 const tapNode = async (page: Page, id: string): Promise<void> => {
   await settle(page);
@@ -433,7 +447,7 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
     // D76/B-120: the placement contract — editor mode first, then the
     // Waypoint tool; the background tap that follows places the waypoint.
     await enterEditorWaypointTool(page);
-    await tapPoint(page, await modelPoint(page, BG_MODEL_POINT));
+    await tapPoint(page, await screenModelPoint(page, BG_MODEL_POINT));
 
     // F10/D21: exactly one 'Waypoint' appears — the plain-word C23 label of
     // the chat-state overlay node, rendered on the ACTIVE layer (D69).
@@ -568,8 +582,8 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
     // double-tap gesture is bound); C5: the engine assigns collision-free
     // ids.
     await enterEditorWaypointTool(page);
-    await tapPoint(page, await modelPoint(page, BG_MODEL_POINT));
-    await tapPoint(page, await modelPoint(page, BG_MODEL_POINT_2));
+    await tapPoint(page, await screenModelPoint(page, BG_MODEL_POINT));
+    await tapPoint(page, await screenModelPoint(page, BG_MODEL_POINT_2));
 
     await expect
       .poll(async () => (await readLabels(page)).filter((l) => l === 'Waypoint'))
@@ -592,7 +606,7 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
     page,
   }) => {
     test.skip(isPhone(), 'mouse drag runs on desktop; the touch twin is the phone test below (D53)');
-    const start = await modelPoint(page, BG_MODEL_POINT);
+    const start = await screenModelPoint(page, BG_MODEL_POINT);
     const panBefore = await readPan(page);
     await page.mouse.move(start.x, start.y);
     await page.mouse.down();
@@ -608,7 +622,7 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
     // we- set) is unchanged by the tap.
     const before = await readState(page);
     await settle(page);
-    const aim = await modelPoint(page, BG_MODEL_POINT_2);
+    const aim = await screenModelPoint(page, BG_MODEL_POINT_2);
     await page.mouse.click(aim.x, aim.y);
     await settle(page);
     const after = await readState(page);
@@ -724,7 +738,7 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
     // effect is clearing both selections. The node count is unchanged and no
     // placement kind (authored node or waypoint) appeared.
     const before = await readState(page);
-    await tapPoint(page, await modelPoint(page, BG_MODEL_POINT));
+    await tapPoint(page, await screenModelPoint(page, BG_MODEL_POINT));
     await expect(page.getByTestId('tme-selection-chip')).toBeHidden();
     const after = await readState(page);
     expect(after.labels.length, 'a view-mode background tap places NOTHING (D76)').toBe(
@@ -760,7 +774,7 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
     page,
   }) => {
     await enterEditorWaypointTool(page);
-    await tapPoint(page, await modelPoint(page, BG_MODEL_POINT));
+    await tapPoint(page, await screenModelPoint(page, BG_MODEL_POINT));
     await expect
       .poll(async () => (await readLabels(page)).filter((l) => l === 'Waypoint'))
       .toHaveLength(1);
@@ -804,7 +818,7 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
     // the B-112 chain, NOT under pin here.
     await activate(page, 'tme-editor-toggle');
     await expect(page.getByTestId('tme-tool-node')).toHaveAttribute('aria-pressed', 'true');
-    await tapPoint(page, await modelPoint(page, BG_MODEL_POINT));
+    await tapPoint(page, await screenModelPoint(page, BG_MODEL_POINT));
     await expect
       .poll(async () => (await readLabels(page)).filter((l) => l === 'New place'))
       .toHaveLength(1);
@@ -829,7 +843,7 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
     const pan = await readPan(page);
 
     // PLACE a node while zoomed: placeNodeAt → rebuild, no fit.
-    await tapPoint(page, await modelPoint(page, BG_MODEL_POINT_2));
+    await tapPoint(page, await screenModelPoint(page, BG_MODEL_POINT_2));
     await expect
       .poll(async () => (await readLabels(page)).filter((l) => l === 'New place'))
       .toHaveLength(2);
@@ -840,7 +854,7 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
     const placedId = await readSelectedId(page);
     if (placedId === null) throw new Error('placed node not selected (C5/D75 id discovery failed)');
     const before = expectPosition(await readRenderedPosition(page, placedId));
-    const start = await modelPoint(page, BG_MODEL_POINT_2);
+    const start = await screenModelPoint(page, BG_MODEL_POINT_2);
     await page.mouse.move(start.x, start.y);
     await page.mouse.down();
     await page.mouse.move(start.x + 60, start.y + 8, { steps: 6 });
@@ -874,7 +888,7 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
       // expansion + property region) — settle their RO refit first.
       await activate(page, 'tme-editor-toggle');
       await expect(page.getByTestId('tme-tool-node')).toHaveAttribute('aria-pressed', 'true');
-      await tapPoint(page, await modelPoint(page, BG_MODEL_POINT));
+      await tapPoint(page, await screenModelPoint(page, BG_MODEL_POINT));
       await expect
         .poll(async () => (await readLabels(page)).filter((l) => l === 'New place'))
         .toHaveLength(1);
@@ -891,8 +905,26 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
       const toggle = await page.getByTestId('tme-editor-toggle').boundingBox();
       const tools = await page.getByTestId('tme-editor-tools').boundingBox();
       const layers = await page.getByTestId('tme-layer-layer-fuyuki').boundingBox();
-      const rightEdge = Math.min(toggle?.x ?? Infinity, tools?.x ?? Infinity) - 16;
-      const bottomEdge = layers?.y ?? box.y + box.height;
+      // B-127 (D86) aiming repair: the migrated chrome lives ON the rail — a
+      // SIBLING of the canvas, never an overlay — so only chrome boxes that
+      // still INTERSECT the canvas band constrain the pinch; off-canvas
+      // chrome (the rail bar below the canvas) yields to the canvas's edges.
+      // The CHIP is the one overlay that stayed on the stage: a pinch finger
+      // starting on it releases as its tap (dismisses the selection — found
+      // live), so its live box joins the right-edge constraints.
+      const inCanvasBand = (b: { y: number; height: number } | null): boolean =>
+        b !== null && b.y < box.y + box.height && b.y + b.height > box.y;
+      const chip = (await page.getByTestId('tme-selection-chip').count()) > 0
+        ? await page.getByTestId('tme-selection-chip').boundingBox()
+        : null;
+      const rightEdge =
+        Math.min(
+          ...(toggle !== null && inCanvasBand(toggle) ? [toggle.x] : []),
+          ...(tools !== null && inCanvasBand(tools) ? [tools.x] : []),
+          ...(chip !== null && inCanvasBand(chip) ? [chip.x] : []),
+          box.x + box.width,
+        ) - 16;
+      const bottomEdge = layers !== null && inCanvasBand(layers) ? layers.y : box.y + box.height;
       const center = {
         x: box.x + (12 + rightEdge) / 2,
         y: box.y + Math.max(64, Math.min(box.height * 0.45, bottomEdge - box.y - 20)),
@@ -906,7 +938,7 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
       const pan = await readPan(page);
 
       // PLACE while zoomed.
-      await tapPoint(page, await modelPoint(page, BG_MODEL_POINT_2));
+      await tapPoint(page, await screenModelPoint(page, BG_MODEL_POINT_2));
       await expect
         .poll(async () => (await readLabels(page)).filter((l) => l === 'New place'))
         .toHaveLength(2);

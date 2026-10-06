@@ -1,0 +1,328 @@
+// PKG B-126 — component-scoped chrome only (D7: zero global leakage). The
+// host is the map viewer's FIFTH flex REGION (beside the panels on wide
+// viewports, stacked below them on narrow ones — the map-viewer SCSS owns
+// the flex sizing); the sheet hides itself entirely (display:none) whenever
+// it is closed, so the closed sheet never occupies a slot (the B-117
+// precedent). Below 700px the sheet carries the B-114 rail: an always-
+// visible >= 44px collapse row whose body hide/show is scoped to the media
+// query; at >= 700px the rail is gone and the body always shows. Content
+// never forces horizontal overflow (D53) and scrolls its own overflow
+// vertically, never the page.
+:host {
+  display: none; // closed: no slot, no chrome
+  box-sizing: border-box;
+}
+
+:host(.tme-open) {
+  display: block;
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: #e6ebf2;
+  font:
+    400 0.875rem/1.5 system-ui,
+    -apple-system,
+    sans-serif;
+}
+
+.tme-manager-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem 0;
+}
+
+.tme-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+// The sheet's X close — one >= 44px tap target (F52), touch-alone (D53).
+.tme-close {
+  min-width: 44px; // F52
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font:
+    600 1rem/1 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+// B-114 (ruling 1): the sheet rail — one full-width >= 44px tap target
+// (F52), the narrow form's collapse affordance. No hover affordance: the
+// chevron rotation and the body visibility are the signal-driven state
+// (R3); the wide media query below neutralizes the whole rail.
+.tme-sheet-rail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px; // F52: >= 44px tap target
+  padding: 0 0.875rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font:
+    600 1rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+.tme-sheet-chevron {
+  font-size: 1rem;
+  opacity: 0.8;
+}
+
+// Collapsed: the chevron points right (the expand affordance); expanded it
+// points down into the open body. Pure CSS off the state class — no hover.
+.tme-collapsed .tme-sheet-chevron {
+  transform: rotate(-90deg);
+}
+
+// The body wrapper: every control/content the sheet renders lives inside
+// it. ALWAYS in the DOM; the padding lives here so the rail spans
+// edge-to-edge (the B-114 structure).
+.tme-manager-body {
+  padding: 0.75rem;
+}
+
+// Narrow only: collapsed hides the body — the freed height returns to the
+// canvas stage (the host is flex: 0 0 auto in map-viewer.component.scss,
+// so it shrinks to rail height and the ResizeObserver → refit chain
+// follows — the pinned B-114 behavior).
+@media (max-width: 699.98px) {
+  .tme-collapsed .tme-manager-body {
+    display: none;
+  }
+}
+
+// Wide (the established breakpoint): the sheet neutralizes — the rail is
+// gone and the body always shows, whatever the (phone-world) toggle is.
+@media (min-width: 700px) {
+  .tme-sheet-rail {
+    display: none;
+  }
+}
+
+.tme-field-label {
+  display: block;
+  margin: 0.375rem 0 0.25rem;
+  color: #c7d0dd;
+  font-size: 0.8125rem;
+}
+
+// Shared control chrome: full-width-friendly, >= 44px tall (F52), 16px font
+// so iOS Safari never focus-zooms (D53).
+.tme-input {
+  display: block;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 0.25rem 0.625rem;
+  border: 1px solid rgba(174, 189, 211, 0.4);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #e6ebf2;
+  font:
+    400 1rem/1.4 system-ui,
+    -apple-system,
+    sans-serif;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+// The create/rename/confirm rows: the input flexes, the buttons keep their
+// tap size; the row WRAPS so a phone never overflows horizontally (D53).
+.tme-create-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.tme-create-input {
+  flex: 1 1 10rem;
+  min-width: 0; // never propagate content width into the row (D53)
+}
+
+.tme-button {
+  min-width: 44px; // F52: >= 44px tap targets, touch-only parity
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+.tme-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+// The Add/Save commits — the established gold primary accent.
+.tme-add,
+.tme-save {
+  border-color: #ffd166;
+  color: #ffd166;
+}
+
+// One layer row: the name line (with the active marker), then the action
+// row — both wrap, so four buttons never force horizontal scroll (D53).
+.tme-layer-row {
+  margin-top: 0.625rem;
+  padding-top: 0.625rem;
+  border-top: 1px solid rgba(174, 189, 211, 0.2);
+}
+
+.tme-layer-name-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tme-layer-name {
+  font-weight: 600;
+}
+
+// Ruling 2: the active layer's row marker — the nav stays the switcher;
+// this only names which row is live (the gold accent language).
+.tme-active-marker {
+  padding: 0.125rem 0.5rem;
+  border: 1px solid #ffd166;
+  border-radius: 999px;
+  color: #ffd166;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.tme-layer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.375rem;
+}
+
+// The destructive actions share the red key (the blocked/delete accent).
+.tme-delete {
+  border-color: rgba(201, 86, 78, 0.7);
+  color: #e08a84;
+}
+
+// Ruling 3: the last-layer fence's reason in words — honest, muted, not an
+// error (nothing failed; the delete is simply never offered there).
+.tme-fence {
+  display: block;
+  margin-top: 0.375rem;
+  color: #9aa7b8;
+  font-size: 0.8125rem;
+}
+
+// B-128 (D85): the read-only portal mirror line under each row's name —
+// how the layer is entered from another (or that it is not). Muted small
+// print (the fence line's language); a status, never an affordance.
+.tme-layer-portal {
+  margin: 0.125rem 0 0;
+  color: #9aa7b8;
+  font-size: 0.8125rem;
+}
+
+// B-130 (D84/D29): the row's background entry — the state line, then the
+// upload/URL/Set/Remove controls. Both wrap, so a long URL or a narrow
+// phone never forces horizontal scroll (D53).
+.tme-layer-bg {
+  margin-top: 0.375rem;
+}
+
+// The state line — words only (C23). break-all so even the user's longest
+// URL wraps inside the sheet instead of overflowing it (D53).
+.tme-layer-bg-state {
+  margin: 0.125rem 0 0.25rem;
+  color: #9aa7b8;
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.tme-layer-bg-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+// The URL input flexes like the create/rename inputs; min-width: 0 keeps
+// its content from propagating width into the row (D53).
+.tme-bg-url {
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+
+// The Upload LABEL is the tap target (the packet's label-wrapped input):
+// it carries .tme-button for the chrome, and needs the layout the buttons
+// get from the UA — an inline label ignores min-height (F52), so flex it.
+.tme-bg-upload {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+// The wrapped file input: visually hidden but focusable/reachable (the
+// label is the affordance; tests address the input directly).
+.tme-upload-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  opacity: 0;
+}
+
+// Ruling 3: the informed-cascade sentence — the engine's counts in plain
+// words (R1/C23), warm to read as destructive-adjacent (not an error).
+.tme-impact {
+  margin: 0 0 0.375rem;
+  color: #d9b06c;
+}
+
+// C30 field-precise refusals — the B-117 pattern, one line per issue: the
+// field path (small, muted) then the core's message verbatim.
+.tme-errors {
+  margin-top: 0.625rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid rgba(201, 86, 78, 0.5);
+  border-radius: 8px;
+  background: rgba(201, 86, 78, 0.12);
+}
+
+.tme-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.375rem;
+  margin: 0;
+  color: #e08a84;
+}
+
+.tme-error-path {
+  color: #9aa7b8;
+  font-size: 0.75rem;
+}

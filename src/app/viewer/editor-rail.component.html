@@ -1,0 +1,155 @@
+<!-- PKG B-127 (§5 Phase 3 M3, D86/F53) — the editor RAIL: the app's single
+     control surface. Every control here MIGRATED from the stage's scattered
+     chrome with its testid and semantics verbatim (the top-right
+     editor-toggle/save stack, the bottom-right tools group, the bottom-left
+     layer nav — nothing remains in duplicate); the chip, the header and the
+     draw-arc banner stay on the stage. Sections run top-to-bottom on the
+     wide column / left-to-right on the narrow bar: the editor/view toggle,
+     the tool group (editor mode only — the existing conditional) and the
+     layer switcher + Manage in the BODY; then the zoom trio, the save dock
+     (exactly while unsavedChanges()) and the collapse toggle as host
+     siblings — so the wide column keeps D86's section order while the
+     narrow bar shares ONE band between the trio and the toggle (a two-band
+     phone rail: the map stays the primary surface, D53). F52/D53: every
+     control >= 44px and touch-alone; the collapse toggle (>= 44px) reduces
+     the rail to a slim strip carrying only the expand affordance. C23:
+     plain words or +/−/Fit glyphs. -->
+<div class="tme-rail-body" id="tme-rail-body">
+  <!-- B-116 (§5 Phase 3 M1/D53/F52): the editor toggle — one >= 44px tap
+       target whose pressed state (aria-pressed + the gold tme-active class
+       bound to the editorMode signal, R3) tells the author that canvas taps
+       place nodes and node drags persist. Plain words (C23); touch alone
+       operates it (tap, no hover). -->
+  <button
+    type="button"
+    class="tme-editor-toggle"
+    data-testid="tme-editor-toggle"
+    [class.tme-active]="graph.editorMode()"
+    [attr.aria-pressed]="graph.editorMode() ? 'true' : 'false'"
+    (click)="toggleEditor()"
+  >
+    {{ graph.editorMode() ? 'Editing' : 'Edit' }}
+  </button>
+
+  <!-- B-120 (D76/F52/D53): the editor's segmented TOOL control — what an
+       editor-mode background/compound-box tap places: Node (default) or
+       Waypoint; B-122's third segment Arc — leaf taps pick arc endpoints.
+       Editor chrome only (view mode never renders it). One >= 44px segment
+       per tool; the pressed state (aria-pressed + the gold tme-active class
+       bound to the editorTool signal, R3) makes the active placement kind
+       visible — no invisible affordance (D53). Plain words (C23). -->
+  @if (graph.editorMode()) {
+    <div class="tme-tools" role="group" aria-label="Editor tools" data-testid="tme-editor-tools">
+      <button
+        type="button"
+        class="tme-tool"
+        data-testid="tme-tool-node"
+        [class.tme-active]="graph.editorTool() === 'node'"
+        [attr.aria-pressed]="graph.editorTool() === 'node' ? 'true' : 'false'"
+        (click)="setEditorTool('node')"
+      >
+        Node
+      </button>
+      <button
+        type="button"
+        class="tme-tool"
+        data-testid="tme-tool-waypoint"
+        [class.tme-active]="graph.editorTool() === 'waypoint'"
+        [attr.aria-pressed]="graph.editorTool() === 'waypoint' ? 'true' : 'false'"
+        (click)="setEditorTool('waypoint')"
+      >
+        Waypoint
+      </button>
+      <button
+        type="button"
+        class="tme-tool"
+        data-testid="tme-tool-arc"
+        [class.tme-active]="graph.editorTool() === 'arc'"
+        [attr.aria-pressed]="graph.editorTool() === 'arc' ? 'true' : 'false'"
+        (click)="setEditorTool('arc')"
+      >
+        Arc
+      </button>
+    </div>
+  }
+
+  <!-- F01/F02: the layer switcher — one >= 44px button per layer (F52).
+       B-126 (D82): the compact switcher keeps its Manage affordance at the
+       end — the layer-manager sheet's only entry (plain word, C23; the nav
+       stays the switcher, the sheet manages). -->
+  <nav class="tme-layers" aria-label="Map layers">
+    @for (layer of graph.layerNames(); track layer.id) {
+      <button
+        type="button"
+        class="tme-layer-button"
+        [class.tme-active]="layer.id === graph.activeLayer()"
+        [attr.data-testid]="'tme-layer-' + layer.id"
+        (click)="selectLayer(layer.id)"
+      >
+        {{ layer.name }}
+      </button>
+    }
+    <button
+      type="button"
+      class="tme-layer-button tme-manage"
+      data-testid="tme-layer-manage"
+      [class.tme-active]="graph.layerManagerOpen()"
+      [attr.aria-pressed]="graph.layerManagerOpen() ? 'true' : 'false'"
+      (click)="toggleLayerManager()"
+    >
+      Manage
+    </button>
+  </nav>
+</div>
+
+<!-- B-127 (D86): the zoom trio — one >= 44px button each (F52), the C23
+     glyphs/words (+, −, Fit). Viewport commands of the service (R2); they
+     write no signals (D2) and work identically in both modes — zooming is
+     navigational, never an edit. A SIBLING of the body (not inside it) so
+     the narrow bar shares ONE band between the trio and the collapse
+     toggle below — the two-band phone rail (D53: the map stays the primary
+     surface; the rail never grows a third band). -->
+<div class="tme-zoom" role="group" aria-label="Zoom" data-testid="tme-zoom">
+  <button type="button" class="tme-zoom-button" data-testid="tme-zoom-in" aria-label="Zoom in" (click)="zoomIn()">
+    +
+  </button>
+  <button type="button" class="tme-zoom-button" data-testid="tme-zoom-out" aria-label="Zoom out" (click)="zoomOut()">
+    −
+  </button>
+  <button type="button" class="tme-zoom-button" data-testid="tme-zoom-fit" (click)="fitToView()">Fit</button>
+</div>
+
+<!-- B-116 (F45/D75): the save dock — the F45 unsaved-changes indicator
+     (the core's dirty flag is the single truth, R1) PLUS the Save button,
+     rendered exactly while the facade still holds unsaved editor edits,
+     so it survives editor-mode toggles (F45: edits live until saveMap).
+     A C30 save refusal surfaces user-visibly through graph.saveError
+     (the established signal → template message path, never console-only)
+     while the dock stays (dirty remains true after a refusal). A host
+     sibling like the zoom trio so the wide column's section order holds
+     (toggle, tools, layers, zoom, dock — D86). -->
+@if (graph.unsavedChanges()) {
+  <aside class="tme-save-dock" data-testid="tme-save-dock" role="status" aria-label="Unsaved map changes">
+    <span data-testid="tme-unsaved">Unsaved changes</span>
+    @if (graph.saveError(); as err) {
+      <span class="tme-save-error" data-testid="tme-save-error">{{ err }}</span>
+    }
+    <button type="button" class="tme-save" data-testid="tme-save" (click)="saveMap()">Save</button>
+  </aside>
+}
+
+<!-- The rail's collapse toggle — one >= 44px tap target (F52), the only
+     control the collapsed strip carries. The state is component-local (the
+     B-114 precedent); the region shrink/grow is an ordinary container
+     resize the D81 discriminator classifies (preserve on wide, refit on
+     narrow). Plain words (C23); no hover affordance. -->
+<button
+  type="button"
+  class="tme-rail-toggle"
+  data-testid="tme-rail-toggle"
+  [attr.aria-expanded]="!collapsed()"
+  aria-controls="tme-rail-body"
+  (click)="toggleRail()"
+>
+  {{ collapsed() ? 'Show' : 'Hide' }}
+</button>

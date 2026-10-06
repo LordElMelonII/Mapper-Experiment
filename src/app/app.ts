@@ -155,6 +155,14 @@ function fuyukiDisplayMap(): WorldMapData {
     // terrainMultipliers stay the frozen authored ones — pricing reads them,
     // no facade command writes them.
     scale: { ...fuyukiMap.scale },
+    // B-126 (C24): the layer commands mutate `map.layers` in place —
+    // upsertLayer CREATE pushes, removeLayer/reorderLayers REASSIGN — so
+    // the array must be a shallow copy exactly like nodes/edges (B-110) and
+    // scale (B-123): the frozen FX1 array would make every layer command
+    // throw "Cannot assign to read only property". The `.map()` IS that
+    // copy (plus the harness-only fuyuki background patch, D69); the layer
+    // ELEMENT objects stay the frozen authored ones — every layer command
+    // swaps FRESH objects in by index (the D75 seam), nothing mutates them.
     layers: fuyukiMap.layers.map((layer) =>
       layer.id === 'layer-fuyuki'
         ? { ...layer, background: { assetId: 'assets/harness-bg-fuyuki.png' } }
@@ -227,12 +235,22 @@ interface TmeE2EHook {
   routeLegArcIds(): string[] | null;
   /** B-121 (D77): the edit log's ids — the draft visual's state seam. */
   draftedIds(): string[];
+  /** B-126 (D82/R1): the engine's layer-removal counts (N/M/K) — the delete
+   *  dialog's numbers asserted against the core's own answer, or null when
+   *  no map is loaded / the id is unknown. */
+  layerRemovalImpact(layerId: string): { nodes: number; sameLayerArcs: number; crossLayerArcs: number } | null;
   /** B-121 (D77): resolved border-color of one node, or null (cascade pin). */
   nodeBorderColor(id: string): string | null;
   /** B-121 (D77): resolved line-color of one edge, or null (cascade pin). */
   edgeLineColor(id: string): string | null;
   /** B-121 (D77): the stylesheet's selectors in declaration order (cascade pin). */
   stylesheetSelectors(): string[];
+  /** B-128 (D85): the ACTIVE layer's breadcrumb chain (as rendered), or [] —
+   *  root → active, the rendered crumb row's truth. */
+  breadcrumbChain(): string[];
+  /** B-128 (D85): one portal badge's label (the target layer's name) by its
+   *  wire node's id, or null when not projected (unwired / other layer). */
+  portalBadgeText(nodeId: string): string | null;
 }
 
 @Component({
@@ -313,9 +331,12 @@ export class App {
       scaleInfo: () => this.graphService.testScaleInfo(),
       routeLegArcIds: () => this.graphService.testRouteLegArcIds(),
       draftedIds: () => this.graphService.testDraftedIds(),
+      layerRemovalImpact: (layerId: string) => this.graphService.testLayerRemovalImpact(layerId),
       nodeBorderColor: (id: string) => this.graphService.testNodeBorderColor(id),
       edgeLineColor: (id: string) => this.graphService.testEdgeLineColor(id),
       stylesheetSelectors: () => this.graphService.testStylesheetSelectors(),
+      breadcrumbChain: () => this.graphService.testBreadcrumbChain(),
+      portalBadgeText: (nodeId: string) => this.graphService.testPortalBadgeText(nodeId),
     };
   }
 }

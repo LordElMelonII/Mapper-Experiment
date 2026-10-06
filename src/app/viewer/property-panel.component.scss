@@ -235,6 +235,25 @@
   margin-top: 0.625rem;
 }
 
+// B-126 (D82/F54): the standing Detach tool — the danger zone's softer key
+// (destructive to the ARCS, never to the place itself: a muted red outline,
+// not Delete's filled one), one >= 44px tap target (F52), touch-alone (D53).
+.tme-detach {
+  min-width: 44px; // F52
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px dashed rgba(201, 86, 78, 0.7);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #e08a84;
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
 .tme-delete {
   min-width: 44px; // F52
   min-height: 44px;

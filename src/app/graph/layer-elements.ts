@@ -1,9 +1,10 @@
 // src/app/graph/layer-elements.ts — the PURE layer projection (B-102, M1
-// verifier finding 2 fix), extended by B-107 (cross-layer endpoint badges):
-// frozen core types in, cytoscape element definitions out. No Angular, no
-// cytoscape runtime, no DOM — type-only imports, which is exactly what lets
-// tests/verify (bare-Node vitest) pin it without a browser (the UI bar's e2e
-// still covers the mounted pipeline).
+// verifier finding 2 fix), extended by B-107 (cross-layer endpoint badges)
+// and B-128 (D85/F02: portal badges + the breadcrumb chain builder): frozen
+// core types in, cytoscape element definitions out. No Angular, no cytoscape
+// runtime, no DOM — type-only imports, which is exactly what lets tests/verify
+// and tests/unit (bare-Node vitest) pin it without a browser (the UI bar's
+// e2e still covers the mounted pipeline).
 //
 // R4: takes the SAME live map/overlay references the facade holds (C24) and
 // only READS them — this builds a projection, never a second truth. R1: no
@@ -25,7 +26,9 @@ import type { ChatMapOverlay, RouteResult, TravelMode, WorldMapData } from '../.
  *     off the canvas;
  *   - edges — library AND overlay user edges (D61) — only when BOTH endpoints
  *     are on this layer: C3 says a cross-layer arc is an ordinary arc that is
- *     simply not drawn in M1 (badges are M2).
+ *     simply not drawn as a line on its layer (its endpoints carry B-107
+ *     badges; since B-128/D85 cross-layer arcs are also CREATABLE — the F17
+ *     un-fence).
  * Blocked state is the merge the effective graph implements: an authored
  * block OR a chat-scoped overlay block (D20) — read-only, no math (R1).
  * B-111: an edge carrying authored `curve` data gains the `tme-curved`
@@ -83,7 +86,7 @@ export function buildLayerElements(
       classes.push('tme-blocked'); // C2: drawn dashed, excluded from routing
     }
     if (sourceLayer !== targetLayer) {
-      classes.push('tme-crosslayer'); // C3: informational — such arcs are filtered out in M1
+      classes.push('tme-crosslayer'); // C3: informational — no line here; badges at the endpoints (B-107)
     }
     if (edge.curve !== undefined) {
       classes.push('tme-curved'); // B-111 (§5 M3): authored curve data → unbundled-bezier
@@ -173,6 +176,21 @@ export function crossLayerAnchors(
 const BADGE_OFFSET = 40;
 
 /**
+ * B-128: the SHARED badge anchor — one placement assembly for every badge
+ * pseudo-node, so the arc badges (B-107) and the portal badges (D85) can
+ * never drift apart. The anchor sits BADGE_OFFSET off the host node on both
+ * axes: at the node's exact position a badge would be untappable — the 44px
+ * host body (F52) wins `findNearestElements`, and the B-115 touch-slop
+ * (host reach 22·z + 8 px) swallows anything inside it at every zoom — which
+ * would kill the F02 double-tap entry gesture outright. Pure reads (R4);
+ * null when the host carries no authored position (the caller degrades).
+ */
+function badgeAnchor(host: { position?: { x: number; y: number } }): { x: number; y: number } | null {
+  if (host.position === undefined) return null;
+  return { x: host.position.x + BADGE_OFFSET, y: host.position.y + BADGE_OFFSET };
+}
+
+/**
  * B-111: the control-point WEIGHT emitted for every curve control point —
  * the installed runtime's own default value (cytoscape 3.34.3,
  * cytoscape.esm.mjs stylesheet defaults: `'control-point-weights': 0.5`).
@@ -229,7 +247,8 @@ export function buildCrossLayerBadges(
   const badges: ElementDefinition[] = [];
   for (const anchor of crossLayerAnchors(map, overlay, layerId)) {
     const host = nodeOf.get(anchor.onLayer);
-    if (host?.position === undefined) continue; // no anchor to ride — degrade (C32 spirit)
+    const anchorPoint = host === undefined ? null : badgeAnchor(host);
+    if (host === undefined || anchorPoint === null) continue; // no anchor to ride — degrade (C32 spirit)
     const edge = edgeOf.get(anchor.arcId);
     if (edge === undefined) continue; // unreachable: anchors derive from these very edges
     const destination = nodeOf.get(anchor.other)?.label ?? anchor.other; // degrade, never throw
@@ -255,7 +274,7 @@ export function buildCrossLayerBadges(
       // B-108 (finding 1.1): `arcId` is the tap handler's key into the ARC —
       // carried as data, never parsed out of the prefixed pseudo-node id.
       data: { id: `tme-badge-${anchor.arcId}`, label, arcId: anchor.arcId },
-      position: { x: host.position.x + BADGE_OFFSET, y: host.position.y + BADGE_OFFSET },
+      position: anchorPoint,
       classes: ['tme-badge'],
       // Ruling 1: pinned pseudo-node — display only, never draggable (same
       // ElementDefinition field the compound parents use; see B-103 note).
@@ -263,4 +282,84 @@ export function buildCrossLayerBadges(
     });
   }
   return badges;
+}
+
+/**
+ * B-128 (D85/F02): one PORTAL badge per node ON `layerId` wired through
+ * `setPortal` — the "there is depth here" marker (F02), riding the B-107
+ * badge machinery: projection pseudo-NODES with the SHARED `tme-badge` class
+ * (cull-coherence comes free — badges cull WITH content, B-115, and no
+ * `min-zoomed-font-size` may ever be added) plus a DISTINCT `tme-portal-badge`
+ * class whose stylesheet entry carries the depth hue, so a portal reads apart
+ * from a cross-layer arc badge.
+ *
+ * The label is the TARGET layer's authored NAME (C23 — the word the user
+ * wrote, never the id); a wiring whose target layer no longer exists
+ * (unreachable through the facade — removeLayer unwires — but a live-reference
+ * read must not assume) degrades to NO badge, never a machine name (C32
+ * spirit). The host node's id rides as `nodeId` data — the service's
+ * double-tap entry gesture keys on it (carried as data, never parsed out of
+ * the prefixed id — the B-108 `arcId` precedent). Library nodes only: a
+ * portal is authored wiring on MapNodeData, and overlay waypoints have no
+ * editor command (the B-116 precedent).
+ *
+ * PURE (type-only imports, bare-Node friendly, R4 read-only).
+ */
+export function buildPortalBadges(map: WorldMapData, layerId: string): ElementDefinition[] {
+  const layerNameOf = new Map(map.layers.map((layer) => [layer.id, layer.name] as const));
+  const badges: ElementDefinition[] = [];
+  for (const node of map.nodes) {
+    if (node.layer !== layerId || node.portal === undefined) continue;
+    const targetName = layerNameOf.get(node.portal);
+    if (targetName === undefined) continue; // stale wiring — degrade to nothing (C32 spirit)
+    const anchorPoint = badgeAnchor(node);
+    if (anchorPoint === null) continue; // no authored position to anchor on — degrade (C32 spirit)
+    badges.push({
+      group: 'nodes' as const,
+      // `nodeId` is the entry gesture's key into the LIVE node (it re-reads
+      // the wiring at gesture time — a stale badge degrades to a no-op).
+      data: { id: `tme-portal-badge-${node.id}`, label: targetName, nodeId: node.id },
+      position: anchorPoint,
+      classes: ['tme-badge', 'tme-portal-badge'],
+      grabbable: false, // pinned pseudo-node — the compound-parent field (B-103 note)
+    });
+  }
+  return badges;
+}
+
+/**
+ * B-128 (D85/F02): the breadcrumb CHAIN of `activeLayerId` — the layer
+ * hierarchy DERIVES from the portal wiring (no separate parent field, D85):
+ * parent(L) is the layer of the first node in `map.nodes` order carrying
+ * `portal === L` (reading (a): several layers may entry into the same target
+ * — one NODE per target, not one parent — so the walk takes the FIRST wired
+ * node's layer, deterministic over the authored array order). The chain runs
+ * ROOT → ACTIVE. Reading (b): CYCLES are legal data (A portals into B, B
+ * into A — the validator forbids only self-targets), so the walk carries a
+ * visited-set and STOPS on a revisit — the chain just ends (degrade honestly,
+ * no hang, C32 spirit). An active layer unknown to the map (degenerate) is
+ * the empty chain. PURE: positions are authored data — nothing is computed
+ * (R1); ids only, the rendered words are the layers' own names joined by the
+ * caller (C23). Unit-pinned by tests/unit/portal-elements.spec.ts.
+ */
+export function breadcrumbChain(map: WorldMapData, activeLayerId: string): string[] {
+  const known = new Set(map.layers.map((layer) => layer.id));
+  if (!known.has(activeLayerId)) return []; // degenerate — degrade to nothing (C32 spirit)
+  const parentOf = (layerId: string): string | null => {
+    const wired = map.nodes.find((node) => node.portal === layerId);
+    return wired === undefined ? null : wired.layer;
+  };
+  // Root → active: walk parents from the active layer, then reverse.
+  const walked: string[] = [activeLayerId];
+  const visited = new Set([activeLayerId]);
+  let current = activeLayerId;
+  for (;;) {
+    const parent = parentOf(current);
+    if (parent === null || !known.has(parent)) break; // no wiring / stale target — chain ends
+    if (visited.has(parent)) break; // a cycle is legal data — the chain just ends (C32 spirit)
+    visited.add(parent);
+    walked.push(parent);
+    current = parent;
+  }
+  return walked.reverse();
 }

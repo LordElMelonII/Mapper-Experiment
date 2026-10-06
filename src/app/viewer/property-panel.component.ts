@@ -74,6 +74,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  afterRenderEffect,
   computed,
   effect,
   inject,
@@ -282,8 +283,12 @@ export class PropertyPanelComponent {
    * honestly instead of silently re-pointing the parent. Deeper cycle risks
    * (choosing a descendant) are the facade's C30 refusal, rendered — the
    * core is the authority (§6.2).
+   * B-126 (D83/C24): editorRevision is a dependency — a Layer-dropdown move
+   * swaps the node object in place (`map.nodes[i] = fresh`, the D75 seam)
+   * and the picker must follow the node to its NEW layer's containers.
    */
   protected readonly parentOptions = computed((): readonly ParentOption[] => {
+    void this.graph.editorRevision(); // dependency: an in-place layer move re-reads (C24)
     const d = this.draft();
     if (d === null) return [];
     const layer = this.graph.nodeDataById(d.id)?.layer;
@@ -295,6 +300,96 @@ export class PropertyPanelComponent {
       return [{ id: d.parent, label: this.graph.labelOf(d.parent) }, ...options];
     }
     return options;
+  });
+
+  // --- B-126 (D83): the Layer dropdown — the ONE way to move a node ---------
+
+  /**
+   * B-126 (D83/C24): the LIVE node's layer id — the dropdown's truth. The
+   * facade's setNodeLayer swaps a FRESH node object in place (the D75
+   * seam), so editorRevision is the recompute dependency (the scaleNow
+   * precedent); the value itself is the live reference's field (R4).
+   */
+  protected readonly nodeLayerId = computed((): string | null => {
+    void this.graph.editorRevision(); // dependency: an in-place layer move re-reads (C24)
+    const d = this.draft();
+    if (d === null) return null;
+    return this.graph.nodeDataById(d.id)?.layer ?? null;
+  });
+
+  // --- B-128 (D85/F02): the "Opens layer" dropdown — the portal wiring ------
+
+  /**
+   * B-128 (D85/C24): the LIVE node's portal target id — the dropdown's
+   * truth (null = unwired ⇒ the None option). setPortal swaps a FRESH node
+   * object in place (the D75 seam), so editorRevision is the recompute
+   * dependency (the nodeLayerId precedent); the value itself is the live
+   * reference's field (R4).
+   */
+  protected readonly nodePortalTarget = computed((): string | null => {
+    void this.graph.editorRevision(); // dependency: an in-place wiring re-reads (C24)
+    const d = this.draft();
+    if (d === null) return null;
+    return this.graph.nodeDataById(d.id)?.portal ?? null;
+  });
+
+  /**
+   * B-128 (D85): the dropdown's options — every OTHER layer by authored
+   * NAME (C23), the live node's own layer excluded (a portal cannot target
+   * its own layer — the validator's rule, so the option simply never
+   * renders; the facade stays the authority for everything the type system
+   * cannot see). Re-reads on editorRevision like every live read (C24).
+   */
+  protected readonly portalOptions = computed((): readonly { id: string; name: string }[] => {
+    void this.graph.editorRevision(); // dependency: an in-place wiring/move re-reads (C24)
+    const d = this.draft();
+    if (d === null) return [];
+    const ownLayer = this.graph.nodeDataById(d.id)?.layer;
+    return this.graph.layerNames().filter((layer) => layer.id !== ownLayer);
+  });
+
+  /**
+   * B-126 (D83): the DOM select's PENDING pick — set by the change handler
+   * before the command runs, cleared by the afterRenderEffect below after
+   * the render that showed it. WHY: a refused move must REVERT the select
+   * to the live layer ("never silently re-parented", D83), but Angular
+   * skips unchanged property writes AND a plain component effect runs
+   * BEFORE the view refresh (found live by layer-manager.e2e-spec: the
+   * clear coalesced with the pick into a no-op render) — so the revert
+   * needs one RENDER where the binding equals the pick (this signal)
+   * followed by one where it equals the live layer again.
+   * afterRenderEffect runs after the view has rendered, giving exactly
+   * those two passes. On a SUCCESSFUL move the live layer IS the pick, so
+   * the clear is invisible. Two stable passes, zero imperative DOM writes.
+   * B-128 (D85): the SAME mechanism generalizes to the "Opens layer"
+   * dropdown's pendingPortal — a refused wiring reverts the select to the
+   * live `portal` (never silently rewired); the two pending signals are
+   * independent, so one reverting never disturbs the other.
+   */
+  private readonly pendingLayer = signal<string | null>(null);
+
+  /** B-128 (D85): the portal select's PENDING pick — pendingLayer's twin (same two-pass revert). */
+  private readonly pendingPortal = signal<string | null>(null);
+
+  /** The select's rendered value: the pending pick, else the live layer. */
+  protected readonly layerSelectValue = computed(
+    () => this.pendingLayer() ?? this.nodeLayerId() ?? '',
+  );
+
+  /** B-128 (D85): the portal select's rendered value: the pending pick, else the live wiring. */
+  protected readonly portalSelectValue = computed(
+    () => this.pendingPortal() ?? this.nodePortalTarget() ?? '',
+  );
+
+  /**
+   * B-126 (D83), generalized by B-128 (D85): the revert pass — clears the
+   * pending picks after the render that showed them (see pendingLayer).
+   * Writes a signal it reads, so it re-runs after the SECOND render and
+   * finds null — a stable two-pass settle.
+   */
+  private readonly clearPendingPicks = afterRenderEffect(() => {
+    if (this.pendingLayer() !== null) this.pendingLayer.set(null);
+    if (this.pendingPortal() !== null) this.pendingPortal.set(null);
   });
 
   constructor() {
@@ -396,6 +491,85 @@ export class PropertyPanelComponent {
     const d = this.draft();
     if (d === null) return;
     const refused = this.graph.removeNode(d.id);
+    if (refused !== null) {
+      this.refusals.set(refused.issues);
+      return;
+    }
+    this.refusals.set([]);
+  }
+
+  // --- B-126 (D83/F54): the Layer dropdown + the Detach tool -------------------
+
+  /**
+   * B-126 (D83): the Layer dropdown's change — a pick is a COMPLETE
+   * discrete intent (the Connect-button precedent), NOT a draft field: the
+   * wrapper fires immediately. The pending-pick signal is set FIRST so the
+   * refused path can revert the select (see pendingLayer); a C30 refusal
+   * (a stranding compound relation — parent or child left across layers —
+   * or a portal rule) renders in the panel's existing refusals area with
+   * the draft untouched, and the select reverts to the live layer on the
+   * effect's next pass. On success the refusals clear and the panel's live
+   * reads (the dropdown, the parent picker) follow the moved node via
+   * their editorRevision dependencies (C24). The five draft fields and
+   * their commit path are untouched by this handler.
+   */
+  protected onLayerChange(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+    const d = this.draft();
+    if (d === null || value === this.nodeLayerId()) return; // a no-change pick is not an edit (B-116)
+    this.pendingLayer.set(value);
+    const refused = this.graph.setNodeLayer(d.id, value);
+    if (refused !== null) {
+      this.refusals.set(refused.issues);
+      return; // the effect's clear reverts the select — never silently re-parented (D83)
+    }
+    this.refusals.set([]);
+  }
+
+  /**
+   * B-128 (D85/F02): the "Opens layer" dropdown's change — a pick is a
+   * COMPLETE discrete intent (the setNodeLayer precedent), NOT a draft
+   * field: the wrapper fires immediately. The pending-pick signal is set
+   * FIRST so the refused path can revert the select (the two-pass revert —
+   * see pendingPortal); a C30 refusal (an unknown target, the node's own
+   * layer, or a second node onto an already-wired target — all the
+   * validator's field-precise portal rules) renders in the panel's existing
+   * refusals area with the draft untouched, and the select reverts to the
+   * live wiring on the effect's next pass. On success the refusals clear
+   * and the rebuild makes the badge appear/vanish (the service owns that).
+   * The five draft fields and their commit path are untouched by this
+   * handler.
+   */
+  protected onPortalChange(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value; // '' = None (unwire)
+    const d = this.draft();
+    if (d === null) return;
+    const target = value === '' ? null : value;
+    if (target === this.nodePortalTarget()) return; // a no-change pick is not an edit (B-116 precedent)
+    this.pendingPortal.set(value);
+    const refused = this.graph.setPortal(d.id, target);
+    if (refused !== null) {
+      this.refusals.set(refused.issues);
+      return; // the effect's clear reverts the select — never silently rewired
+    }
+    this.refusals.set([]);
+  }
+
+  /**
+   * B-126 (D82/F54): the standing Detach tool — every arc incident to the
+   * drafted node dies in both planes; the node itself survives untouched,
+   * DIRECT, no confirm (the F46 removeNode precedent: delete-and-redo IS
+   * the workflow; the cascade confirm exists in the SHEET because a LAYER
+   * dies, not because arcs do). A C30 refusal renders in the refusals
+   * area; on success the node stays selected (the service never touches
+   * the selection), its arcs vanish from the projection, and it does NOT
+   * light the draft hue — the service never records the node at the B-121
+   * seam because detach is not a node edit.
+   */
+  protected detach(): void {
+    const d = this.draft();
+    if (d === null) return;
+    const refused = this.graph.detachNode(d.id);
     if (refused !== null) {
       this.refusals.set(refused.issues);
       return;
@@ -547,9 +721,10 @@ export class PropertyPanelComponent {
       header === null ? HEADER_FALLBACK_PX : header.getBoundingClientRect().height;
     let chromeLeft = Number.POSITIVE_INFINITY;
     let chromeBottom = Number.NEGATIVE_INFINITY;
-    for (const el of stage.querySelectorAll<HTMLElement>(
-      '.tme-editor-toggle, .tme-chip, .tme-save-dock',
-    )) {
+    // B-127 (D86) fallout, lead cleanup: the editor toggle and the save dock
+    // migrated onto the editor RAIL (a sibling region outside the stage) —
+    // the selection chip is the only stage-overlay chrome left to clear.
+    for (const el of stage.querySelectorAll<HTMLElement>('.tme-chip')) {
       if (el.offsetParent === null) continue; // not rendered (conditional chrome)
       const r = el.getBoundingClientRect();
       chromeLeft = Math.min(chromeLeft, r.left);

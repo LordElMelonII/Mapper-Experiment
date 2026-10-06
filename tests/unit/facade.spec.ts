@@ -21,6 +21,8 @@ const FACADE_COMMANDS: (keyof MapFacade)[] = [
   'setBlocked', 'addUserNodeAt', 'removeUserNode', 'promoteUserNode',
   // Editor commands
   'upsertNode', 'upsertEdge', 'removeNode', 'removeEdge', 'calibrateScale', 'saveMap', 'hasUnsavedChanges', // D75: additive §9 extension
+  // Layer commands
+  'upsertLayer', 'removeLayer', 'reorderLayers', 'layerRemovalImpact', 'detachNode', 'setNodeLayer', 'setLayerBackground', 'setPortal', // D82–D85 (A-017)
   // Queries
   'findRoute', 'getSnapshot', 'renderTemplate', 'getPromptBlock',
   // Viewer state
@@ -62,6 +64,13 @@ const P2_M1_COMMANDS = ['setActiveLayer'] as const;
 // calibrateScale is A-015 (C13/D44/D45, "measure this arc").
 const P3_EDITOR_COMMANDS = [
   'upsertNode', 'upsertEdge', 'removeNode', 'removeEdge', 'calibrateScale', 'saveMap', 'hasUnsavedChanges',
+] as const;
+
+// The layer commands the Phase 3 M3 packet implemented (A-017, D82–D85) —
+// the CORE.md §9 Layer-commands line, landed with that packet.
+const P3_M3_LAYER_COMMANDS = [
+  'upsertLayer', 'removeLayer', 'reorderLayers', 'layerRemovalImpact', 'detachNode',
+  'setNodeLayer', 'setLayerBackground', 'setPortal',
 ] as const;
 
 describe('facade stub (Task 0)', () => {
@@ -130,6 +139,14 @@ describe('facade stub (Task 0)', () => {
   it('the editor commands no longer throw a TODO (A-013/A-015, D75)', () => {
     const facade = createFacade();
     for (const command of P3_EDITOR_COMMANDS) {
+      const fn = facade[command] as () => unknown;
+      expect(() => fn(), command).not.toThrow(/^TODO\(/);
+    }
+  });
+
+  it('the layer commands no longer throw a TODO (A-017, D82–D85)', () => {
+    const facade = createFacade();
+    for (const command of P3_M3_LAYER_COMMANDS) {
       const fn = facade[command] as () => unknown;
       expect(() => fn(), command).not.toThrow(/^TODO\(/);
     }

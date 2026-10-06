@@ -73,8 +73,8 @@ const OUTSKIRTS_ID = 'outskirts';
 const GHOST_HOUSE_ID = 'ghost-house'; // FX1's RIGHTMOST content (x 625)
 const TEMPLE_ID = 'ryuudou-temple'; // FX1's BOTTOM content (y 470)
 
-/** D81: the five INTERACTIVE chrome surfaces (map-viewer.component). */
-const CHROME_SELECTORS = ['.tme-layers', '.tme-chip', '.tme-editor-toggle', '.tme-save-dock', '.tme-tools'];
+/** D81/B-127/B-128 (D86/D85): the measured INTERACTIVE chrome surfaces (map-viewer.component — the rail, the breadcrumb bar and the chip). */
+const CHROME_SELECTORS = ['.tme-rail', '.tme-breadcrumb', '.tme-chip'];
 
 const R1_HEADERS: ReadonlyArray<[string, string]> = [
   ['tme-location', 'Emiya Residence'],
@@ -561,7 +561,6 @@ test.describe('selection-driven panel resizes preserve the viewport (PKG B-125, 
     const bad = collectConsole(page);
     await settle(page);
     await expectHeaders(page);
-    const zoomBefore = await readZoom(page);
     const panBefore = await readPan(page);
 
     // Touch alone: the arc select stacks the panel BELOW the stage — the
@@ -569,8 +568,11 @@ test.describe('selection-driven panel resizes preserve the viewport (PKG B-125, 
     await tapEdgeMidpoint(page, CASTLE_ARC);
     await expect(page.getByTestId('tme-arc-panel')).toBeVisible();
     await settle(page);
-    const zoomAfter = await readZoom(page);
-    expect(zoomAfter, 'narrow + panel-driven still refits (D81 keeps B-106)').not.toBe(zoomBefore);
+    // Lead repair (post-rail): the phone fit is WIDTH-limited in the rail
+    // regime (the B-126 deviation-5 fact), so a height-only panel-open
+    // refit re-pans while holding one zoom — the zoom-delta proxy this cell
+    // once asserted is stale. The refit is pinned below by its real
+    // observables: the re-pan (:84) and the in-box content.
 
     // The refit is discriminating: the temple (the content's bottom) is
     // in-box only because fitView re-ran for the shrunken stage.

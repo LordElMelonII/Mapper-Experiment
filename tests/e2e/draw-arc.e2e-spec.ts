@@ -24,9 +24,11 @@
 //          built-ins allowed, geometry-priced (C14 row 5).
 //   C4/D42 — parallel arcs: drawing the same pair twice commits a SIBLING
 //          (no dedup — the author's truth).
-//   F17/C3 — the cross-layer fence: M2 draws SAME-layer arcs only; a pick
-//          that would commit cross-layer (a mid-pick layer switch) is
-//          refused VISIBLY (the banner) with the pending pick KEPT.
+//   F17/D85/B-128 — the UN-FENCE (retiring this spec's M2 fence pin):
+//          cross-layer arc CREATION commits now — a mid-pick layer switch
+//          KEEPS the pick and NARRATES it ("Drawing from <label> — tap where
+//          its arc lands"); the tap on the new layer commits cross-layer
+//          (C3 badges the arc — the portals spec pins the badges).
 //   D77/B-121 — the commit records at the edit-log seam: the new arc
 //          renders DRAFTED until saveMap clears it.
 //   F45/D75 — upsertEdge marks only `dirty`: the save dock lights, routing
@@ -514,42 +516,40 @@ test.describe('draw-arc: the third editor tool (PKG B-122, §5 Phase 3 M2)', () 
     expect((await newEdgeIds(page, edgesBefore)).length).toBe(0);
   });
 
-  test('the cross-layer fence: a mid-pick layer switch refuses the next pick VISIBLY and keeps the source; re-aiming commits same-layer (F17/C3)', async ({
+  test('the F17 un-fence: a mid-pick layer switch KEEPS the pick narrating; the cross-layer tap COMMITS (D85/B-128)', async ({
     page,
   }) => {
-    const edgesBefore = await readEdgeIds(page);
+    // The created arc's id is read off the B-121 edit log (C5/D75: engine
+    // ids are never predicted) — a CROSS-LAYER arc never projects as an edge
+    // on either layer (C3), so the edge-id delta cannot see it.
+    const draftedBefore = await readDraftedIds(page);
     await enterArcTool(page);
 
-    // Pick on Fuyuki, then switch layers: the pending source now lives on a
-    // different layer than every visible leaf.
+    // Pick on Fuyuki, then switch layers: the pending source rides along and
+    // the banner NARRATES it in plain words (C23) — the B-122 cross-layer
+    // refusal fence is RETIRED (D85); the old refusal message never renders.
     await tapPoint(page, await nodeScreenPoint(page, CASTLE_ID));
     await expect.poll(readDrawSourceId.bind(null, page)).toBe(CASTLE_ID);
     await activate(page, LAYER_MISAKI);
     await expect.poll(readLabels.bind(null, page)).toEqual(['Misaki Town']);
-
-    // The Misaki leaf tap would commit CROSS-LAYER: refused visibly through
-    // the banner (plain words, C23), the pending pick KEPT, nothing commits.
-    await tapPoint(page, await nodeScreenPoint(page, MISAKI_ID));
-    await expect(page.getByTestId('tme-draw-feedback')).toBeVisible();
-    await expect(page.getByTestId('tme-draw-feedback')).toContainText('layer');
-    await expect.poll(readDrawSourceId.bind(null, page)).toBe(CASTLE_ID); // the pick survives
-    expect((await newEdgeIds(page, edgesBefore)).length).toBe(0);
-
-    // The author re-aims: back on the source's layer the same pick commits a
-    // SAME-layer arc and the refusal clears.
-    await activate(page, LAYER_FUYUKI);
-    await expect.poll(() => readLabels(page)).toContain('Einzbern Castle');
-    await expect(page.getByTestId('tme-draw-feedback')).toBeVisible(); // kept until the next action
-    await tapPoint(page, await nodeScreenPoint(page, TEMPLE_ID));
     await expect
-      .poll(async () => (await newEdgeIds(page, edgesBefore)).length)
-      .toBe(1);
-    const createdIds = await newEdgeIds(page, edgesBefore);
+      .poll(readDrawFeedback.bind(null, page))
+      .toBe('Drawing from Einzbern Castle — tap where its arc lands');
+    expect(await readDraftedIds(page)).toEqual(draftedBefore); // the switch alone commits nothing
+
+    // The Misaki leaf tap COMMITS the cross-layer arc (F17 un-fenced); the
+    // pick clears with the feedback (the tool stays on for the next arc).
+    await tapPoint(page, await nodeScreenPoint(page, MISAKI_ID));
+    await expect
+      .poll(async () => (await readDraftedIds(page)).length)
+      .toBe(draftedBefore.length + 1);
+    const createdIds = (await readDraftedIds(page)).filter((id) => !draftedBefore.includes(id));
     const data = await readEdgeData(page, createdIds[0]);
-    expect([data?.source, data?.target].sort()).toEqual([CASTLE_ID, TEMPLE_ID].sort());
+    expect([data?.source, data?.target].sort()).toEqual([CASTLE_ID, MISAKI_ID].sort());
+    expect(data?.modes).toEqual(['walk', 'car', 'train']); // the D42 default-allowed set (D78)
     await expect.poll(readDrawSourceId.bind(null, page)).toBeNull();
     await expect.poll(readDrawFeedback.bind(null, page)).toBeNull();
-    await expect(page.getByTestId('tme-draw-feedback')).toBeHidden();
+    await expect(page.getByTestId('tme-save-dock')).toBeVisible(); // F45: dirty lights
     await activate(page, 'tme-save');
     await expect(page.getByTestId('tme-save-dock')).toBeHidden();
   });
@@ -669,8 +669,26 @@ test.describe('draw-arc: the third editor tool (PKG B-122, §5 Phase 3 M2)', () 
       const toggle = await page.getByTestId('tme-editor-toggle').boundingBox();
       const tools = await page.getByTestId('tme-editor-tools').boundingBox();
       const layers = await page.getByTestId('tme-layer-layer-fuyuki').boundingBox();
-      const rightEdge = Math.min(toggle?.x ?? Infinity, tools?.x ?? Infinity) - 16;
-      const bottomEdge = layers?.y ?? box.y + box.height;
+      // B-127 (D86) aiming repair: the migrated chrome lives ON the rail — a
+      // SIBLING of the canvas, never an overlay — so only chrome boxes that
+      // still INTERSECT the canvas band constrain the pinch; off-canvas
+      // chrome (the rail bar below the canvas) yields to the canvas's edges.
+      // The CHIP is the one overlay that stayed on the stage: a pinch finger
+      // starting on it releases as its tap (dismisses the selection — found
+      // live), so its live box joins the right-edge constraints.
+      const inCanvasBand = (b: { y: number; height: number } | null): boolean =>
+        b !== null && b.y < box.y + box.height && b.y + b.height > box.y;
+      const chip = (await page.getByTestId('tme-selection-chip').count()) > 0
+        ? await page.getByTestId('tme-selection-chip').boundingBox()
+        : null;
+      const rightEdge =
+        Math.min(
+          ...(toggle !== null && inCanvasBand(toggle) ? [toggle.x] : []),
+          ...(tools !== null && inCanvasBand(tools) ? [tools.x] : []),
+          ...(chip !== null && inCanvasBand(chip) ? [chip.x] : []),
+          box.x + box.width,
+        ) - 16;
+      const bottomEdge = layers !== null && inCanvasBand(layers) ? layers.y : box.y + box.height;
       const center = {
         x: box.x + (12 + rightEdge) / 2,
         y: box.y + Math.max(64, Math.min(box.height * 0.45, bottomEdge - box.y - 20)),
@@ -711,26 +729,30 @@ test.describe('draw-arc: the third editor tool (PKG B-122, §5 Phase 3 M2)', () 
       expect(box?.height ?? 0, `${testId} height >= 44px (F52)`).toBeGreaterThanOrEqual(44);
       expect(box?.width ?? 0, `${testId} width >= 44px (F52)`).toBeGreaterThanOrEqual(44);
     }
-    // The control never widens past the stage (D53: no horizontal scroll).
+    // The control never widens past its container (D53: no horizontal
+    // scroll). B-127 (D86) aiming repair: the control migrated onto the
+    // rail, so the containment assert anchors at the testid's live home —
+    // the rail region — instead of the stage it used to overlay.
     const tools = await page.getByTestId('tme-editor-tools').boundingBox();
-    const canvas = await page.getByTestId('tme-canvas').boundingBox();
-    if (tools === null || canvas === null) throw new Error('tool control or canvas not visible');
-    expect(tools.x, 'the tool control stays inside the stage (left)').toBeGreaterThanOrEqual(canvas.x);
+    const rail = await page.getByTestId('tme-rail').boundingBox();
+    if (tools === null || rail === null) throw new Error('tool control or rail not visible');
+    expect(tools.x, 'the tool control stays inside the rail (left)').toBeGreaterThanOrEqual(rail.x);
     expect(
       tools.x + tools.width,
-      'the tool control stays inside the stage (right)',
-    ).toBeLessThanOrEqual(canvas.x + canvas.width);
+      'the tool control stays inside the rail (right)',
+    ).toBeLessThanOrEqual(rail.x + rail.width);
   });
 
-  test('phone: the refusal banner renders at 375px with no horizontal scroll (F52/D53)', async ({ page }) => {
+  test('phone: the kept-pick banner renders at 375px with no horizontal scroll (F52/D53)', async ({ page }) => {
     test.skip(!isPhone(), 'the 375px geometry check belongs to the phone project (D53)');
     await page.setViewportSize({ width: 375, height: 667 });
-    const edgesBefore = await readEdgeIds(page);
+    const draftedBefore = await readDraftedIds(page);
     await enterArcTool(page);
     await tapPoint(page, await nodeScreenPoint(page, CASTLE_ID));
     await activate(page, LAYER_MISAKI);
     await expect.poll(readLabels.bind(null, page)).toEqual(['Misaki Town']);
-    await tapPoint(page, await nodeScreenPoint(page, MISAKI_ID));
+    // The kept pick NARRATES — the banner is the mid-pick surface (the F17
+    // un-fence, D85; the old refusal message is retired).
     await expect(page.getByTestId('tme-draw-feedback')).toBeVisible();
 
     // D53: never horizontal scroll at 375px — the banner caps to the stage.
@@ -738,7 +760,7 @@ test.describe('draw-arc: the third editor tool (PKG B-122, §5 Phase 3 M2)', () 
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(overflow, 'no horizontal scroll at 375px (F52/D53)').toBeLessThanOrEqual(0);
-    expect((await newEdgeIds(page, edgesBefore)).length).toBe(0);
+    expect(await readDraftedIds(page)).toEqual(draftedBefore); // the switch alone commits nothing
   });
 
   test('the draw-arc journey keeps the harness console clean (§6.2/D53)', async ({ page }) => {
@@ -749,29 +771,30 @@ test.describe('draw-arc: the third editor tool (PKG B-122, §5 Phase 3 M2)', () 
     page.on('pageerror', (err) => bad.push(`pageerror: ${err.message}`));
 
     // Native-API sweep only (no CDP on the phone project's WebKit page): a
-    // full journey — draw, refuse the fence, re-aim, save.
-    const edgesBefore = await readEdgeIds(page);
+    // full journey — a same-layer draw, then a CROSS-LAYER commit through a
+    // mid-pick layer switch (the F17 un-fence, D85), save.
+    const draftedBefore = await readDraftedIds(page);
     await enterArcTool(page);
     await tapPoint(page, await nodeScreenPoint(page, CASTLE_ID));
     await tapPoint(page, await nodeScreenPoint(page, TEMPLE_ID));
     await expect
-      .poll(async () => (await newEdgeIds(page, edgesBefore)).length)
-      .toBe(1);
-    // Pick BEFORE the layer switch — the fence refuses a COMMIT with a
-    // pending cross-layer source; with no pick the same tap would just set
+      .poll(async () => (await readDraftedIds(page)).length)
+      .toBe(draftedBefore.length + 1);
+    // Pick BEFORE the layer switch — the kept pick commits CROSS-LAYER on
+    // the new layer (the un-fence); with no pick the same tap would just set
     // one (the commit clears the pick).
     await tapPoint(page, await nodeScreenPoint(page, OUTSKIRTS_ID));
     await expect.poll(readDrawSourceId.bind(null, page)).toBe(OUTSKIRTS_ID);
     await activate(page, LAYER_MISAKI);
     await expect.poll(readLabels.bind(null, page)).toEqual(['Misaki Town']);
-    await tapPoint(page, await nodeScreenPoint(page, MISAKI_ID)); // the fence refusal
-    await expect(page.getByTestId('tme-draw-feedback')).toBeVisible();
-    await activate(page, LAYER_FUYUKI);
-    await expect.poll(() => readLabels(page)).toContain('Einzbern Castle');
-    await tapPoint(page, await nodeScreenPoint(page, CASTLE_ID)); // the re-aimed commit
     await expect
-      .poll(async () => (await newEdgeIds(page, edgesBefore)).length)
-      .toBe(2);
+      .poll(readDrawFeedback.bind(null, page))
+      .toBe('Drawing from Outskirts — tap where its arc lands');
+    await tapPoint(page, await nodeScreenPoint(page, MISAKI_ID)); // the kept pick commits cross-layer
+    await expect(page.getByTestId('tme-arc-panel')).toBeVisible(); // the commit selects the new arc
+    await expect
+      .poll(async () => (await readDraftedIds(page)).length)
+      .toBe(draftedBefore.length + 2);
     await activate(page, 'tme-save');
     await expect(page.getByTestId('tme-save-dock')).toBeHidden();
     await expect.poll(readDraftedIds.bind(null, page)).toEqual([]);

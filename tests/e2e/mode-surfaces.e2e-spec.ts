@@ -361,16 +361,35 @@ test.describe('map-driven mode surfaces (PKG B-124)', () => {
     // full-stage fit put it — past the narrowed canvas edge, over the panel
     // column (the pre-D81 panel-open refit used to pull it back). One
     // background drag pans the pick target in-canvas; a drag is not a tap,
-    // so connect mode's pick state is untouched.
+    // so connect mode's pick state is untouched. B-127 (D86) aiming repair:
+    // the target must also clear the CHIP — the one overlay that stayed on
+    // the stage — a tap landing on it dismisses the selection and exits
+    // connect mode (clearing the picks), so the drag carries a vertical
+    // component whenever the target sits in the chip's band.
     const canvas = await page.getByTestId('tme-canvas').boundingBox();
     if (canvas === null) throw new Error('canvas host not visible');
     const pickTarget = await nodeScreenPoint(page, HIGH_PASTURE_ID);
     const panDx = canvas.x + canvas.width - 60 - pickTarget.x;
-    if (panDx < -8) {
+    let panDy = 0;
+    const chipLoc = page.getByTestId('tme-selection-chip');
+    if ((await chipLoc.count()) > 0) {
+      const chip = await chipLoc.boundingBox();
+      if (
+        chip !== null &&
+        pickTarget.x + 22 > chip.x &&
+        pickTarget.y + 22 > chip.y &&
+        pickTarget.y - 22 < chip.y + chip.height
+      ) {
+        panDy = chip.y + chip.height + 16 - pickTarget.y;
+      }
+    }
+    if (panDx < -8 || panDy > 8) {
       const dragY = canvas.y + canvas.height / 2;
       await page.mouse.move(canvas.x + canvas.width * 0.6, dragY);
       await page.mouse.down();
-      await page.mouse.move(canvas.x + canvas.width * 0.6 + panDx, dragY, { steps: 4 });
+      await page.mouse.move(canvas.x + canvas.width * 0.6 + Math.min(panDx, 0), dragY + panDy, {
+        steps: 4,
+      });
       await page.mouse.up();
     }
 
