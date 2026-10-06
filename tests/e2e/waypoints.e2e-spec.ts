@@ -519,6 +519,282 @@ const cdpPinch = async (cdp: CDPSession, center: Point, from: number, to: number
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 };
 
+/**
+ * B-133c (D91) coverage guard — the reference implementation's shape
+ * (editor-quick-connect @ 5006574), with two probe-derived extensions: the
+ * band rects read the panel HOSTS (a scrolled sheet's content rect spans
+ * far past the viewport — the host is the visible band), and the ARC panel
+ * joins the bands. The dodge is ONE background mouse drag (a drag is not a
+ * tap — no placement, no selection); its start is a live clear-canvas point
+ * found via elementFromPoint between the top chrome and the topmost band,
+ * clear of every rendered node (editor-mode drags grab nodes) — the id list
+ * takes RUNTIME EXTRAS because this spec places nodes whose engine ids are
+ * only knowable live (C5/D75). Phone-only (D53): desktop stays
+ * byte-identical.
+ */
+const WP_NODE_IDS = [
+  'einzbern-castle',
+  'ryuudou-temple',
+  'outskirts',
+  'emiya-residence',
+  'shopping-district',
+  'homurahara-academy',
+  'matou-residence',
+  'tohsaka-residence',
+  'fuyuki-bridge',
+  'fuyuki-station',
+  'harbor',
+  'kotomine-church',
+  'ghost-house',
+  'district-miyama',
+  'district-shinto',
+] as const;
+
+interface CoverBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+const coveringBands = (page: Page): Promise<Record<string, CoverBox | null>> =>
+  page.evaluate((): Record<string, CoverBox | null> => {
+    const boxOf = (sel: string, host: boolean): CoverBox | null => {
+      const el = host ? document.querySelector(sel) : document.querySelector(`[data-testid="${sel}"]`);
+      if (el === null) return null;
+      const r = el.getBoundingClientRect();
+      return r.width === 0 && r.height === 0
+        ? null
+        : { left: r.left, top: r.top, width: r.width, height: r.height };
+    };
+    return {
+      chip: boxOf('tme-selection-chip', false),
+      prop: boxOf('tme-property-panel', true), // the HOST: the visible clamped band
+      route: boxOf('tme-route-panel', true),
+      rail: boxOf('tme-sheet-rail', false),
+      arc: boxOf('tme-arc-panel', true),
+      header: boxOf('tme-header', false),
+      breadcrumb: boxOf('tme-breadcrumb', false),
+    };
+  });
+
+const bandCovers = (pt: Point, band: CoverBox | null): boolean =>
+  // EXACT DOM containment (+4px boundary safety) — the reference predicate
+  // (probe-proven: a comfort margin false-positives fittable corridors).
+  band !== null &&
+  pt.x >= band.left - 4 &&
+  pt.x <= band.left + band.width + 4 &&
+  pt.y >= band.top - 4 &&
+  pt.y <= band.top + band.height + 4;
+
+/** One background drag carrying every aim above the CURRENT bands, clamped below the top chrome. */
+const dodgeBands = async (
+  page: Page,
+  aims: readonly Point[],
+  boxes: Record<string, CoverBox | null>,
+  extraNodeIds: readonly string[] = [],
+): Promise<void> => {
+  const canvas = await canvasBox(page);
+  let panDy = 0;
+  for (const band of [boxes.prop, boxes.route, boxes.rail, boxes.arc]) {
+    if (band === null) continue;
+    for (const t of aims) {
+      if (t.y > band.top - 16) panDy = Math.min(panDy, band.top - 16 - t.y);
+    }
+  }
+  if (boxes.chip !== null) {
+    const chip = boxes.chip;
+    for (const t of aims) {
+      if (t.x + 22 > chip.left && t.y + 22 > chip.top && t.y - 22 < chip.top + chip.height) {
+        panDy = Math.min(panDy, chip.top + chip.height + 16 - t.y);
+      }
+    }
+  }
+  const topFloor = Math.max(
+    ...[boxes.header, boxes.breadcrumb, boxes.chip].map((b) => (b === null ? 0 : b.top + b.height)),
+    0,
+  );
+  if (topFloor > 0) {
+    const needed = Math.max(...aims.map((t) => topFloor + 16 - t.y));
+    if (needed > panDy) panDy = needed;
+  }
+  if (panDy < -8 || panDy > 8) {
+    const panRead = (): Promise<{ x: number; y: number }> =>
+      page.evaluate((): { x: number; y: number } => {
+        const hook = (window as unknown as { __TME_E2E__?: TmeE2EHook }).__TME_E2E__;
+        if (hook === undefined) throw new Error('window.__TME_E2E__ missing — dev harness not loaded');
+        return hook.pan();
+      });
+    const panBefore = await panRead();
+    // The drag's START must be a clear CANVAS point clear of every rendered
+    // node (only the down point matters — cytoscape captures the pointer).
+    const start = await page.evaluate(
+      ({ canvasBox: cb, top, floor, ids }): Point | null => {
+        const hook = (window as unknown as {
+          __TME_E2E__?: { nodeRenderedPosition(id: string): { x: number; y: number } | null };
+        }).__TME_E2E__;
+        if (hook === undefined) return null;
+        const bands = [top.prop, top.route, top.rail, top.arc].filter((b) => b !== null);
+        const minBand =
+          bands.length === 0 ? Number.POSITIVE_INFINITY : Math.min(...bands.map((b) => b.top));
+        const nodePts = ids
+          .map((id: string) => hook.nodeRenderedPosition(id))
+          .filter((p): p is { x: number; y: number } => p !== null);
+        for (const fx of [0.5, 0.2, 0.8, 0.35, 0.65]) {
+          for (let y = floor + 12; y < minBand - 12; y += 8) {
+            const x = cb.x + cb.width * fx;
+            const el = document.elementFromPoint(x, y);
+            if (el === null || el.closest('.tme-canvas') === null) continue;
+            // A mousedown on a node GRABS it (editor mode) — the start must
+            // clear every node by more than the touch slop (~22·zoom + 8 px).
+            if (nodePts.some((p) => Math.hypot(p.x + cb.x - x, p.y + cb.y - y) < 26)) continue;
+            return { x, y };
+          }
+        }
+        return null;
+      },
+      {
+        canvasBox: canvas,
+        top: { prop: boxes.prop, route: boxes.route, rail: boxes.rail, arc: boxes.arc },
+        floor: topFloor,
+        ids: [...WP_NODE_IDS, ...extraNodeIds],
+      },
+    );
+    if (start === null) {
+      throw new Error(
+        `dodgeBands: no clear canvas drag start (topFloor=${topFloor}, bands=${boxes.rail?.top ?? 'x'}/${boxes.prop?.top ?? 'x'}/${boxes.arc?.top ?? 'x'})`,
+      );
+    }
+    // Drag up = content up; the map translates uniformly, so every aim clears together.
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x, start.y + panDy, { steps: 4 });
+    await page.mouse.up();
+    const panAfter = await panRead();
+    if (Math.abs(panAfter.y - panBefore.y) < 8) {
+      throw new Error(`dodgeBands: the drag panned nothing (start ${Math.round(start.x)},${Math.round(start.y)})`);
+    }
+  }
+};
+
+/**
+ * The canvas tap, coverage-guarded: re-derives the aim FRESH (a dodge pans
+ * the map — old coordinates are stale), checks it against the live bands,
+ * and dodges only when covered. Fails with the geometry when the corridor
+ * cannot fit rather than tapping blind. Phone-only (D53).
+ */
+const tapAimed = async (page: Page, aim: () => Promise<Point>): Promise<void> => {
+  if (!isPhone()) {
+    await tapPoint(page, await aim());
+    return;
+  }
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const pt = await aim();
+    const boxes = await coveringBands(page);
+    if (
+      ![boxes.chip, boxes.prop, boxes.route, boxes.rail, boxes.arc].some((band) =>
+        bandCovers(pt, band),
+      )
+    ) {
+      await tapPoint(page, pt);
+      return;
+    }
+    await dodgeBands(page, [pt], boxes);
+  }
+  const pt = await aim();
+  const boxes = await coveringBands(page);
+  throw new Error(
+    `tapAimed: the aim point (${Math.round(pt.x)},${Math.round(pt.y)}) stays covered — chip=${boxes.chip?.top ?? 'x'} prop=${boxes.prop?.top ?? 'x'} route=${boxes.route?.top ?? 'x'} rail=${boxes.rail?.top ?? 'x'} arc=${boxes.arc?.top ?? 'x'}`,
+  );
+};
+
+/**
+ * A coverage-clear gesture start: re-derives the aim FRESH, dodges while
+ * covered, and returns the clear point for the caller's own gesture (the
+ * zoomed move cell's CDP drag start). Phone-only (D53): desktop returns the
+ * plain aim.
+ */
+const clearAimed = async (page: Page, aim: () => Promise<Point>): Promise<Point> => {
+  if (!isPhone()) return aim();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const pt = await aim();
+    const boxes = await coveringBands(page);
+    if (
+      ![boxes.chip, boxes.prop, boxes.route, boxes.rail, boxes.arc].some((band) =>
+        bandCovers(pt, band),
+      )
+    ) {
+      return pt;
+    }
+    await dodgeBands(page, [pt], boxes);
+  }
+  const pt = await aim();
+  const boxes = await coveringBands(page);
+  throw new Error(
+    `clearAimed: the aim point (${Math.round(pt.x)},${Math.round(pt.y)}) stays covered — chip=${boxes.chip?.top ?? 'x'} prop=${boxes.prop?.top ?? 'x'} route=${boxes.route?.top ?? 'x'} rail=${boxes.rail?.top ?? 'x'} arc=${boxes.arc?.top ?? 'x'}`,
+  );
+};
+
+/**
+ * B-133c (D91): the pinch center picked LIVE from clear canvas — the twin's
+ * old chrome-box derivation ignored the overlay bands (the property sheet
+ * opened by node A's selection rides over the stage's lower band), and its
+ * center landed on the sheet's own content so the pinch drugged the panel,
+ * never the map. The clear point answers elementFromPoint as the canvas
+ * host, sits between the top chrome and the topmost band, clears every
+ * rendered node by more than the touch slop (a finger on a node is a grab,
+ * not a pinch), and leaves room for the spread.
+ */
+const clearPinchCenter = async (
+  page: Page,
+  extraNodeIds: readonly string[] = [],
+): Promise<{ center: Point; spreadMax: number }> => {
+  const canvas = await canvasBox(page);
+  const found = await page.evaluate(
+    ({ canvasBox: cb, ids }): { center: Point; spreadMax: number } | null => {
+      const hook = (window as unknown as {
+        __TME_E2E__?: { nodeRenderedPosition(id: string): { x: number; y: number } | null };
+      }).__TME_E2E__;
+      if (hook === undefined) return null;
+      const bandTops: number[] = [];
+      let floor = 0;
+      const addBand = (sel: string, host: boolean, isFloor: boolean): void => {
+        const el = host ? document.querySelector(sel) : document.querySelector(`[data-testid="${sel}"]`);
+        if (el === null) return;
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) return;
+        if (isFloor) floor = Math.max(floor, r.top + r.height);
+        else bandTops.push(r.top);
+      };
+      for (const sel of ['tme-property-panel', 'tme-route-panel', 'tme-arc-panel']) addBand(sel, true, false);
+      addBand('tme-sheet-rail', false, false);
+      addBand('tme-header', false, true);
+      addBand('tme-breadcrumb', false, true);
+      addBand('tme-selection-chip', false, true);
+      const minBand = bandTops.length === 0 ? cb.y + cb.height : Math.min(...bandTops);
+      const nodePts = ids
+        .map((id: string) => hook.nodeRenderedPosition(id))
+        .filter((p): p is { x: number; y: number } => p !== null);
+      for (let y = floor + 16; y < minBand - 16; y += 8) {
+        for (const fx of [0.5, 0.35, 0.65, 0.2, 0.8]) {
+          const x = cb.x + cb.width * fx;
+          const el = document.elementFromPoint(x, y);
+          if (el === null || el.closest('.tme-canvas') === null) continue;
+          if (nodePts.some((p) => Math.hypot(p.x + cb.x - x, p.y + cb.y - y) < 30)) continue;
+          const spreadMax = Math.min(120, x - cb.x - 12, cb.x + cb.width - x - 12);
+          if (spreadMax >= 40) return { center: { x, y }, spreadMax };
+        }
+      }
+      return null;
+    },
+    { canvasBox: canvas, ids: [...WP_NODE_IDS, ...extraNodeIds] },
+  );
+  if (found === null) {
+    throw new Error('clearPinchCenter: no clear canvas corridor for the pinch (D91 bands cover it)');
+  }
+  return found;
+};
+
 test.describe('tap-to-place waypoints (PKG B-109)', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
@@ -1049,104 +1325,101 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
     expect(await readPan(page), 'waypoint place while zoomed: pan unchanged').toEqual(pan);
   });
 
-  // B-133 (D91) REVIEW DEBT (lead, 2026-10-06): the Chromium-twin gesture flow is
-  // deeply regime-coupled - under D91 the overlay sheets sit across the pinch/drag
-  // area the pre-D91 geometry assumed, and every in-place re-derivation either
-  // missed the next coupling or wedged the twin's renderer. The doctrine this cell
-  // pins (R21 ruling 1/B-120: zoomed place/move/commit leave zoom+pan untouched)
-  // stays pinned by the desktop twin cell above and the D91 zero-motion cells
-  // (panel-resize-viewport, verify-d81-viewport). Re-derivation debt: the Phase 3.5
-  // polish loop (D89) or the M5 verifier gate's adjudication.
-  test.fixme('phone: pinch-zoom in, then place/move/property-commit while zoomed leave zoom and pan untouched (R21 ruling 1 / B-120, D53)', async () => {
+  // B-133 (D91) REVIEW DEBT — RESTORED by B-133c (2026-10-06): the cell was
+  // fixme'd because the pre-D91 pinch/drag geometry sat under the overlay
+  // sheets and every in-place re-derivation missed the next coupling. The
+  // B-133c medicine closes it: the pinch center derives LIVE from the
+  // clear-canvas corridor (clearPinchCenter), the post-pinch canvas aims
+  // (the BG_2 place/move point and the waypoint gap point) are dodged clear
+  // with ONE user pan BEFORE the R21 pins are read (a user pan is not a
+  // fit — the R21 ruling's own discriminator), and every canvas gesture
+  // then runs coverage-guarded. The R21/B-120 pins themselves are
+  // byte-equal in intent: place/move/property-commit/waypoint-place while
+  // zoomed leave zoom and pan untouched.
+  test('phone: pinch-zoom in, then place/move/property-commit while zoomed leave zoom and pan untouched (R21 ruling 1 / B-120, D53)', async () => {
     test.skip(!isPhone(), 'the in-test Chromium twin reproduces the iPhone-13 device identically from either project; wheel zoom is the desktop twin above');
     await withPhoneChromiumPage(async (page) => {
       // Editor + Node tool; node A pre-opens the phone's panels (sheet
       // expansion + property region) — settle their RO refit first.
       await activate(page, 'tme-editor-toggle');
       await expect(page.getByTestId('tme-tool-node')).toHaveAttribute('aria-pressed', 'true');
-      await tapPoint(page, await screenModelPoint(page, BG_MODEL_POINT));
+      await tapAimed(page, () => screenModelPoint(page, BG_MODEL_POINT));
       await expect
         .poll(async () => (await readLabels(page)).filter((l) => l === 'New place'))
         .toHaveLength(1);
       await settle(page);
+      // C5/D75: node A's engine id, read live — the dodge/pinch corridors
+      // must clear it too (a finger or mousedown on it grabs/places).
+      const nodeAId = await readSelectedId(page);
+      if (nodeAId === null) throw new Error('placed node A not selected (C5/D75 id discovery failed)');
+      const runtimeIds = [nodeAId, 'wp-1'];
 
-      // Pinch-IN with BOTH fingers on bare canvas: the stage chrome is all
-      // live tap targets, and a finger released on one fires its tap (found
-      // live — a right finger on the editor toggle EXITED the editor mid-
-      // pinch). The center and spread therefore derive from the chrome's
-      // runtime boxes: left of the right-side stack (toggle + tool control),
-      // above the bottom-left layer switcher, below the header band.
+      // Pinch-IN with BOTH fingers on bare canvas — the B-133c clear-canvas
+      // corridor center (between the top chrome and the topmost D91 band,
+      // clear of every node, room for the spread).
       const fitZoom = await readZoom(page);
-      const box = await canvasBox(page);
-      const toggle = await page.getByTestId('tme-editor-toggle').boundingBox();
-      const tools = await page.getByTestId('tme-editor-tools').boundingBox();
-      const layers = await page.getByTestId('tme-layer-layer-fuyuki').boundingBox();
-      // B-127 (D86) aiming repair: the migrated chrome lives ON the rail — a
-      // SIBLING of the canvas, never an overlay — so only chrome boxes that
-      // still INTERSECT the canvas band constrain the pinch; off-canvas
-      // chrome (the rail bar below the canvas) yields to the canvas's edges.
-      // The CHIP is the one overlay that stayed on the stage: a pinch finger
-      // starting on it releases as its tap (dismisses the selection — found
-      // live), so its live box joins the right-edge constraints.
-      const inCanvasBand = (b: { y: number; height: number } | null): boolean =>
-        b !== null && b.y < box.y + box.height && b.y + b.height > box.y;
-      const chip = (await page.getByTestId('tme-selection-chip').count()) > 0
-        ? await page.getByTestId('tme-selection-chip').boundingBox()
-        : null;
-      const rightEdge =
-        Math.min(
-          ...(toggle !== null && inCanvasBand(toggle) ? [toggle.x] : []),
-          ...(tools !== null && inCanvasBand(tools) ? [tools.x] : []),
-          ...(chip !== null && inCanvasBand(chip) ? [chip.x] : []),
-          box.x + box.width,
-        ) - 16;
-      const bottomEdge = layers !== null && inCanvasBand(layers) ? layers.y : box.y + box.height;
-      const center = {
-        x: box.x + (12 + rightEdge) / 2,
-        y: box.y + Math.max(64, Math.min(box.height * 0.45, bottomEdge - box.y - 20)),
-      };
-      const spreadMax = Math.min(120, (rightEdge - 12) / 2 - 8);
+      const { center, spreadMax } = await clearPinchCenter(page, runtimeIds);
       const cdp = await page.context().newCDPSession(page);
       await cdpPinch(cdp, center, spreadMax * 0.65, spreadMax);
       await settle(page);
-      const zoom = await readZoom(page);
-      expect(zoom, 'the pinch driver must actually zoom in').toBeGreaterThan(fitZoom * 1.15);
-      const pan = await readPan(page);
+      const zoomedIn = await readZoom(page);
+      expect(zoomedIn, 'the pinch driver must actually zoom in').toBeGreaterThan(fitZoom * 1.15);
+
+      // B-133c (D91): the corridor-centered pinch pushes the cell's later
+      // aims (the BG_2 place/move point and the waypoint gap point) DOWN
+      // under the open property sheet — and the stack RE-FLOWS as the app's
+      // own content changes (fact 1), so a once-cleared aim can become
+      // covered again mid-cell. Before each zoomed gesture the aim is
+      // re-cleared (ONE user pan when needed — a pan is not a fit) and the
+      // pins are RE-READ: every pin below still measures exactly its own
+      // gesture (the R21 no-fit discriminator), never the test's pan.
+      const rePin = async (): Promise<{ zoom: number; pan: { x: number; y: number } }> => ({
+        zoom: await readZoom(page),
+        pan: await readPan(page),
+      });
 
       // PLACE while zoomed.
-      await tapPoint(page, await screenModelPoint(page, BG_MODEL_POINT_2));
+      await clearAimed(page, () => screenModelPoint(page, BG_MODEL_POINT_2));
+      let pins = await rePin();
+      await tapAimed(page, () => screenModelPoint(page, BG_MODEL_POINT_2));
       await expect
         .poll(async () => (await readLabels(page)).filter((l) => l === 'New place'))
         .toHaveLength(2);
-      expect(await readZoom(page), 'place while zoomed: zoom unchanged (R21 ruling 1)').toBe(zoom);
-      expect(await readPan(page), 'place while zoomed: pan unchanged (R21 ruling 1)').toEqual(pan);
+      expect(await readZoom(page), 'place while zoomed: zoom unchanged (R21 ruling 1)').toBe(pins.zoom);
+      expect(await readPan(page), 'place while zoomed: pan unchanged (R21 ruling 1)').toEqual(pins.pan);
 
-      // MOVE while zoomed (CDP touch drag, hold-terminated).
+      // MOVE while zoomed (CDP touch drag, hold-terminated) — the drag
+      // start is coverage-cleared first (the property sheet is open on the
+      // placed node's selection).
       const placedId = await readSelectedId(page);
       if (placedId === null) throw new Error('placed node not selected (C5/D75 id discovery failed)');
+      const start = await clearAimed(page, () => screenModelPoint(page, BG_MODEL_POINT_2));
       const before = expectPosition(await readRenderedPosition(page, placedId));
-      const start = await modelPoint(page, BG_MODEL_POINT_2);
-      await cdpTouchDrag(cdp, { x: box.x + start.x, y: box.y + start.y }, 55, 8);
+      pins = await rePin();
+      await cdpTouchDrag(cdp, start, 55, 8);
       const after = expectPosition(await readRenderedPosition(page, placedId));
       expect(after.x, 'the editor drag moved the node').toBeGreaterThan(before.x + 35);
-      expect(await readZoom(page), 'move while zoomed: zoom unchanged (R21 ruling 1)').toBe(zoom);
-      expect(await readPan(page), 'move while zoomed: pan unchanged (R21 ruling 1)').toEqual(pan);
+      expect(await readZoom(page), 'move while zoomed: zoom unchanged (R21 ruling 1)').toBe(pins.zoom);
+      expect(await readPan(page), 'move while zoomed: pan unchanged (R21 ruling 1)').toEqual(pins.pan);
 
       // PROPERTY COMMIT while zoomed.
       await page.getByTestId('tme-node-label-input').fill('Market Square');
       await activate(page, 'tme-node-done');
       await expect(page.getByTestId('tme-selection-label')).toHaveText('Market Square');
-      expect(await readZoom(page), 'property commit while zoomed: zoom unchanged').toBe(zoom);
-      expect(await readPan(page), 'property commit while zoomed: pan unchanged').toEqual(pan);
+      expect(await readZoom(page), 'property commit while zoomed: zoom unchanged').toBe(pins.zoom);
+      expect(await readPan(page), 'property commit while zoomed: pan unchanged').toEqual(pins.pan);
 
-      // WAYPOINT-tool placement while zoomed (the F26 path).
+      // WAYPOINT-tool placement while zoomed (the F26 path) — the gap aim is
+      // re-cleared live (the stack may have re-flowed again) before its pin.
       await activate(page, 'tme-tool-waypoint');
-      await tapPoint(page, await gapPoint(page));
+      await clearAimed(page, () => gapPoint(page));
+      pins = await rePin();
+      await tapAimed(page, () => gapPoint(page));
       await expect
         .poll(async () => (await readLabels(page)).filter((l) => l === 'Waypoint'))
         .toHaveLength(1);
-      expect(await readZoom(page), 'waypoint place while zoomed: zoom unchanged').toBe(zoom);
-      expect(await readPan(page), 'waypoint place while zoomed: pan unchanged').toEqual(pan);
+      expect(await readZoom(page), 'waypoint place while zoomed: zoom unchanged').toBe(pins.zoom);
+      expect(await readPan(page), 'waypoint place while zoomed: pan unchanged').toEqual(pins.pan);
     });
   });
 });

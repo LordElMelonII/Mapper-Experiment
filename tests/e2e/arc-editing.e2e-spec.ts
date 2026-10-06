@@ -283,16 +283,27 @@ const nodeScreenPoint = async (page: Page, id: string): Promise<Point> => {
  * Tap an arc through the RENDERED MIDPOINT of its two endpoints (the
  * arc-panel precedent: the midpoint is equidistant-far from both 44px node
  * bodies, so the tap lands the EDGE on both input paths; re-reads positions
- * on every call).
+ * on every call). B-133c (D91): coverage-guarded — the open property/arc
+ * panels and the route sheet overlay the lower stage at the phone width
+ * (probe: the C2-loop re-tap answered the sheet body; a BLIND covered tap
+ * lands the panel's own content, never the canvas).
  */
-const tapArcMidpoint = async (page: Page, arcId: string, sourceId: string, targetId: string): Promise<void> => {
-  await settle(page);
-  const source = await readRenderedPosition(page, sourceId);
-  const target = await readRenderedPosition(page, targetId);
-  if (source === null || target === null) throw new Error(`arc ${arcId} endpoints not rendered`);
-  const box = await page.getByTestId('tme-canvas').boundingBox();
-  if (box === null) throw new Error('canvas host not visible');
-  await tapPoint(page, { x: box.x + (source.x + target.x) / 2, y: box.y + (source.y + target.y) / 2 });
+const tapArcMidpoint = async (
+  page: Page,
+  arcId: string,
+  sourceId: string,
+  targetId: string,
+): Promise<void> => {
+  const aim = async (): Promise<Point> => {
+    await settle(page);
+    const source = await readRenderedPosition(page, sourceId);
+    const target = await readRenderedPosition(page, targetId);
+    if (source === null || target === null) throw new Error(`arc ${arcId} endpoints not rendered`);
+    const box = await page.getByTestId('tme-canvas').boundingBox();
+    if (box === null) throw new Error('canvas host not visible');
+    return { x: box.x + (source.x + target.x) / 2, y: box.y + (source.y + target.y) / 2 };
+  };
+  await tapAimed(page, aim);
 };
 
 /** Tap a MODEL point: convert via the seam (test-side math only — R1). */
@@ -307,6 +318,213 @@ const tapModelPoint = async (page: Page, model: { x: number; y: number }): Promi
   }, model);
   if (screen === null) throw new Error('canvas host not visible');
   await tapPoint(page, screen);
+};
+
+/**
+ * B-133c (D91) coverage guard — the reference implementation's shape
+ * (editor-quick-connect @ 5006574), with two probe-derived extensions:
+ * the band rects read the panel HOSTS (a scrolled sheet's content rect
+ * spans far past the viewport — the host is the visible band that actually
+ * intercepts taps), and the ARC panel joins the bands (this spec's own
+ * covering sheet — the arc panel stays open across the editing loop, and a
+ * blind covered tap lands its CONTENT: probe answers ranged from
+ * tme-arc-distance to tme-arc-curve-add). The dodge is ONE background mouse
+ * drag (a drag is not a tap — no selection, no draft change); its start is
+ * a live clear-canvas point found via elementFromPoint between the top
+ * chrome and the topmost band, clear of every rendered node (editor-mode
+ * drags grab nodes). Phone-only (D53): desktop taps stay byte-identical.
+ */
+const EDIT_NODE_IDS = [
+  'einzbern-castle',
+  'ryuudou-temple',
+  'outskirts',
+  'emiya-residence',
+  'fuyuki-bridge',
+  'shopping-district',
+  'homurahara-academy',
+  'matou-residence',
+  'tohsaka-residence',
+  'fuyuki-station',
+  'harbor',
+  'kotomine-church',
+  'ghost-house',
+  'district-miyama',
+  'district-shinto',
+] as const;
+
+interface CoverBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+const coveringBands = (page: Page): Promise<Record<string, CoverBox | null>> =>
+  page.evaluate((): Record<string, CoverBox | null> => {
+    const boxOf = (sel: string, host: boolean): CoverBox | null => {
+      const el = host ? document.querySelector(sel) : document.querySelector(`[data-testid="${sel}"]`);
+      if (el === null) return null;
+      const r = el.getBoundingClientRect();
+      return r.width === 0 && r.height === 0
+        ? null
+        : { left: r.left, top: r.top, width: r.width, height: r.height };
+    };
+    return {
+      chip: boxOf('tme-selection-chip', false),
+      prop: boxOf('tme-property-panel', true), // the HOST: the visible clamped band
+      route: boxOf('tme-route-panel', true),
+      rail: boxOf('tme-sheet-rail', false),
+      arc: boxOf('tme-arc-panel', true),
+      header: boxOf('tme-header', false),
+      breadcrumb: boxOf('tme-breadcrumb', false),
+    };
+  });
+
+const bandCovers = (pt: Point, band: CoverBox | null): boolean =>
+  // EXACT DOM containment (+4px boundary safety) — the reference predicate
+  // (probe-proven: a comfort margin false-positives fittable corridors).
+  band !== null &&
+  pt.x >= band.left - 4 &&
+  pt.x <= band.left + band.width + 4 &&
+  pt.y >= band.top - 4 &&
+  pt.y <= band.top + band.height + 4;
+
+/** One background drag carrying every aim above the CURRENT bands, clamped below the top chrome. */
+const dodgeBands = async (
+  page: Page,
+  aims: readonly Point[],
+  boxes: Record<string, CoverBox | null>,
+): Promise<void> => {
+  const canvas = await page.getByTestId('tme-canvas').boundingBox();
+  if (canvas === null) throw new Error('canvas host not visible');
+  let panDy = 0;
+  for (const band of [boxes.prop, boxes.route, boxes.rail, boxes.arc]) {
+    if (band === null) continue;
+    for (const t of aims) {
+      if (t.y > band.top - 16) panDy = Math.min(panDy, band.top - 16 - t.y);
+    }
+  }
+  if (boxes.chip !== null) {
+    const chip = boxes.chip;
+    for (const t of aims) {
+      if (t.x + 22 > chip.left && t.y + 22 > chip.top && t.y - 22 < chip.top + chip.height) {
+        panDy = Math.min(panDy, chip.top + chip.height + 16 - t.y);
+      }
+    }
+  }
+  const topFloor = Math.max(
+    ...[boxes.header, boxes.breadcrumb, boxes.chip].map((b) => (b === null ? 0 : b.top + b.height)),
+    0,
+  );
+  if (topFloor > 0) {
+    const needed = Math.max(...aims.map((t) => topFloor + 16 - t.y));
+    if (needed > panDy) panDy = needed;
+  }
+  if (panDy < -8 || panDy > 8) {
+    const panBefore = await readPan(page);
+    // The drag's START must be a clear CANVAS point clear of every rendered
+    // node (only the down point matters — cytoscape captures the pointer).
+    const start = await page.evaluate(
+      ({ canvasBox, top, floor, ids }): Point | null => {
+        const hook = (window as unknown as {
+          __TME_E2E__?: { nodeRenderedPosition(id: string): { x: number; y: number } | null };
+        }).__TME_E2E__;
+        if (hook === undefined) return null;
+        const bands = [top.prop, top.route, top.rail, top.arc].filter((b) => b !== null);
+        const minBand =
+          bands.length === 0 ? Number.POSITIVE_INFINITY : Math.min(...bands.map((b) => b.top));
+        const nodePts = ids
+          .map((id: string) => hook.nodeRenderedPosition(id))
+          .filter((p): p is { x: number; y: number } => p !== null);
+        for (const fx of [0.5, 0.2, 0.8, 0.35, 0.65]) {
+          for (let y = floor + 12; y < minBand - 12; y += 8) {
+            const x = canvasBox.x + canvasBox.width * fx;
+            const el = document.elementFromPoint(x, y);
+            if (el === null || el.closest('.tme-canvas') === null) continue;
+            // A mousedown on a node GRABS it (editor mode) — the start must
+            // clear every node by more than the touch slop (~22·zoom + 8 px).
+            if (nodePts.some((p) => Math.hypot(p.x + canvasBox.x - x, p.y + canvasBox.y - y) < 26)) {
+              continue;
+            }
+            return { x, y };
+          }
+        }
+        return null;
+      },
+      {
+        canvasBox: canvas,
+        top: { prop: boxes.prop, route: boxes.route, rail: boxes.rail, arc: boxes.arc },
+        floor: topFloor,
+        ids: [...EDIT_NODE_IDS, 'wp-1'],
+      },
+    );
+    if (start === null) {
+      throw new Error(
+        `dodgeBands: no clear canvas drag start (topFloor=${topFloor}, bands=${boxes.rail?.top ?? 'x'}/${boxes.prop?.top ?? 'x'}/${boxes.arc?.top ?? 'x'})`,
+      );
+    }
+    // Drag up = content up; the map translates uniformly, so every aim clears together.
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x, start.y + panDy, { steps: 4 });
+    await page.mouse.up();
+    const panAfter = await readPan(page);
+    if (Math.abs(panAfter.y - panBefore.y) < 8) {
+      throw new Error(`dodgeBands: the drag panned nothing (start ${Math.round(start.x)},${Math.round(start.y)})`);
+    }
+  }
+};
+
+/**
+ * The canvas tap, coverage-guarded: re-derives the aim FRESH (a dodge pans
+ * the map — old coordinates are stale), checks it against the live bands,
+ * and dodges only when covered. Fails with the geometry when the corridor
+ * cannot fit rather than tapping blind. Phone-only (D53).
+ */
+const tapAimed = async (page: Page, aim: () => Promise<Point>): Promise<void> => {
+  if (!isPhone()) {
+    await tapPoint(page, await aim());
+    return;
+  }
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const pt = await aim();
+    const boxes = await coveringBands(page);
+    if (
+      ![boxes.chip, boxes.prop, boxes.route, boxes.rail, boxes.arc].some((band) =>
+        bandCovers(pt, band),
+      )
+    ) {
+      await tapPoint(page, pt);
+      return;
+    }
+    await dodgeBands(page, [pt], boxes);
+  }
+  const pt = await aim();
+  const boxes = await coveringBands(page);
+  throw new Error(
+    `tapAimed: the aim point (${Math.round(pt.x)},${Math.round(pt.y)}) stays covered — chip=${boxes.chip?.top ?? 'x'} prop=${boxes.prop?.top ?? 'x'} route=${boxes.route?.top ?? 'x'} rail=${boxes.rail?.top ?? 'x'} arc=${boxes.arc?.top ?? 'x'}`,
+  );
+};
+
+/** A node tap through the seam, coverage-guarded (B-133c, D91). */
+const tapNodeAimed = async (page: Page, id: string): Promise<void> =>
+  tapAimed(page, () => nodeScreenPoint(page, id));
+
+/** A MODEL-point tap through the seam, coverage-guarded (B-133c, D91). */
+const tapModelAimed = async (page: Page, model: { x: number; y: number }): Promise<void> => {
+  const aim = async (): Promise<Point> => {
+    await settle(page);
+    const screen = await page.evaluate((m): Point | null => {
+      const hook = (window as unknown as { __TME_E2E__?: TmeE2EHook }).__TME_E2E__;
+      if (hook === undefined) throw new Error(HOOK_ERROR);
+      const box = document.querySelector('[data-testid="tme-canvas"]')?.getBoundingClientRect();
+      if (box === null || box === undefined) return null;
+      return { x: box.x + hook.pan().x + m.x * hook.zoom(), y: box.y + hook.pan().y + m.y * hook.zoom() };
+    }, model);
+    if (screen === null) throw new Error('canvas host not visible');
+    return screen;
+  };
+  await tapAimed(page, aim);
 };
 
 /** Enter editor mode (the default Node tool). */
@@ -339,14 +557,17 @@ const placeNodeAndDrawArc = async (
 ): Promise<{ nodeId: string; arcId: string; nodePos: { x: number; y: number }; edgesBefore: string[] }> => {
   const edgesBefore = await readEdgeIds(page);
   await activate(page, 'tme-tool-node');
-  await tapModelPoint(page, BG_MODEL_POINT);
+  await tapModelAimed(page, BG_MODEL_POINT);
   await expect.poll(() => readSelectedNodeId(page)).not.toBeNull();
   const nodeId = (await readSelectedNodeId(page)) as string;
   const nodePos = await readModelPosition(page, nodeId);
   if (nodePos === null) throw new Error('placed node has no model position');
   await activate(page, 'tme-tool-arc');
-  await tapPoint(page, await nodeScreenPoint(page, fromId));
-  await tapPoint(page, await nodeScreenPoint(page, nodeId));
+  // B-133c (D91): the placed node's selection opened the property sheet over
+  // the lower stage — BOTH draw taps are coverage-guarded (the placed node's
+  // own band included).
+  await tapNodeAimed(page, fromId);
+  await tapNodeAimed(page, nodeId);
   await expect.poll(async () => (await newEdgeIds(page, edgesBefore)).length).toBe(1);
   const arcId = (await newEdgeIds(page, edgesBefore))[0];
   // The draw commit leaves the Arc tool ON (consecutive arcs, B-122) — a node
@@ -380,6 +601,64 @@ const drawnArcCost = (
     ({ pos, upp, mult }) => Math.hypot(pos.x - 100, pos.y - 250) * upp * mult,
     { pos: nodePos, upp: unitPerPx, mult: multiplier },
   );
+
+/**
+ * B-133c (D91): the pinch center picked LIVE from clear canvas — the twin's
+ * old chrome-box derivation ignored the overlay bands (the open arc panel
+ * rides over the stage's lower band now), and its center landed on the
+ * panel's own content (probe: elementFromPoint answered tme-arc-endpoints)
+ * so the pinch drugged the sheet, never the map. The clear point answers
+ * elementFromPoint as the canvas host, sits between the top chrome and the
+ * topmost band, clears every rendered node by more than the touch slop (a
+ * finger on a node is a grab, not a pinch), and leaves room for the spread.
+ */
+const clearPinchCenter = async (page: Page): Promise<{ center: Point; spreadMax: number }> => {
+  const canvas = await page.getByTestId('tme-canvas').boundingBox();
+  if (canvas === null) throw new Error('canvas host not visible');
+  const found = await page.evaluate(
+    ({ canvasBox, ids }): { center: Point; spreadMax: number } | null => {
+      const hook = (window as unknown as {
+        __TME_E2E__?: { nodeRenderedPosition(id: string): { x: number; y: number } | null };
+      }).__TME_E2E__;
+      if (hook === undefined) return null;
+      const bandTops: number[] = [];
+      let floor = 0;
+      const addBand = (sel: string, host: boolean, isFloor: boolean): void => {
+        const el = host ? document.querySelector(sel) : document.querySelector(`[data-testid="${sel}"]`);
+        if (el === null) return;
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) return;
+        if (isFloor) floor = Math.max(floor, r.top + r.height);
+        else bandTops.push(r.top);
+      };
+      for (const sel of ['tme-property-panel', 'tme-route-panel', 'tme-arc-panel']) addBand(sel, true, false);
+      addBand('tme-sheet-rail', false, false);
+      addBand('tme-header', false, true);
+      addBand('tme-breadcrumb', false, true);
+      addBand('tme-selection-chip', false, true);
+      const minBand = bandTops.length === 0 ? canvasBox.y + canvasBox.height : Math.min(...bandTops);
+      const nodePts = ids
+        .map((id: string) => hook.nodeRenderedPosition(id))
+        .filter((p): p is { x: number; y: number } => p !== null);
+      for (let y = floor + 16; y < minBand - 16; y += 8) {
+        for (const fx of [0.5, 0.35, 0.65, 0.2, 0.8]) {
+          const x = canvasBox.x + canvasBox.width * fx;
+          const el = document.elementFromPoint(x, y);
+          if (el === null || el.closest('.tme-canvas') === null) continue;
+          if (nodePts.some((p) => Math.hypot(p.x + canvasBox.x - x, p.y + canvasBox.y - y) < 30)) continue;
+          const spreadMax = Math.min(120, x - canvasBox.x - 12, canvasBox.x + canvasBox.width - x - 12);
+          if (spreadMax >= 40) return { center: { x, y }, spreadMax };
+        }
+      }
+      return null;
+    },
+    { canvasBox: canvas, ids: [...EDIT_NODE_IDS, 'wp-1'] },
+  );
+  if (found === null) {
+    throw new Error('clearPinchCenter: no clear canvas corridor for the pinch (D91 bands cover it)');
+  }
+  return found;
+};
 
 /**
  * The `phone` project is WebKit (iPhone 13), where CDP touch input does not
@@ -466,7 +745,10 @@ test.describe('arc editing: the M2 sections + measure this arc (PKG B-123)', () 
     // editor command — the B-116 waypoint precedent), but the MEASURE section
     // renders (calibrateScale takes the MERGED set, A-015).
     await activate(page, 'tme-tool-waypoint');
-    await tapModelPoint(page, BG_MODEL_POINT); // places wp-1 + kNN we- edges
+    // B-133c (D91): the library arc's panel is still open over the stage —
+    // the placement tap is coverage-guarded (probe: the BG aim answered the
+    // panel's body-scroll and wp-1 never existed).
+    await tapModelAimed(page, BG_MODEL_POINT);
     await expect
       .poll(async () => (await page.evaluate((): string[] => {
         const hook = (window as unknown as { __TME_E2E__?: TmeE2EHook }).__TME_E2E__;
@@ -481,9 +763,14 @@ test.describe('arc editing: the M2 sections + measure this arc (PKG B-123)', () 
     // wp-1↔outskirts we- edge at its rendered midpoint.
     const weId = (await readEdgeIds(page)).find((id) => id.startsWith('we-'));
     expect(weId, 'the kNN connect created a we- edge (C7)').toBeTruthy();
-    const wp = await nodeScreenPoint(page, 'wp-1');
-    const nearest = await nodeScreenPoint(page, OUTSKIRTS_ID);
-    await tapPoint(page, { x: (wp.x + nearest.x) / 2, y: (wp.y + nearest.y) / 2 });
+    // B-133c (D91): the we-edge midpoint tap is coverage-guarded too (the
+    // arc panel can still be stacked over the stage mid-flow).
+    const weMidAim = async (): Promise<Point> => {
+      const wp = await nodeScreenPoint(page, 'wp-1');
+      const nearest = await nodeScreenPoint(page, OUTSKIRTS_ID);
+      return { x: (wp.x + nearest.x) / 2, y: (wp.y + nearest.y) / 2 };
+    };
+    await tapAimed(page, weMidAim);
     await expect(page.getByTestId('tme-arc-panel')).toBeVisible();
     await expect(page.getByTestId('tme-arc-editor')).toHaveCount(0);
     await expect(page.getByTestId('tme-arc-measure')).toBeVisible();
@@ -513,7 +800,9 @@ test.describe('arc editing: the M2 sections + measure this arc (PKG B-123)', () 
     // default falls back to the cheapest allowed mode (car 60): 30 + 60.
     await activate(page, 'tme-save');
     await expect(page.getByTestId('tme-save-dock')).toBeHidden();
-    await tapPoint(page, await nodeScreenPoint(page, CASTLE_ID));
+    // B-133c (D91): the arc panel survives the save (the arc stays selected)
+    // over the lower stage — the castle re-select is coverage-guarded.
+    await tapNodeAimed(page, CASTLE_ID);
     await expect(page.getByTestId('tme-leg').nth(0)).toHaveText('Emiya Residence → Outskirts · walk · 30');
     await expect(page.getByTestId('tme-leg').nth(1)).toHaveText('Outskirts → Einzbern Castle · car · 60');
     await expect(page.getByTestId('tme-total')).toHaveText('90 min');
@@ -528,7 +817,7 @@ test.describe('arc editing: the M2 sections + measure this arc (PKG B-123)', () 
     await expect(page.getByTestId('tme-save-dock')).toBeVisible();
     await activate(page, 'tme-save');
     await expect(page.getByTestId('tme-save-dock')).toBeHidden();
-    await tapPoint(page, await nodeScreenPoint(page, CASTLE_ID));
+    await tapNodeAimed(page, CASTLE_ID); // B-133c (D91): coverage-guarded re-select
     await expect(page.getByTestId('tme-leg').nth(1)).toHaveText('Outskirts → Einzbern Castle · walk · 111');
     await expect(page.getByTestId('tme-total')).toHaveText('141 min'); // 30 + 111, verbatim
     const modes = await readArcModes(page, CASTLE_ARC);
@@ -543,7 +832,8 @@ test.describe('arc editing: the M2 sections + measure this arc (PKG B-123)', () 
     await activate(page, 'tme-save');
     await expect(page.getByTestId('tme-save-dock')).toBeHidden();
     // Baseline: geometry prices the arc px × 0.2 min/px (row 5).
-    await tapPoint(page, await nodeScreenPoint(page, nodeId));
+    // B-133c (D91): the placed node's property sheet is open — guarded tap.
+    await tapNodeAimed(page, nodeId);
     await expect(page.getByTestId('tme-total')).toHaveText(`${await drawnArcCost(page, nodePos, 0.2, 1)} min`);
 
     // Author the TRUE separation: 12 — geometry is overridden, not blended.
@@ -555,7 +845,7 @@ test.describe('arc editing: the M2 sections + measure this arc (PKG B-123)', () 
     expect(data?.authoredDistance).toBe(12);
     await activate(page, 'tme-save');
     await expect(page.getByTestId('tme-save-dock')).toBeHidden();
-    await tapPoint(page, await nodeScreenPoint(page, nodeId));
+    await tapNodeAimed(page, nodeId); // B-133c (D91): guarded (the arc panel is open)
     await expect(page.getByTestId('tme-leg')).toHaveText('Emiya Residence → New place · walk · 12');
     await expect(page.getByTestId('tme-total')).toHaveText('12 min'); // units = 12 verbatim (no terrain, C12/D44)
   });
@@ -572,7 +862,8 @@ test.describe('arc editing: the M2 sections + measure this arc (PKG B-123)', () 
     // px × 0.2 min/px (row 5, 'plain' multiplier 1) — TEST-side math over the
     // node's ACTUAL authored position (R1: the UI computed nothing), computed
     // in the app's engine (the in-page float discipline).
-    await tapPoint(page, await nodeScreenPoint(page, nodeId));
+    // B-133c (D91): the placed node's property sheet is open — guarded tap.
+    await tapNodeAimed(page, nodeId);
     await expect(page.getByTestId('tme-total')).toHaveText(`${await drawnArcCost(page, nodePos, 0.2, 1)} min`);
 
     // Terrain Mountain ⇒ the same arc re-prices ×2.5 after save.
@@ -584,7 +875,7 @@ test.describe('arc editing: the M2 sections + measure this arc (PKG B-123)', () 
     expect(data?.terrain).toBe('mountain');
     await activate(page, 'tme-save');
     await expect(page.getByTestId('tme-save-dock')).toBeHidden();
-    await tapPoint(page, await nodeScreenPoint(page, nodeId));
+    await tapNodeAimed(page, nodeId); // B-133c (D91): guarded (the arc panel is open)
     await expect(page.getByTestId('tme-total')).toHaveText(`${await drawnArcCost(page, nodePos, 0.2, 2.5)} min`); // FX1's mountain 2.5
   });
 
@@ -614,7 +905,7 @@ test.describe('arc editing: the M2 sections + measure this arc (PKG B-123)', () 
     const { nodeId, arcId, nodePos } = await placeNodeAndDrawArc(page, EMIYA_ID);
     await activate(page, 'tme-save');
     await expect(page.getByTestId('tme-save-dock')).toBeHidden();
-    await tapPoint(page, await nodeScreenPoint(page, nodeId));
+    await tapNodeAimed(page, nodeId); // B-133c (D91): guarded (the property sheet is open)
     await expect(page.getByTestId('tme-total')).toHaveText(`${await drawnArcCost(page, nodePos, 0.2, 1)} min`);
 
     // Measure the KNOWN-length castle arc: 6 km ⇒ unitPerPx = 6/475.079…,
@@ -636,7 +927,8 @@ test.describe('arc editing: the M2 sections + measure this arc (PKG B-123)', () 
     // D75 honesty: pricing serves the SAVED scale until saveMap — the sidebar
     // total is UNCHANGED by the measurement. (The arc midpoint tap cleared the
     // node selection — B-106 mutual exclusion — so re-select the node first.)
-    await tapPoint(page, await nodeScreenPoint(page, nodeId));
+    // B-133c (D91): the arc panel is open — the re-select is coverage-guarded.
+    await tapNodeAimed(page, nodeId);
     await expect(page.getByTestId('tme-total')).toHaveText(`${await drawnArcCost(page, nodePos, 0.2, 1)} min`);
 
     // Save: the seeded scale goes live — the same route re-prices in the
@@ -740,7 +1032,9 @@ test.describe('arc editing: the M2 sections + measure this arc (PKG B-123)', () 
     await expect(page.getByTestId('tme-arc-blocked-reason')).toHaveText('Bridge closed by local authorities');
     // While SELECTED the gold accent wins the line (declared last); clear the
     // selection with a node tap (B-106 mutual exclusion) to read the cascade.
-    await tapPoint(page, await nodeScreenPoint(page, OUTSKIRTS_ID));
+    // B-133c (D91): the arc editor is open over the stage — coverage-guarded
+    // (probe: the outskirts aim answered tme-arc-curve-add).
+    await tapNodeAimed(page, OUTSKIRTS_ID);
     await expect(page.getByTestId('tme-arc-panel')).toBeHidden();
     await expect(await readEdgeLineStyle(page, BRIDGE_ARC)).toBe('dashed'); // blocked line-style stands
     await expect(await readEdgeLineColor(page, BRIDGE_ARC)).toBe(BLOCKED_RED); // blocked wins over the DRAFT_HUE
@@ -829,39 +1123,14 @@ test.describe('arc editing: the M2 sections + measure this arc (PKG B-123)', () 
       await openCastleArc(page);
       await settle(page);
 
-      // Pinch-IN with BOTH fingers on bare canvas (the draw-arc cell's
-      // chrome-aware center, left of the right-side stack).
+      // Pinch-IN with BOTH fingers on bare canvas. B-133c (D91): the center
+      // and spread derive LIVE from the clear-canvas corridor (the twin's
+      // old chrome-box math predates the overlay sheets — with the arc panel
+      // open it centered the pinch on the panel's content and the zoom never
+      // happened; probe: elementFromPoint at the old center answered
+      // tme-arc-endpoints).
       const fitZoom = await readZoom(page);
-      const box = await page.getByTestId('tme-canvas').boundingBox();
-      if (box === null) throw new Error('canvas host not visible');
-      const toggle = await page.getByTestId('tme-editor-toggle').boundingBox();
-      const tools = await page.getByTestId('tme-editor-tools').boundingBox();
-      const layers = await page.getByTestId('tme-layer-layer-fuyuki').boundingBox();
-      // B-127 (D86) aiming repair: the migrated chrome lives ON the rail — a
-      // SIBLING of the canvas, never an overlay — so only chrome boxes that
-      // still INTERSECT the canvas band constrain the pinch; off-canvas
-      // chrome (the rail bar below the canvas) yields to the canvas's edges.
-      // The CHIP is the one overlay that stayed on the stage: a pinch finger
-      // starting on it releases as its tap (dismisses the selection — found
-      // live), so its live box joins the right-edge constraints.
-      const inCanvasBand = (b: { y: number; height: number } | null): boolean =>
-        b !== null && b.y < box.y + box.height && b.y + b.height > box.y;
-      const chip = (await page.getByTestId('tme-selection-chip').count()) > 0
-        ? await page.getByTestId('tme-selection-chip').boundingBox()
-        : null;
-      const rightEdge =
-        Math.min(
-          ...(toggle !== null && inCanvasBand(toggle) ? [toggle.x] : []),
-          ...(tools !== null && inCanvasBand(tools) ? [tools.x] : []),
-          ...(chip !== null && inCanvasBand(chip) ? [chip.x] : []),
-          box.x + box.width,
-        ) - 16;
-      const bottomEdge = layers !== null && inCanvasBand(layers) ? layers.y : box.y + box.height;
-      const center = {
-        x: box.x + (12 + rightEdge) / 2,
-        y: box.y + Math.max(64, Math.min(box.height * 0.45, bottomEdge - box.y - 20)),
-      };
-      const spreadMax = Math.min(120, (rightEdge - 12) / 2 - 8);
+      const { center, spreadMax } = await clearPinchCenter(page);
       const cdp = await page.context().newCDPSession(page);
       await cdpPinch(cdp, center, spreadMax * 0.65, spreadMax);
       await settle(page);

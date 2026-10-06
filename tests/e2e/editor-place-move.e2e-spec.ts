@@ -165,6 +165,196 @@ const tapModelPoint = async (page: Page, model: { x: number; y: number }): Promi
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
+ * B-133c (D91) coverage guard — the reference implementation's shape
+ * (editor-quick-connect @ 5006574), with two probe-derived extensions:
+ * the band rects read the panel HOSTS (a scrolled sheet's content rect
+ * spans far past the viewport — the host is the visible band), and the ARC
+ * panel joins the bands. Diagnosed live on this spec's drag cell: the
+ * placed node's selection opens the property sheet over the lower stage —
+ * the DRAG START sat under it (probe: the aim answered the panel's label
+ * input) and the CDP touch drag moved nothing. The dodge is ONE background
+ * mouse drag (a drag is not a tap — no selection, no placement); its start
+ * is a live clear-canvas point clear of every rendered node (editor-mode
+ * drags grab nodes). Phone-only (D53): desktop stays byte-identical.
+ */
+const PM_NODE_IDS = [
+  'einzbern-castle',
+  'ryuudou-temple',
+  'outskirts',
+  'emiya-residence',
+  'misaki-town',
+  'shopping-district',
+  'homurahara-academy',
+  'matou-residence',
+  'tohsaka-residence',
+  'fuyuki-bridge',
+  'fuyuki-station',
+  'harbor',
+  'kotomine-church',
+  'ghost-house',
+  'district-miyama',
+  'district-shinto',
+] as const;
+
+interface CoverBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+const coveringBands = (page: Page): Promise<Record<string, CoverBox | null>> =>
+  page.evaluate((): Record<string, CoverBox | null> => {
+    const boxOf = (sel: string, host: boolean): CoverBox | null => {
+      const el = host ? document.querySelector(sel) : document.querySelector(`[data-testid="${sel}"]`);
+      if (el === null) return null;
+      const r = el.getBoundingClientRect();
+      return r.width === 0 && r.height === 0
+        ? null
+        : { left: r.left, top: r.top, width: r.width, height: r.height };
+    };
+    return {
+      chip: boxOf('tme-selection-chip', false),
+      prop: boxOf('tme-property-panel', true), // the HOST: the visible clamped band
+      route: boxOf('tme-route-panel', true),
+      rail: boxOf('tme-sheet-rail', false),
+      arc: boxOf('tme-arc-panel', true),
+      header: boxOf('tme-header', false),
+      breadcrumb: boxOf('tme-breadcrumb', false),
+    };
+  });
+
+const bandCovers = (pt: Point, band: CoverBox | null): boolean =>
+  // EXACT DOM containment (+4px boundary safety) — the reference predicate
+  // (probe-proven: a comfort margin false-positives fittable corridors).
+  band !== null &&
+  pt.x >= band.left - 4 &&
+  pt.x <= band.left + band.width + 4 &&
+  pt.y >= band.top - 4 &&
+  pt.y <= band.top + band.height + 4;
+
+/** One background drag carrying every aim above the CURRENT bands, clamped below the top chrome. */
+const dodgeBands = async (
+  page: Page,
+  aims: readonly Point[],
+  boxes: Record<string, CoverBox | null>,
+): Promise<void> => {
+  const canvas = await page.getByTestId('tme-canvas').boundingBox();
+  if (canvas === null) throw new Error('canvas host not visible');
+  let panDy = 0;
+  for (const band of [boxes.prop, boxes.route, boxes.rail, boxes.arc]) {
+    if (band === null) continue;
+    for (const t of aims) {
+      if (t.y > band.top - 16) panDy = Math.min(panDy, band.top - 16 - t.y);
+    }
+  }
+  if (boxes.chip !== null) {
+    const chip = boxes.chip;
+    for (const t of aims) {
+      if (t.x + 22 > chip.left && t.y + 22 > chip.top && t.y - 22 < chip.top + chip.height) {
+        panDy = Math.min(panDy, chip.top + chip.height + 16 - t.y);
+      }
+    }
+  }
+  const topFloor = Math.max(
+    ...[boxes.header, boxes.breadcrumb, boxes.chip].map((b) => (b === null ? 0 : b.top + b.height)),
+    0,
+  );
+  if (topFloor > 0) {
+    const needed = Math.max(...aims.map((t) => topFloor + 16 - t.y));
+    if (needed > panDy) panDy = needed;
+  }
+  if (panDy < -8 || panDy > 8) {
+    const panRead = (): Promise<{ x: number; y: number }> =>
+      page.evaluate((): { x: number; y: number } => {
+        const hook = (window as unknown as { __TME_E2E__?: TmeE2EHook }).__TME_E2E__;
+        if (hook === undefined) throw new Error(HOOK_ERROR);
+        return hook.pan();
+      });
+    const panBefore = await panRead();
+    // The drag's START must be a clear CANVAS point clear of every rendered
+    // node except the aims themselves (the drag target is a node — this
+    // dodge's own start must not grab ANY node; only the down point matters).
+    const start = await page.evaluate(
+      ({ canvasBox, top, floor, ids }): Point | null => {
+        const hook = (window as unknown as {
+          __TME_E2E__?: { nodeRenderedPosition(id: string): { x: number; y: number } | null };
+        }).__TME_E2E__;
+        if (hook === undefined) return null;
+        const bands = [top.prop, top.route, top.rail, top.arc].filter((b) => b !== null);
+        const minBand =
+          bands.length === 0 ? Number.POSITIVE_INFINITY : Math.min(...bands.map((b) => b.top));
+        const nodePts = ids
+          .map((id: string) => hook.nodeRenderedPosition(id))
+          .filter((p): p is { x: number; y: number } => p !== null);
+        for (const fx of [0.5, 0.2, 0.8, 0.35, 0.65]) {
+          for (let y = floor + 12; y < minBand - 12; y += 8) {
+            const x = canvasBox.x + canvasBox.width * fx;
+            const el = document.elementFromPoint(x, y);
+            if (el === null || el.closest('.tme-canvas') === null) continue;
+            // A mousedown on a node GRABS it (editor mode) — the start must
+            // clear every node by more than the touch slop (~22·zoom + 8 px).
+            if (nodePts.some((p) => Math.hypot(p.x + canvasBox.x - x, p.y + canvasBox.y - y) < 26)) {
+              continue;
+            }
+            return { x, y };
+          }
+        }
+        return null;
+      },
+      {
+        canvasBox: canvas,
+        top: { prop: boxes.prop, route: boxes.route, rail: boxes.rail, arc: boxes.arc },
+        floor: topFloor,
+        ids: [...PM_NODE_IDS],
+      },
+    );
+    if (start === null) {
+      throw new Error(
+        `dodgeBands: no clear canvas drag start (topFloor=${topFloor}, bands=${boxes.rail?.top ?? 'x'}/${boxes.prop?.top ?? 'x'}/${boxes.arc?.top ?? 'x'})`,
+      );
+    }
+    // Drag up = content up; the map translates uniformly, so every aim clears together.
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x, start.y + panDy, { steps: 4 });
+    await page.mouse.up();
+    const panAfter = await panRead();
+    if (Math.abs(panAfter.y - panBefore.y) < 8) {
+      throw new Error(`dodgeBands: the drag panned nothing (start ${Math.round(start.x)},${Math.round(start.y)})`);
+    }
+  }
+};
+
+/**
+ * A coverage-clear gesture start: re-derives the aim FRESH, checks it
+ * against the live bands, dodges while covered, and returns the clear
+ * point for the caller's own gesture (the drag cell's start). Fails with
+ * the geometry when the corridor cannot fit. Phone-only (D53): desktop
+ * returns the plain aim.
+ */
+const clearAimed = async (page: Page, aim: () => Promise<Point>): Promise<Point> => {
+  if (!isPhone()) return aim();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const pt = await aim();
+    const boxes = await coveringBands(page);
+    if (
+      ![boxes.chip, boxes.prop, boxes.route, boxes.rail, boxes.arc].some((band) =>
+        bandCovers(pt, band),
+      )
+    ) {
+      return pt;
+    }
+    await dodgeBands(page, [pt], boxes);
+  }
+  const pt = await aim();
+  const boxes = await coveringBands(page);
+  throw new Error(
+    `clearAimed: the aim point (${Math.round(pt.x)},${Math.round(pt.y)}) stays covered — chip=${boxes.chip?.top ?? 'x'} prop=${boxes.prop?.top ?? 'x'} route=${boxes.route?.top ?? 'x'} rail=${boxes.rail?.top ?? 'x'} arc=${boxes.arc?.top ?? 'x'}`,
+  );
+};
+
+/**
  * The `phone` project is WebKit (iPhone 13), where CDP touch input does not
  * exist, and the touchscreen API has no drag primitive — the drag families
  * below run on a twin Chromium page with the SAME iPhone 13 emulation
@@ -278,7 +468,10 @@ test.describe('editor mode: place, move, and the F45 save bar (PKG B-116)', () =
       // window would aim at stale coordinates.
       await settle(p);
       const modelBefore = expectModelPosition(await readModelPosition(p, placedId));
-      const start = await nodeScreenPoint(p, placedId);
+      // B-133c (D91): the property sheet is open over the lower stage — the
+      // drag start must be coverage-clear before the touch drag (probe: the
+      // placed node's aim answered the panel's label input).
+      const start = await clearAimed(p, () => nodeScreenPoint(p, placedId));
       // Horizontal-only drag: the node stays inside the fitted bounding box,
       // so the post-move fitView is a no-op and the reads stay deterministic.
       await dragAt(p, start, 60, 0);

@@ -470,7 +470,15 @@ test.describe('property panel regime: floating, remembered, maximized-by-default
 
       await openPanelFor(p, EMIYA_ID);
       await activate(regimeButton(p)); // float
-      await dragPanel(p, -160, 90);
+      // B-133c (D91) aiming repair, probe-derived: the OLD +90 down-drag
+      // parked the floating host (max-height 352px) at y≈202 — its bottom
+      // (554) ran past the stage (505) and covered the rail's editor toggle
+      // (y 512..556), so the editor-exit tap below hung forever (the cell
+      // timed out on the click). The drag stays LEFT+DOWN but by 20px: the
+      // host bottom (≈497) stays inside the stage, the rail chrome stays
+      // reachable, and the remembered-position asserts keep their teeth
+      // (145 vs the 125 default — 20px apart, ±2 tolerance).
+      await dragPanel(p, -160, 20);
       const dragged = await readPanelState(p);
       if (dragged === null) throw new Error('panel not floating after the drag');
       expect(dragged.position).toBe('fixed');
