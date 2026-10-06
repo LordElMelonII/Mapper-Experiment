@@ -69,7 +69,7 @@ const SECTION9_COMMANDS: (keyof MapFacade)[] = [
   'setCurrentLocation', 'setStatusNote', 'setTravelMode', 'setCorrective',
   'setBlocked', 'setNodeBlocked', 'addUserNodeAt', 'removeUserNode', 'promoteUserNode',
   'upsertNode', 'upsertEdge', 'removeNode', 'removeEdge', 'calibrateScale', 'saveMap', 'hasUnsavedChanges',
-  'upsertLayer', 'removeLayer', 'reorderLayers', 'layerRemovalImpact', 'detachNode', 'setNodeLayer', 'setLayerBackground', 'setPortal',
+  'upsertLayer', 'removeLayer', 'reorderLayers', 'layerRemovalImpact', 'detachNode', 'setNodeLayer', 'setLayerBackground', 'setLayerBackgroundPlacement', 'setLayerBackgroundDim', 'setPortal',
   'findRoute', 'getSnapshot', 'renderTemplate', 'getPromptBlock',
   'setActiveLayer',
 ];

@@ -406,6 +406,39 @@ export function validateWorldMap(data: unknown): WorldMapData {
           }
         }
       }
+      // D90/D93: the background presentation arms — flat optional fields on the
+      // layer record (the D78/D84 additive precedent: absent IS the default, zero
+      // migration). Pure presentation data; validated for shape only, like any
+      // persisted arm.
+      const backgroundDim = layer['backgroundDim'];
+      if (backgroundDim !== undefined) {
+        // D90: a dim level, 0–1 — 0 = undimmed, 1 = fully dimmed. NaN fails the
+        // finite test (typeof number alone would let it through the range check).
+        if (!isFiniteNumber(backgroundDim) || backgroundDim < 0 || backgroundDim > 1) {
+          push(issues, `${path}.backgroundDim`, 'must be a finite number between 0 and 1 (D90)');
+        }
+      }
+      const backgroundPlacement = layer['backgroundPlacement'];
+      if (backgroundPlacement !== undefined) {
+        // D93: the placed background — finite x/y (the image's center in model
+        // coordinates) and a finite scale > 0 (model units per image pixel),
+        // field-precise per sub-field.
+        if (!isObject(backgroundPlacement)) {
+          push(
+            issues,
+            `${path}.backgroundPlacement`,
+            'must be an object with finite x and y and a finite scale > 0 (D93)',
+          );
+        } else {
+          if (!isFiniteNumber(backgroundPlacement['x'])) {
+            push(issues, `${path}.backgroundPlacement.x`, 'must be a finite number');
+          }
+          if (!isFiniteNumber(backgroundPlacement['y'])) {
+            push(issues, `${path}.backgroundPlacement.y`, 'must be a finite number');
+          }
+          requireNumberAbove(issues, backgroundPlacement['scale'], `${path}.backgroundPlacement.scale`, 0);
+        }
+      }
     });
   }
 

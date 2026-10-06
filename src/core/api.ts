@@ -28,7 +28,21 @@ export type LayerBackground = { assetId: string } | { url: string };
 export interface LayerData {
   id: string;
   name: string;                        // 'World', 'Fuyuki City', 'Misaki Town'
-  background?: LayerBackground;        // D84: uploaded asset or remote URL — one image per layer, contain-fitted by the renderer (F03/F43)
+  background?: LayerBackground;        // D84: uploaded asset or remote URL — one image per layer; the renderer places it via the D93 placement arm (D92 zoom-sync, F03/F43)
+  /**
+   * D93: the placed background — x/y = the image's CENTER in model coordinates
+   * (the same plane the nodes live in), scale = MODEL UNITS PER IMAGE PIXEL,
+   * both axes (aspect-locked by construction — one scale, no rotation ever).
+   * Absent = the app's D92 default fit applies (the app computes it and
+   * persists it HERE through setLayerBackgroundPlacement).
+   */
+  backgroundPlacement?: { x: number; y: number; scale: number };
+  /**
+   * D90/D93: the dim level, 0–1 — 0 = undimmed, 1 = fully dimmed toward the
+   * stage backdrop. Absent = 0. Pure presentation data — never enters the
+   * snapshot or the template (D90).
+   */
+  backgroundDim?: number;
 }
 
 export interface MapNodeData {

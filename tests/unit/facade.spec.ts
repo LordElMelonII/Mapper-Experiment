@@ -22,7 +22,7 @@ const FACADE_COMMANDS: (keyof MapFacade)[] = [
   // Editor commands
   'upsertNode', 'upsertEdge', 'removeNode', 'removeEdge', 'calibrateScale', 'saveMap', 'hasUnsavedChanges', // D75: additive §9 extension
   // Layer commands
-  'upsertLayer', 'removeLayer', 'reorderLayers', 'layerRemovalImpact', 'detachNode', 'setNodeLayer', 'setLayerBackground', 'setPortal', // D82–D85 (A-017)
+  'upsertLayer', 'removeLayer', 'reorderLayers', 'layerRemovalImpact', 'detachNode', 'setNodeLayer', 'setLayerBackground', 'setLayerBackgroundPlacement', 'setLayerBackgroundDim', 'setPortal', // D82–D85 (A-017) + the D93 presentation arms (A-019)
   // Queries
   'findRoute', 'getSnapshot', 'renderTemplate', 'getPromptBlock',
   // Viewer state

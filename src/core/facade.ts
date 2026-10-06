@@ -109,7 +109,9 @@ export interface MapFacade {
   layerRemovalImpact(layerId: string): LayerRemovalImpact; // D82/R1: the delete dialog's N/M/K — pure, core-computed
   detachNode(nodeId: string): void; // D82/F54: every incident edge dies in both planes; the node survives byte-identical
   setNodeLayer(nodeId: string, layerId: string): void; // D83: the property-panel move; C3 rides — no edge updates, ever
-  setLayerBackground(layerId: string, source: LayerBackground | null): void; // D84: store the reference (asset or URL); null clears
+  setLayerBackground(layerId: string, source: LayerBackground | null): void; // D84: store the reference (asset or URL); null clears — D93 fresh-start: EVERY call resets placement+dim to defaults (the minimal-fresh shape; an old image's tuning must not leak into the new one)
+  setLayerBackgroundPlacement(layerId: string, placement: { x: number; y: number; scale: number } | null): void; // D93: the per-layer placed background — x/y = the image's center in model coords, scale = model units per image px (aspect-locked); null = the arm's explicit clear (the D92 default fit applies again)
+  setLayerBackgroundDim(layerId: string, dim: number): void; // D90/D93: the per-layer background dim, 0–1 (0 = undimmed) — saved map data, never snapshot/template payload
   setPortal(nodeId: string, layerId: string | null): void; // D85: wire/unwire the entry node — at most one per layer
   // Queries
   findRoute(from: string, to: string, mode?: TravelMode): RouteResult;
@@ -1150,6 +1152,10 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       // omission would destroy authored work; the field has its OWN command
       // (D84's setLayerBackground) whose explicit `null` owns clearing. A
       // supplied arm still replaces (the entry path rides this command too).
+      // D93 extends the same doctrine to the presentation arms: the spread
+      // carries `backgroundPlacement`/`backgroundDim` through a rename
+      // untouched (absent-and-preserve) — the upsertLayer ARG does not grow
+      // the arms (the sheet manages neither; the two commands own them).
       const fresh: LayerData = { ...map.layers[index], name: layer.name };
       if (layer.background !== undefined) fresh.background = { ...layer.background };
       const clone = structuredClone(map);
@@ -1365,6 +1371,13 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
     // time validation throws per C30 (the standing regime). Exactly-one-arm
     // is the VALIDATOR's rule — the clone gate refuses both/neither/ad-hoc
     // shapes field-precisely, and `null` clears.
+    //
+    // D93 fresh-start rule: the minimal-fresh shape below — a fresh LayerData
+    // carrying ONLY id/name (plus the new background on the source path) —
+    // OMITS every other arm, so EVERY call (new source or null) resets the
+    // D93 presentation arms (`backgroundPlacement`/`backgroundDim`) to their
+    // defaults (absent): an old image's placement/dim tuning must never leak
+    // into the new one. Re-tuning is the two presentation commands' business.
     setLayerBackground: (layerId, source) => {
       const { map, overlay } = state;
       if (map === null || overlay === null) throw new Error('[TravelMapper] no map loaded');
@@ -1380,6 +1393,60 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       validateWorldMap(clone); // the background arm rule refuses field-precisely
       map.layers[index] = fresh;
       state.dirty = true;
+    },
+
+    // D93: the per-layer placed background — the STORAGE + validation surface
+    // the app persists its D92 calibrate-mode result through (the core never
+    // loads images and never computes the fit). x/y = the image's CENTER in
+    // MODEL coordinates (the same plane the nodes live in), scale = MODEL
+    // UNITS PER IMAGE PIXEL — aspect-locked by construction (one scale, no
+    // rotation ever); `null` clears the arm so the app's D92 default fit
+    // applies again. Pure presentation data beside the graph — nothing in the
+    // snapshot, template, routing or the effective graph reads it (D90/D92;
+    // calibration never touches node coordinates, distances or costs —
+    // structural here). The setPortal discipline verbatim: unknown-id ad-hoc
+    // refusal; a FRESH layer object with the arm set or deleted; C30
+    // clone-validate-apply (the VALIDATOR owns the shape rules — finite x/y,
+    // finite scale > 0 — field-precise, no ad-hoc checks); dirty, never stale
+    // (D75 — map data, unlike the A-018 overlay node blocks).
+    setLayerBackgroundPlacement: (layerId, placement) => {
+      const { map, overlay } = state;
+      if (map === null || overlay === null) throw new Error('[TravelMapper] no map loaded');
+      const index = map.layers.findIndex((l) => l.id === layerId);
+      if (index === -1) {
+        throw new Error(`[TravelMapper] setLayerBackgroundPlacement: unknown layer id '${layerId}'`);
+      }
+      const fresh: LayerData = { ...map.layers[index] };
+      if (placement === null) delete fresh.backgroundPlacement; // clear — the D92 default fit applies again
+      else fresh.backgroundPlacement = { ...placement }; // never alias the caller's object (D75)
+      const clone = structuredClone(map); // C30: clone-validate-apply
+      clone.layers[index] = fresh;
+      validateWorldMap(clone); // the placement shape rules refuse field-precisely
+      map.layers[index] = fresh;
+      state.dirty = true; // D75: dirty, never stale — saveMap is the live trigger
+    },
+
+    // D90/D93: the per-layer background DIM — 0–1 (0 = undimmed, 1 = fully
+    // dimmed toward the stage backdrop), saved WITH THE MAP (the D90 owner
+    // pick) so it exports to SillyTavern in Phase 4. Pure presentation data —
+    // never enters the snapshot or the template (D90). The setPortal
+    // discipline verbatim (see setLayerBackgroundPlacement above): the
+    // VALIDATOR owns the 0–1 rule (NaN fails the finite test) via the C30
+    // clone gate, fresh-object swap, dirty never stale (D75).
+    setLayerBackgroundDim: (layerId, dim) => {
+      const { map, overlay } = state;
+      if (map === null || overlay === null) throw new Error('[TravelMapper] no map loaded');
+      const index = map.layers.findIndex((l) => l.id === layerId);
+      if (index === -1) {
+        throw new Error(`[TravelMapper] setLayerBackgroundDim: unknown layer id '${layerId}'`);
+      }
+      const fresh: LayerData = { ...map.layers[index] };
+      fresh.backgroundDim = dim; // the validator owns the 0–1 rule (C30)
+      const clone = structuredClone(map); // C30: clone-validate-apply
+      clone.layers[index] = fresh;
+      validateWorldMap(clone); // a dim outside 0–1 (or non-finite) refuses field-precisely
+      map.layers[index] = fresh;
+      state.dirty = true; // D75: dirty, never stale — saveMap is the live trigger
     },
 
     // D85: wire (or unwire, null) the portal — the layer's ONE entry node.

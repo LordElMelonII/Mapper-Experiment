@@ -564,3 +564,63 @@ describe('mode registry (D78)', () => {
     expect(issues[0].message).toBe('must be one of: walk, car, train, horse');
   });
 });
+
+// --- background presentation arms (D90/D93 — PKG A-019) -----------------------------------------
+
+describe('background presentation arms (D90/D93, C30)', () => {
+  it('accepts valid arms and ABSENT arms — absence IS the default, zero migration (D93/D78 precedent)', () => {
+    expect(() => validateWorldMap(validMap())).not.toThrow(); // absent = default
+    expect(() => validateWorldMap(mutated((m) => {
+      m.layers[0].backgroundDim = 0.4;
+      m.layers[0].backgroundPlacement = { x: 10, y: -4, scale: 0.25 };
+    }))).not.toThrow();
+  });
+
+  it('accepts the dim boundaries 0 and 1 — 0 = undimmed is a legal value, not absence (D90)', () => {
+    expect(() => validateWorldMap(mutated((m) => { m.layers[0].backgroundDim = 0; }))).not.toThrow();
+    expect(() => validateWorldMap(mutated((m) => { m.layers[0].backgroundDim = 1; }))).not.toThrow();
+  });
+
+  it('refuses a backgroundDim outside 0–1 — NaN fails the finite test, strings never pass (D90/C30)', () => {
+    for (const bad of [-0.1, 1.1, NaN, Infinity, '0.5']) {
+      expect(singlePath(mapIssues(mutated((m) => { m.layers[0].backgroundDim = bad; })))).toBe(
+        'layers[0].backgroundDim',
+      );
+    }
+  });
+
+  it('refuses a malformed backgroundPlacement field-precisely per sub-field (D93/C30)', () => {
+    // an object missing sub-fields reports EVERY missing one (C30 collect)
+    const empty = mapIssues(mutated((m) => { m.layers[0].backgroundPlacement = {}; }));
+    expect(pathsOf(empty).sort()).toEqual([
+      'layers[0].backgroundPlacement.scale',
+      'layers[0].backgroundPlacement.x',
+      'layers[0].backgroundPlacement.y',
+    ]);
+    expect(singlePath(mapIssues(mutated((m) => { m.layers[0].backgroundPlacement = 'nope'; })))).toBe(
+      'layers[0].backgroundPlacement',
+    );
+    expect(singlePath(mapIssues(mutated((m) => { m.layers[0].backgroundPlacement = { x: NaN, y: 0, scale: 1 }; })))).toBe(
+      'layers[0].backgroundPlacement.x',
+    );
+    expect(singlePath(mapIssues(mutated((m) => { m.layers[0].backgroundPlacement = { x: 1, y: Infinity, scale: 1 }; })))).toBe(
+      'layers[0].backgroundPlacement.y',
+    );
+    for (const badScale of [0, -1, 'big']) {
+      expect(singlePath(mapIssues(mutated((m) => { m.layers[0].backgroundPlacement = { x: 1, y: 2, scale: badScale as unknown as number }; })))).toBe(
+        'layers[0].backgroundPlacement.scale',
+      );
+    }
+  });
+
+  it('collects multiple arm defects into ONE report — dim and both placement sub-fields together (C30)', () => {
+    const issues = mapIssues(mutated((m) => {
+      m.layers[0].backgroundDim = 1.1;
+      m.layers[0].backgroundPlacement = { x: NaN, y: 0, scale: 0 };
+    }));
+    const paths = pathsOf(issues);
+    expect(paths).toContain('layers[0].backgroundDim');
+    expect(paths).toContain('layers[0].backgroundPlacement.x');
+    expect(paths).toContain('layers[0].backgroundPlacement.scale');
+  });
+});
