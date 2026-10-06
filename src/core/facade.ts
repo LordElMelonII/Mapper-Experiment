@@ -797,6 +797,7 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       const dying = overlay.userEdges.filter((e) => e.source === id || e.target === id);
       overlay.userEdges = overlay.userEdges.filter((e) => e.source !== id && e.target !== id);
       for (const edge of dying) delete overlay.blocked[edge.id];
+      delete overlay.nodeBlocked[id]; // A-018 follow-up (D94/F50): the node is gone — a surviving node-block would fail validateOverlay's node-existence check at the next load (the edge-block mirror above)
       state.stale = true; // C8
     },
 
@@ -972,6 +973,7 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       const dyingUser = overlay.userEdges.filter((e) => e.source === id || e.target === id);
       overlay.userEdges = overlay.userEdges.filter((e) => e.source !== id && e.target !== id);
       for (const e of [...dying, ...dyingUser]) delete overlay.blocked[e.id];
+      delete overlay.nodeBlocked[id]; // A-018 follow-up (D94/F50): the node-block mirror of the edge cleanup — a surviving entry would fail validateOverlay's node-existence check at the next load
       state.dirty = true;
     },
 
@@ -1205,6 +1207,7 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       overlay.userNodes = overlay.userNodes.filter((nd) => nd.layer !== layerId);
       overlay.userEdges = overlay.userEdges.filter((e) => !dying.has(e.source) && !dying.has(e.target));
       for (const e of [...dyingEdges, ...dyingUserEdges]) delete overlay.blocked[e.id];
+      for (const id of dying) delete overlay.nodeBlocked[id]; // A-018 follow-up (D94/F50): every dying node's block dies with it — both planes (the edge-block mirror; a surviving entry would fail validateOverlay at the next load)
       // Gate-verifier finding 1 (M3 gate): the saved-plane universes shrink
       // with an un-undoable removal (F46 — the user who deleted the layer
       // will not place waypoints on it, and the eventual saveMap must never

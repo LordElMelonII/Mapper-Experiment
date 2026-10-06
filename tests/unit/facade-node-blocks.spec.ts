@@ -174,3 +174,47 @@ describe('C34 routing — blocked nodes are impassable destinations and intermed
     expect(snap.blockedNodes).toEqual([{ label: 'Misaki Town', reason: 'ward seals the town' }]); // the blocked listing (C2 spirit)
   });
 });
+
+// --- Removals clean dying nodes' nodeBlocked keys (A-018 follow-up, F50) --------------------
+
+describe('removals clean dying nodes\' nodeBlocked keys (A-018 follow-up, D94/F50/C30)', () => {
+  it('removeNode deletes the removed node\'s block — a fresh loadMap accepts the overlay (the F50 brick path, closed)', () => {
+    const { f, map, overlay } = loadFuyuki();
+    f.setNodeBlocked('fuyuki-station', 'severed');
+    f.removeNode('fuyuki-station');
+    expect('fuyuki-station' in overlay.nodeBlocked).toBe(false);
+    const fresh = createFacade();
+    expect(() => fresh.loadMap(map, overlay)).not.toThrow(); // the next load refuses NOTHING (F50)
+  });
+
+  it('removeUserNode deletes the removed waypoint\'s block (the same brick path)', () => {
+    const { f, map, overlay } = loadFuyuki();
+    f.addUserNodeAt('layer-fuyuki', { x: 110, y: 260 }); // C5: 'wp-1'
+    f.setNodeBlocked('wp-1', 'collapsed');
+    f.removeUserNode('wp-1');
+    expect('wp-1' in overlay.nodeBlocked).toBe(false);
+    const fresh = createFacade();
+    expect(() => fresh.loadMap(map, overlay)).not.toThrow();
+  });
+
+  it('removeLayer deletes every dying node\'s block, BOTH planes (the informed cascade)', () => {
+    const { f, map, overlay } = loadFuyuki();
+    f.setNodeBlocked('misaki-town', 'ward seals the town'); // library node on the dying layer
+    f.addUserNodeAt('layer-misaki', { x: 300, y: 300 }); // waypoint on the dying layer — C5: 'wp-1'
+    f.setNodeBlocked('wp-1', 'camp flooded');
+    f.removeLayer('layer-misaki');
+    expect('misaki-town' in overlay.nodeBlocked).toBe(false);
+    expect('wp-1' in overlay.nodeBlocked).toBe(false);
+    const fresh = createFacade();
+    expect(() => fresh.loadMap(map, overlay)).not.toThrow();
+  });
+
+  it('detachNode keeps the node AND its block — only arcs die (the contract pin)', () => {
+    const { f, map, overlay } = loadFuyuki();
+    f.setNodeBlocked('fuyuki-station', 'severed');
+    f.detachNode('fuyuki-station');
+    expect(overlay.nodeBlocked['fuyuki-station']).toBe('severed'); // the node survives — its block stays valid (D82/F54)
+    const fresh = createFacade();
+    expect(() => fresh.loadMap(map, overlay)).not.toThrow();
+  });
+});
