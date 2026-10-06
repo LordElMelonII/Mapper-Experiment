@@ -359,22 +359,15 @@ test.describe('label culling (PKG B-113)', () => {
       await expect(p.getByTestId('tme-selection-chip')).toBeVisible();
       await expect(p.getByTestId('tme-selection-label')).toHaveText(STATION_LABEL);
 
-      if (isPhone()) {
-        // Phone-stage interplay (the B-112 review-gate note, live): the
-        // selection renders the route to Fuyuki Station in the route panel,
-        // which grows the panel and resizes the canvas host — and the
-        // B-106 resize ruling re-FITS the view so the layer stays tappable.
-        // The re-fit restores the default zoom, which legitimately UN-CULLS
-        // (the comprehension guarantee: the default view is never culled) —
-        // that is correct culling behavior, not a lost selection: the chip
-        // and tme-selected survive it. So the phone proves the cascade on
-        // the STILL-selected node after an explicit re-cull: wait for the
-        // refit-driven un-cull, then zoom back out. The threshold is read
-        // fresh off the re-fit zoom, matching the service's re-based
-        // cullZoom arithmetic exactly.
-        await expect.poll(() => readNodeHasClass(p, STATION_ID, CULL_CLASS)).toBe(false);
-        await zoomOutPast(p, (await readZoom(p)) * FIT_CULL_FACTOR);
-      }
+      // B-133 (D91) re-derivation: the selection grows the route sheet as a
+      // stage OVERLAY — the stage never resizes and the viewport never moves
+      // (the zero-motion doctrine), so NO refit fires and the zoom STAYS
+      // below the cull threshold through the selection. The pre-D91 phone
+      // branch (wait for the resize refit to un-cull, then re-cull to prove
+      // the cascade) observed a resize that no longer exists. Under D91 the
+      // culled state simply persists through the tap — the cascade asserts
+      // below prove BOTH classes on the still-culled, now-selected node at
+      // both viewports with the same flow.
 
       // The tap path removes NO classes: the selected node carries BOTH —
       // its label stays visible only through the later

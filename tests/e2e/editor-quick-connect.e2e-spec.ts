@@ -262,6 +262,172 @@ const startConnectFor = async (page: Page, id: string): Promise<void> => {
   await expect.poll(readConnectMode.bind(null, page)).toBe(true);
 };
 
+/**
+ * B-133 residual repair (D91): connect mode REQUIRES the property panel open,
+ * and on the phone the panel + sheet stack sheets over the lower full-width
+ * stage — pick targets rendered in that band are untappable (elementFromPoint
+ * answers the panel's section, pointer-events:auto since the dead-zone fix).
+ * Probe-proven geometry facts the dodge is built on:
+ *   - the sheet RAIL is its own 44px band riding the TOP of the stacked
+ *     sheets, and the WHOLE STACK RE-FLOWS when the app's own feedback grows
+ *     the route sheet (one tap's coverage is stale by the next tap) — so the
+ *     coverage check and dodge run PER-TAP on fresh geometry, never once;
+ *   - the panel/sheet/rail elements carry transforms and locator.boundingBox()
+ *     returns NaN tops for them — boxes are read IN-PAGE;
+ *   - a drag is not a tap (connect mode's pick state is untouched) and the map
+ *     translates uniformly, so one background drag clears the aim point;
+ *   - the drag must CLAMP below the top chrome (header/breadcrumb/chip) — a
+ *     target dragged up under the chrome taps nothing and the cell hangs on
+ *     stale feedback.
+ * Phone-only: the desktop floater's coverage is horizontal and desktop cells
+ * pass as-is — the vertical dodge must never run there.
+ */
+interface CoverBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+const coveringBands = (page: Page): Promise<Record<string, CoverBox | null>> =>
+  page.evaluate((): Record<string, CoverBox | null> => {
+    const boxOf = (tid: string): CoverBox | null => {
+      const el = document.querySelector(`[data-testid="${tid}"]`);
+      if (el === null) return null;
+      const r = el.getBoundingClientRect();
+      return r.width === 0 && r.height === 0
+        ? null
+        : { left: r.left, top: r.top, width: r.width, height: r.height };
+    };
+    return {
+      chip: boxOf('tme-selection-chip'),
+      prop: boxOf('tme-property-panel'),
+      route: boxOf('tme-route-panel'),
+      rail: boxOf('tme-sheet-rail'),
+      header: boxOf('tme-header'),
+      breadcrumb: boxOf('tme-breadcrumb'),
+    };
+  });
+
+const bandCovers = (pt: Point, band: CoverBox | null): boolean =>
+  // EXACT DOM containment (+4px boundary safety): elementFromPoint is exact,
+  // so a point 15px above a band taps canvas — the −16 comfort margin is for
+  // post-dodge clearance in dodgeBands, never for the coverage predicate
+  // (probe-proven: the margin false-positived a fittable corridor).
+  band !== null &&
+  pt.x >= band.left - 4 &&
+  pt.x <= band.left + band.width + 4 &&
+  pt.y >= band.top - 4 &&
+  pt.y <= band.top + band.height + 4;
+
+/** One background drag carrying every aim point above the CURRENT bands, clamped below the top chrome. */
+const dodgeBands = async (
+  page: Page,
+  aims: readonly Point[],
+  boxes: Record<string, CoverBox | null>,
+): Promise<void> => {
+  const canvas = await page.getByTestId('tme-canvas').boundingBox();
+  if (canvas === null) throw new Error('canvas host not visible');
+  let panDy = 0;
+  for (const band of [boxes.prop, boxes.route, boxes.rail]) {
+    if (band === null) continue;
+    for (const t of aims) {
+      if (t.y > band.top - 16) {
+        panDy = Math.min(panDy, band.top - 16 - t.y);
+      }
+    }
+  }
+  if (boxes.chip !== null) {
+    const chip = boxes.chip;
+    for (const t of aims) {
+      if (t.x + 22 > chip.left && t.y + 22 > chip.top && t.y - 22 < chip.top + chip.height) {
+        panDy = Math.min(panDy, chip.top + chip.height + 16 - t.y);
+      }
+    }
+  }
+  const topFloor = Math.max(
+    ...[boxes.header, boxes.breadcrumb, boxes.chip].map((b) => (b === null ? 0 : b.top + b.height)),
+    0,
+  );
+  if (topFloor > 0) {
+    const needed = Math.max(...aims.map((t) => topFloor + 16 - t.y));
+    if (needed > panDy) panDy = needed;
+  }
+  if (panDy < -8 || panDy > 8) {
+    // The drag's START must be a clear CANVAS point — the stack can reach
+    // past canvas-mid (probe-proven: a mousedown on the sheet pans nothing).
+    // Only the down point matters (cytoscape captures the pointer; the track
+    // may cross bands). Find one live between the top chrome and the topmost
+    // band, across three x lanes.
+    const start = await page.evaluate(
+      ({ canvasBox, top, floor }): Point | null => {
+        const bands: { top: number }[] = [top.prop, top.route, top.rail].filter(
+          (b): b is { top: number } => b !== null,
+        );
+        const minBand =
+          bands.length === 0 ? Number.POSITIVE_INFINITY : Math.min(...bands.map((b) => b.top));
+        for (const fx of [0.5, 0.2, 0.8]) {
+          for (let y = floor + 12; y < minBand - 12; y += 8) {
+            const x = canvasBox.x + canvasBox.width * fx;
+            const el = document.elementFromPoint(x, y);
+            if (el !== null && el.closest('.tme-canvas') !== null) return { x, y };
+          }
+        }
+        return null;
+      },
+      {
+        canvasBox: canvas,
+        top: { prop: boxes.prop, route: boxes.route, rail: boxes.rail },
+        floor: topFloor,
+      },
+    );
+    if (start === null) {
+      throw new Error(
+        `dodgeBands: no clear canvas drag start (topFloor=${topFloor}, bands=${boxes.rail?.top ?? 'x'}/${boxes.prop?.top ?? 'x'})`,
+      );
+    }
+    // Drag up = content up (start.y + negative panDy); the map translates
+    // uniformly, so every aim point clears the bands together.
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x, start.y + panDy, { steps: 4 });
+    await page.mouse.up();
+  }
+};
+
+/**
+ * The pick tap, coverage-guarded: re-derives the aim point FRESH (a dodge pans
+ * the map — old coordinates are stale), checks it against the live bands, and
+ * dodges only when covered. Fails with the geometry when the corridor cannot
+ * fit rather than tapping blind.
+ */
+const tapAimed = async (page: Page, aim: () => Promise<Point>): Promise<void> => {
+  if (!isPhone()) {
+    await tapPoint(page, await aim());
+    return;
+  }
+  if ((await page.getByTestId('tme-sheet-rail').getAttribute('aria-expanded')) === 'true') {
+    await page.getByTestId('tme-sheet-rail').click();
+    await expect(page.getByTestId('tme-sheet-rail')).toHaveAttribute('aria-expanded', 'false');
+    await page.waitForTimeout(200); // the collapse re-renders — a tap in the same tick can still hit the body
+  }
+  await expect(page.getByTestId('tme-connect-from')).toBeVisible(); // the collapse never leaves connect mode
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const pt = await aim();
+    const boxes = await coveringBands(page);
+    if (!bandCovers(pt, boxes.prop) && !bandCovers(pt, boxes.route) && !bandCovers(pt, boxes.rail) && !bandCovers(pt, boxes.chip)) {
+      await tapPoint(page, pt);
+      return;
+    }
+    await dodgeBands(page, [pt], boxes);
+  }
+  const pt = await aim();
+  const boxes = await coveringBands(page);
+  throw new Error(
+    `tapAimed: the aim point (${Math.round(pt.x)},${Math.round(pt.y)}) stays covered — chip=${boxes.chip?.top ?? 'x'} prop=${boxes.prop?.top ?? 'x'} route=${boxes.route?.top ?? 'x'} rail=${boxes.rail?.top ?? 'x'}`,
+  );
+};
+
 test.describe('quick-connect: select, pick leaves, batch-create default arcs (PKG B-118)', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
@@ -292,15 +458,17 @@ test.describe('quick-connect: select, pick leaves, batch-create default arcs (PK
     await expect(page.getByTestId('tme-node-done')).toHaveCount(0);
 
     // Pick two leaves — one tap each; the DISTINCT pick accent (not the
-    // selection), and the selection itself never moves (F46 ruling).
-    await tapPoint(page, await nodeScreenPoint(page, CASTLE_ID));
+    // selection), and the selection itself never moves (F46 ruling). Each
+    // pick re-aims coverage-guarded: the connect banner's feedback can grow
+    // the sheet stack between taps (B-133 residual repair, D91).
+    await tapAimed(page, () => nodeScreenPoint(page, CASTLE_ID));
     await expect.poll(readPickedIds.bind(null, page)).toEqual([CASTLE_ID]);
     await expect(page.getByTestId('tme-connect-count')).toHaveText('1 place picked');
     expect(await readNodeHasClass(page, CASTLE_ID, 'tme-connect-pick')).toBe(true);
     expect(await readNodeHasClass(page, CASTLE_ID, 'tme-selected')).toBe(false);
     expect(await readSelectedId(page)).toBe(placedId);
 
-    await tapPoint(page, await nodeScreenPoint(page, TEMPLE_ID));
+    await tapAimed(page, () => nodeScreenPoint(page, TEMPLE_ID));
     await expect.poll(readPickedIds.bind(null, page)).toEqual([CASTLE_ID, TEMPLE_ID]);
     await expect(page.getByTestId('tme-connect-count')).toHaveText('2 places picked');
 
@@ -363,7 +531,9 @@ test.describe('quick-connect: select, pick leaves, batch-create default arcs (PK
 
     // The compound box: the tap hits the PARENT (district-miyama) — not a
     // leaf, so not a pick: feedback, no arc, no placement, mode stays on.
-    await tapPoint(page, await miyamaBoxCorner(page));
+    // Coverage-guarded (B-133 residual repair, D91): the aim re-derives from
+    // the live box seam after any dodge pans the map.
+    await tapAimed(page, () => miyamaBoxCorner(page));
     await expect(page.getByTestId('tme-connect-feedback')).toBeVisible();
     await expect.poll(readPickedIds.bind(null, page)).toEqual([]);
     expect(await readConnectMode(page)).toBe(true);
@@ -371,8 +541,10 @@ test.describe('quick-connect: select, pick leaves, batch-create default arcs (PK
     await expect(page.getByTestId('tme-connect-from')).toBeVisible(); // banner still up
     expect((await readEdgeIds(page)).length).toBe(edgesBefore.length);
 
-    // The source itself is never a pick target of its own arcs.
-    await tapPoint(page, await nodeScreenPoint(page, OUTSKIRTS_ID));
+    // The source itself is never a pick target of its own arcs. The feedback
+    // line above GREW the sheet stack (probe-proven) — the guard re-checks
+    // coverage at THIS tap, not the one before it.
+    await tapAimed(page, () => nodeScreenPoint(page, OUTSKIRTS_ID));
     await expect(page.getByTestId('tme-connect-feedback')).toContainText("can't connect to itself");
     await expect.poll(readPickedIds.bind(null, page)).toEqual([]);
 
@@ -417,14 +589,15 @@ test.describe('quick-connect: select, pick leaves, batch-create default arcs (PK
     await startConnectFor(page, OUTSKIRTS_ID);
 
     // One tap picks; the same tap again unpicks — the double-pick prevention.
-    await tapPoint(page, await nodeScreenPoint(page, CASTLE_ID));
+    // Coverage-guarded picks (B-133 residual repair, D91).
+    await tapAimed(page, () => nodeScreenPoint(page, CASTLE_ID));
     await expect.poll(readPickedIds.bind(null, page)).toEqual([CASTLE_ID]);
-    await tapPoint(page, await nodeScreenPoint(page, CASTLE_ID));
+    await tapAimed(page, () => nodeScreenPoint(page, CASTLE_ID));
     await expect.poll(readPickedIds.bind(null, page)).toEqual([]);
     await expect(page.getByTestId('tme-connect-count')).toHaveText('No places picked yet');
 
     // Only the surviving target commits — exactly one new arc.
-    await tapPoint(page, await nodeScreenPoint(page, TEMPLE_ID));
+    await tapAimed(page, () => nodeScreenPoint(page, TEMPLE_ID));
     await expect.poll(readPickedIds.bind(null, page)).toEqual([TEMPLE_ID]);
     await activate(page.getByTestId('tme-connect-done'));
     await expect.poll(readConnectMode.bind(null, page)).toBe(false);
@@ -465,9 +638,13 @@ test.describe('quick-connect: select, pick leaves, batch-create default arcs (PK
 
     const edgesBefore = await readEdgeIds(page);
     await startConnectFor(page, OUTSKIRTS_ID);
-    await tapPoint(page, await nodeScreenPoint(page, CASTLE_ID));
+
+    // Coverage-guarded picks (B-133 residual repair, D91) — the dodge drag
+    // itself is a sanctioned pan, not a touch gesture, so the journey below
+    // stays touch-alone (the mode-surfaces precedent).
+    await tapAimed(page, () => nodeScreenPoint(page, CASTLE_ID));
     await expect.poll(readPickedIds.bind(null, page)).toEqual([CASTLE_ID]);
-    await tapPoint(page, await nodeScreenPoint(page, TEMPLE_ID));
+    await tapAimed(page, () => nodeScreenPoint(page, TEMPLE_ID));
     await expect.poll(readPickedIds.bind(null, page)).toEqual([CASTLE_ID, TEMPLE_ID]);
     await activate(page.getByTestId('tme-connect-done'));
     await expect.poll(readConnectMode.bind(null, page)).toBe(false);
