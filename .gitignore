@@ -47,3 +47,7 @@ Thumbs.db
 /test-results/
 /playwright-report/
 .playwright-cli/
+.playwright-mcp/
+
+# SillyTavern (host checkout — machine-local, not part of the extension repo)
+/SillyTavern/
