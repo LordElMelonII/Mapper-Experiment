@@ -1,7 +1,7 @@
 # PRODUCT.md — Travel & Map Explorer: Feature Catalogue
 
 **Status:** R10 · Stack-free product specification
-**Companions:** `CORE.md` (engine conventions & logic boundaries) · `EXECUTION-PLAN.md` (architecture, phases, decision register D10–D53)
+**Companions:** `CORE.md` (engine conventions & logic boundaries) · `EXECUTION-PLAN.md` (architecture, phases, decision register D10–D88)
 **Rule of this document:** it describes *what* the product does and what users experience — no frameworks, libraries, or host APIs. Where a feature exists because of a recorded product decision, the decision ID is cited (D-numbers live in EXECUTION-PLAN.md).
 
 ---
@@ -147,4 +147,4 @@ F-numbers are stable feature IDs. The roadmap and test plan cite them.
 
 ## 5. Traceability
 
-Features cite decision IDs (D10–D53) from EXECUTION-PLAN.md. Tests cite feature IDs (F-numbers). CORE.md defines the engine rules that make every number the product shows trustworthy.
+Features cite decision IDs (D10–D88) from EXECUTION-PLAN.md. Tests cite feature IDs (F-numbers). CORE.md defines the engine rules that make every number the product shows trustworthy.

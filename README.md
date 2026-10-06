@@ -36,17 +36,33 @@ ng build
 
 This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
 
+The shippable SillyTavern extension bundle is built with:
+
+```bash
+npm run build:extension
+```
+
+This produces a single self-contained ESM bundle at `dist/extension/` (together with `manifest.json` and `style.css`), and fails if the minified + gzipped bundle exceeds the 1.5 MB budget.
+
 ## Running unit tests
 
 To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
 
 ```bash
-ng test
+npm run test:unit
 ```
+
+The unit suites live under `tests/` and run in bare Node. The full acceptance gate — typecheck, boundary lint, ESLint, and the unit suites — is `npm run verify`.
 
 ## Running end-to-end tests
 
-This workspace has no e2e target configured — `ng e2e` fails with `Cannot find "e2e" target for the specified project`, and no e2e framework is installed yet. The repository reserves `tests/e2e/` for the Playwright specs that the UI phases will add.
+End-to-end tests run with [Playwright](https://playwright.dev/) via:
+
+```bash
+npm run test:e2e
+```
+
+The specs live in `tests/e2e/` as `*.e2e-spec.ts`, and each one runs against two projects: a desktop viewport and an emulated phone (iPhone 13) with touch. The Playwright web server reuses an already-running dev server on `http://localhost:4200/` and starts one otherwise.
 
 ## Maps & storage
 

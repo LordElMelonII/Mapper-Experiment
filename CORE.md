@@ -1,7 +1,7 @@
 # CORE.md — Engine Conventions & the Business-Logic Boundary
 
 **Status:** R12 · Normative for the core engine (`src/core`) and the service facade
-**Companions:** `PRODUCT.md` (feature catalogue) · `EXECUTION-PLAN.md` (architecture & decisions D10–D64)
+**Companions:** `PRODUCT.md` (feature catalogue) · `EXECUTION-PLAN.md` (architecture & decisions D10–D88)
 **Rule of this document:** defines *how the engine computes and what it owns*, so the numbers are trustworthy and the logic stays independent of any UI, framework, or host. Convention IDs (C-numbers) are cited by tests and code comments; they deliberately continue the C1–C3 numbering first used in EXECUTION-PLAN.md.
 
 ---
