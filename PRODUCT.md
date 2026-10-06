@@ -1,7 +1,7 @@
 # PRODUCT.md — Travel & Map Explorer: Feature Catalogue
 
 **Status:** R10 · Stack-free product specification
-**Companions:** `CORE.md` (engine conventions & logic boundaries) · `EXECUTION-PLAN.md` (architecture, phases, decision register D10–D88)
+**Companions:** `CORE.md` (engine conventions & logic boundaries) · `EXECUTION-PLAN.md` (architecture, phases, decision register D10–D94)
 **Rule of this document:** it describes *what* the product does and what users experience — no frameworks, libraries, or host APIs. Where a feature exists because of a recorded product decision, the decision ID is cited (D-numbers live in EXECUTION-PLAN.md).
 
 ---
@@ -26,7 +26,7 @@ Target host: SillyTavern. The prime directive: **the user is the authority.** Th
 | **Mode** | A means of travel. Built-ins: walk / car / train; a map may declare its own registry of modes (horse, airship — each with its own word, unit, and pace) and relabel the built-ins (D78). |
 | **Pin** | The party's current location, always on a leaf node. |
 | **Status note** | Freeform presence text for "between places" or vague presence. |
-| **Block** | A chat-scoped mark on an arc: impassable, with a reason. |
+| **Block** | A chat-scoped mark on an arc or a node: impassable, with a reason (D20/D94). |
 | **Overlay** | Per-chat state: pin, active mode, status note, blocks, user nodes and arcs. |
 | **Library** | The user's collection of authored maps. |
 | **Fork** | A private copy of a library map attached to a chat; immune to library edits. |
@@ -43,7 +43,7 @@ F-numbers are stable feature IDs. The roadmap and test plan cite them.
 
 - **F01 Multi-layer maps** — a map contains any number of layers, each its own coordinate plane (D16).
 - **F02 Drill-down navigation** — one layer visible at a time behind a breadcrumb; nodes on coarser layers act as portals (enter by double-tap or double-click). Upper-layer positions still give inter-town directions for narration ("Misaki lies north") (D35).
-- **F03 Background images** — user-uploaded, per layer, fitted and centered (contain — the whole image stays visible); the node graph is always the interface on top (D29/D84).
+- **F03 Background images** — user-uploaded, per layer; the image pans and zooms 1:1 with the graph (D92), placed by default as an aspect-locked fit to the layer's graph extent and movable/recalibratable only in a dedicated calibrate mode (D93); the node graph is always the interface on top (D29/D84).
 - **F04 Map library** — save, load, duplicate, delete; chats reference library maps live, with an update notice when a map they use changed (D33).
 - **F05 Import / export** — whole maps as JSON files, in and out.
 - **F06 Legacy importer** — paste an existing distance lookup table; node positions are auto-seeded from the table's numbers as a starting point.
@@ -104,7 +104,7 @@ F-numbers are stable feature IDs. The roadmap and test plan cite them.
 - **F40 Node editing** — place, rename, move, re-kind, re-parent, alias, describe.
 - **F41 Arc editing** — draw, edit modes/terrain/authored costs, curve, delete.
 - **F42 Layer management** — create/rename/reorder (up/down buttons) in a manager sheet opened from the layer nav; assign nodes to layers; portal wiring; delete a layer behind an informed confirm that counts every node and arc lost — including cross-layer arcs taken from surviving layers; the last layer is never deletable (D82).
-- **F43 Background upload** — per layer, one image, contain-fitted and centered; uploaded images are stored as local assets (never inside settings) or referenced by remote URL; replace/remove from the manager sheet (D29/D84).
+- **F43 Background upload** — per layer, one image; uploaded images are stored as local assets (never inside settings) or referenced by remote URL; replace/remove from the manager sheet (D29/D84). Setting a new source starts it fresh — the previous image's placement and dim never carry over (D93).
 - **F44 Calibration UX** — measure an arc to set or adjust the map scale (F20).
 - **F45 Explicit save** — a save button and an unsaved-changes indicator; nothing goes live until saved (D47).
 - **F46 v1 fences** — no undo, no multi-select, no snapping; delete-and-redo is the v1 workflow.
@@ -125,6 +125,11 @@ F-numbers are stable feature IDs. The roadmap and test plan cite them.
 
 - **F53 Editor rail** — one responsive toolbar as the single control surface: a left rail on wide screens, a bottom rail on phone-tall ones. It carries the editor/view mode and tool picks (node, waypoint, arc), the layer switcher with the manager entry, and zoom in/out + fit; the formerly scattered corner chrome (top-right stack, bottom-right tools, bottom-left layer nav) migrates onto it — nothing remains in duplicate (D86).
 - **F54 Detach node** — remove every arc incident to a node without deleting the node (D82).
+
+### L. Owner fix pass (R25)
+
+- **F55 Node & arc quick blocking** — a one-tap "Block access" in the node property panel blocks the node itself (not its arcs), applying the default reason "Closed" with the reason input adjacent for immediate refinement; the arc panel gains the same one-tap through the existing arc-block flow. A blocked node is impassable as a route destination and as an intermediate stop but may still be a route's origin (C34); it stays drawn with a block marker and surfaces in the route panel's blocked listing and the snapshot, reason included (D94).
+- **F56 Background placement, calibration & dim** — the background pans and zooms 1:1 with the graph (D92); a per-layer calibrate mode (drag to move, scale control, "fit to graph" reset) is the only way placement changes, and it never touches node coordinates, distances, or costs; a per-layer dim slider on the rail dims the active layer's background toward the stage backdrop and follows the layer switch; placement and dim are saved with the map (D90/D93).
 
 ---
 
@@ -147,4 +152,4 @@ F-numbers are stable feature IDs. The roadmap and test plan cite them.
 
 ## 5. Traceability
 
-Features cite decision IDs (D10–D88) from EXECUTION-PLAN.md. Tests cite feature IDs (F-numbers). CORE.md defines the engine rules that make every number the product shows trustworthy.
+Features cite decision IDs (D10–D94) from EXECUTION-PLAN.md. Tests cite feature IDs (F-numbers). CORE.md defines the engine rules that make every number the product shows trustworthy.

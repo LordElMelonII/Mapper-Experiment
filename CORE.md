@@ -1,7 +1,7 @@
 # CORE.md — Engine Conventions & the Business-Logic Boundary
 
 **Status:** R12 · Normative for the core engine (`src/core`) and the service facade
-**Companions:** `PRODUCT.md` (feature catalogue) · `EXECUTION-PLAN.md` (architecture & decisions D10–D88)
+**Companions:** `PRODUCT.md` (feature catalogue) · `EXECUTION-PLAN.md` (architecture & decisions D10–D94)
 **Rule of this document:** defines *how the engine computes and what it owns*, so the numbers are trustworthy and the logic stays independent of any UI, framework, or host. Convention IDs (C-numbers) are cited by tests and code comments; they deliberately continue the C1–C3 numbering first used in EXECUTION-PLAN.md.
 
 ---
@@ -67,6 +67,7 @@ All queries (routing, snapshot, template rendering) run against the **effective 
 - **C16 — Optimality.** Route results must be optimal for the active cost function. Because cross-layer arcs have no meaningful geometry, Euclidean heuristics are inadmissible when they exist: use plain Dijkstra, or A\* with the heuristic zeroed on cross-layer arcs.
 - **C17 — Unreachability.** No finite path ⇒ `ok: false` plus a human-readable reason (disconnected, or all candidate arcs blocked/disallowed). The value ∞ never appears in any output.
 - **C18 — Route shape.** `{ ok, total, legs[], unit }`; each leg carries arc id, from, to, mode (the id), modeLabel (the resolved authored word — D78/C23: the registry label when an entry with that id exists, built-in relabels included, else the id itself, which for bare built-ins IS the word), cost, and optional blocked/detour reason; `unit` is the currency the total/legs are stated in — `'min'` when the run priced minutes, else `scale.unitLabel`, the same rule `MapSnapshot.unit` follows (D72; deterministic on every branch, `ok:false` included). Legs are the unit of UI display and of template loops.
+- **C34 — Blocked nodes (D94, R25).** A blocked node is impassable as a route destination and as an intermediate stop: routing to or through it returns unreachable with the block named, the node-level mirror of C2's blocked-arc rule. The origin is exempt — a route may start at a blocked node (the party can always leave somewhere they already are). The block is overlay state carrying a non-empty reason (`nodeBlocked`, mirroring the arc `blocked` map); the node stays drawn with its block marker, and the reason surfaces in the snapshot's blocked listing like an arc's.
 
 ---
 
@@ -104,7 +105,7 @@ All queries (routing, snapshot, template rendering) run against the **effective 
 
 ## 9. The separation contract (core vs frontend vs host)
 
-**The core owns:** measurement (C9–C15), graph rules (C1–C8), routing (C16–C18), snapshot & prompt rendering (C19–C23), state transitions (C24–C29), validation & migration (C30–C31), id assignment.
+**The core owns:** measurement (C9–C15), graph rules (C1–C8), routing (C16–C18, C34), snapshot & prompt rendering (C19–C23), state transitions (C24–C29), validation & migration (C30–C31), id assignment.
 
 **The frontend owns:** rendering the graph and panels, interaction (taps, clicks, drags, canvas gestures, arc drawing — touch and pointer parity per D53), editor ergonomics, theming, responsive layout. It calls commands and renders projections.
 
@@ -124,9 +125,9 @@ All queries (routing, snapshot, template rendering) run against the **effective 
 ```
 Map lifecycle    loadMap · materialize · forkMap · saveForkToLibrary · validateImport · migrateData
 Presence         setCurrentLocation · setStatusNote · setTravelMode · setCorrective (D63)
-Overlay edits    setBlocked · addUserNodeAt · removeUserNode · promoteUserNode
+Overlay edits    setBlocked · setNodeBlocked (node mirror of setBlocked — D94/C34: saved-plane-gated add, unconditional lift, non-empty reason) · addUserNodeAt · removeUserNode · promoteUserNode
 Editor commands  upsertNode · upsertEdge · removeNode · removeEdge · calibrateScale(arcId, authoredDistance, unit?) — the optional unit (D44/D45) seeds `scale.unitLabel`/`unitKind` when present; absent ⇒ re-measure in the established unit · saveMap · hasUnsavedChanges (D75 — the F45 dirty flag's core-side read; the editor-command semantics are register row D75)
-Layer commands   upsertLayer (REPLACE is absent-and-preserve on the background arm — D88; clearing is setLayerBackground(null)'s alone) · removeLayer (informed-cascade delete, atomic) · reorderLayers · layerRemovalImpact (the delete dialog's count query — R1) · detachNode · setNodeLayer · setLayerBackground (uploaded asset or remote URL; the arm's ONLY clear) · setPortal (D82–D85 — the P3 M3 surface; D87 adds removeLayer's D69 reset as the fourth fit trigger)
+Layer commands   upsertLayer (REPLACE is absent-and-preserve on the background arm — D88; and on the D93 placement/dim arms — clearing is setLayerBackground(null)'s alone) · removeLayer (informed-cascade delete, atomic) · reorderLayers · layerRemovalImpact (the delete dialog's count query — R1) · detachNode · setNodeLayer · setLayerBackground (uploaded asset or remote URL; the arm's ONLY clear; a new source resets placement+dim to defaults — D93) · setLayerBackgroundPlacement · setLayerBackgroundDim (per-layer placement + dim, saved in map data — D93) · setPortal (D82–D85 — the P3 M3 surface; D87 adds removeLayer's D69 reset as the fourth fit trigger)
 Queries          findRoute · getSnapshot · renderTemplate · getPromptBlock
 Viewer state     setActiveLayer (facade-held viewer state; validated against the loaded map, reset to its first layer on every loadMap — D69; the snapshot's `layer` stays pin-derived, unaffected)
 ```
