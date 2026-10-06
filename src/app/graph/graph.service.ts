@@ -219,6 +219,24 @@
 // command (immediate discrete intent, the setNodeLayer precedent; C30
 // refusals field-precise; the node joins the B-121 log — a node edit; rebuild,
 // no fit, B-120). The pure projection and builders stay R1-clean.
+// B-131 (§5 Phase 3.5 M5 — D94/F55/C34): node BLOCKING goes live on its
+// surfaces. (1) THE SEAM TRIO — `blockNode` / `liftNodeBlock` /
+// `clearNodeBlockRefusal` mirror the blockArc trio byte-for-byte in
+// discipline: the ONLY mutation is facade.setNodeBlocked (R2); the ADD
+// path's C30 refusals (the A-018 saved-plane gate refuses an UNSAVED editor
+// node field-precisely; the non-empty-reason gate) are CAUGHT and surfaced
+// through `nodeBlockRefusal` (the arcBlockRefusal pattern — never an
+// uncaught console throw), nothing mutated on refusal, `afterGraphMutation()`
+// on success (revision bump re-routes, rebuild re-projects, snapshot
+// refresh); lift is unconditional. `nodeBlockReason(id)` is the R4 live read
+// the property panel renders. (2) THE MARKER — the blocked-node badge rides
+// the EXISTING badge machinery (the B-128 portal-badge precedent): one
+// DISTINCT `tme-node-blocked-badge` pseudo-node per blocked node on the
+// active layer, derived from `overlay.nodeBlocked` in rebuildElements (the
+// dashed-arc class precedent reading `overlay.blocked`) and cleared by the
+// same rebuild on lift. (3) `DEFAULT_BLOCK_REASON` — the ONE shared
+// one-tap default ('Closed', D94's authored vocabulary, C23) both panels
+// apply when their reason input is empty.
 // The ONE cytoscape instance (D3): created headless
 // in the constructor, `mount()`/`unmount()` on demand — computation works with
 // the UI closed. Zoneless (D2): the service writes signals; the ONLY canvas
@@ -243,6 +261,7 @@ import type {
   CollectionReturnValue,
   Core,
   EdgeSingular,
+  ElementDefinition,
   NodeSingular,
   StylesheetStyle,
 } from 'cytoscape';
@@ -532,6 +551,20 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
     style: { color: '#8fd3b6' },
   },
   {
+    // B-131 (D94/F55/C34): the BLOCKED-NODE marker's hue — one visual
+    // language with the blocked arcs (edge.tme-blocked's dashed red below):
+    // the reason text IS the marker's visible paint (`blocked: <reason>`, C2
+    // spirit — the payload), the shared `tme-badge` entry above owns the
+    // invisible body/z-index/cull-coherent text sizing (badges cull WITH
+    // content, B-115). Declared AFTER the shared base per the cascade's
+    // last-match rule (no CSS specificity, B-111). Never carries tme-draft
+    // (the draft projection's `tme-badge-<id>` lookup cannot match this
+    // prefixed id). No `min-zoomed-font-size` (the B-107 hide-floor gotcha,
+    // binding).
+    selector: 'node.tme-node-blocked-badge',
+    style: { color: '#c9564e' },
+  },
+  {
     // B-121 (D77): a cross-layer arc with unsaved edits drafts its BADGE —
     // the badge IS the arc's whole canvas surface (B-107), and its visible
     // paint is the label TEXT, so the draft treatment here is the same
@@ -699,6 +732,27 @@ const CONTAINER_KINDS: ReadonlySet<NodeKind> = new Set<NodeKind>([
   'city',
   'district',
 ]);
+
+/**
+ * B-131 (D94/F55): the ONE-TAP default block reason — ONE exported
+ * definition, both blocking surfaces (the property panel's "Block access"
+ * and the arc panel's one-tap) apply it when their reason input is empty;
+ * the panels import it, never restate it. Authored vocabulary (C23 — the
+ * word that reaches prompts verbatim as the C34 payload), owner-reviewed at
+ * packet review; refinement is the adjacent input + tap again (adds-or-
+ * restates, the facade contract).
+ */
+export const DEFAULT_BLOCK_REASON = 'Closed';
+
+/**
+ * B-131: the blocked-node marker's display offset from its host node, in
+ * model units — the shared badge-anchor convention of layer-elements.ts
+ * (BADGE_OFFSET, both axes; that module is the pinned bare-Node seam, so
+ * the constant is mirrored here rather than exported from it — keep the two
+ * in step). LAYOUT, never computed geography (R1 — the BADGE_OFFSET
+ * precedent).
+ */
+const NODE_BLOCK_BADGE_OFFSET = 40;
 
 /**
  * B-117: one field-precise C30 refusal issue, the app's copy of the core's
@@ -1133,6 +1187,17 @@ export class GraphService implements OnDestroy {
    * leaves the arc (clearArcBlockRefusal). null when nothing failed.
    */
   readonly arcBlockRefusal = signal<string | null>(null);
+
+  /**
+   * B-131 (D94/F55): the blockNode C30 catch's refusal — the field-precise
+   * message the property panel renders (the arcBlockRefusal pattern,
+   * user-visible and never console-only). Written only when a Block access
+   * is REFUSED (nothing was mutated — the A-018 saved-plane gate refuses an
+   * UNSAVED placed node field-precisely, the B-121 lesson); cleared by the
+   * next successful block/lift and when the panel leaves the node
+   * (clearNodeBlockRefusal). null when nothing failed.
+   */
+  readonly nodeBlockRefusal = signal<string | null>(null);
 
   /**
    * B-105 (ruling 3): mirror of `overlay.travelMode` — the mode switch's
@@ -1775,6 +1840,82 @@ export class GraphService implements OnDestroy {
   liftBlock(edgeId: string): void {
     this.facade?.setBlocked(edgeId, undefined);
     this.afterGraphMutation();
+  }
+
+  /**
+   * B-131 (D94/F55/C34): chat-scoped block on a NODE itself (not its arcs) —
+   * the blockArc mirror verbatim in discipline. R2: the ONLY mutation is the
+   * facade command setNodeBlocked(nodeId, reason), which validates (C30:
+   * non-empty reason; the A-018 saved-plane gate — `savedNodeIds` ∪ overlay
+   * userNodes — refusing an UNSAVED editor node field-precisely, exactly the
+   * freshly placed node of B-116) and writes overlay.nodeBlocked. Then the
+   * shared post-mutation sequence: the revision bump re-routes the sidebar
+   * (a blocked node is impassable as destination/intermediate, origin
+   * exempt — C34), the rebuild re-projects the blocked-node marker badge
+   * (buildBlockedNodeBadges reads the merge) and the snapshot refresh
+   * re-lists the blocked nodes (D94's blockedNodes projection). The panel's
+   * one-tap applies a non-empty reason (the trimmed input, else the ONE
+   * DEFAULT_BLOCK_REASON), so the C30 empty-reason throw is structurally out
+   * of reach HOWEVER — the OTHER C30 refusals of the ADD path are NOT (an
+   * unsaved node is refused exactly like an unknown one), so the refusal is
+   * CAUGHT and surfaced field-precise through `nodeBlockRefusal` (the
+   * arcBlockRefusal pattern, the B-121 lesson), NOTHING is mutated (C30
+   * reject-before-mutate) and the method answers false so the caller keeps
+   * its input. Never a raw throw.
+   *
+   * @returns true when the block landed (signal bump; the input is
+   *   consumed), false when refused (nothing touched; `nodeBlockRefusal`
+   *   carries the field-precise message until cleared).
+   */
+  blockNode(nodeId: string, reason: string): boolean {
+    const facade = this.facade;
+    if (facade === null) {
+      this.nodeBlockRefusal.set('No map is loaded.');
+      return false;
+    }
+    try {
+      facade.setNodeBlocked(nodeId, reason);
+    } catch (error) {
+      this.nodeBlockRefusal.set(error instanceof Error ? error.message : String(error));
+      return false; // C30 refusal: nothing happened — the overlay entry is untouched
+    }
+    this.nodeBlockRefusal.set(null);
+    this.afterGraphMutation();
+    return true;
+  }
+
+  /**
+   * B-131: clear the node-block catch refusal — the property panel calls it
+   * when the selection changes (the stale message must not follow another
+   * node) and after a successful block/lift re-render made it moot. A pure
+   * signal write (R3); the clearArcBlockRefusal precedent.
+   */
+  clearNodeBlockRefusal(): void {
+    this.nodeBlockRefusal.set(null);
+  }
+
+  /**
+   * B-131 (D94/C34): lift the chat-scoped NODE block. setNodeBlocked(nodeId,
+   * undefined) is an UNCONDITIONAL delete of the overlay entry (the A-018
+   * contract — node blocks are overlay-ONLY, D94 adds no library-level node
+   * block, so there is no authored block to survive). Same re-route path as
+   * blockNode; the rebuild drops the marker badge.
+   */
+  liftNodeBlock(nodeId: string): void {
+    this.facade?.setNodeBlocked(nodeId, undefined);
+    this.afterGraphMutation();
+  }
+
+  /**
+   * B-131 (D94/F55): the live overlay block reason for one node — a presence
+   * read of the C24 reference (`overlay.nodeBlocked`), never a copy (R4; the
+   * isUserNode precedent). Library and unknown ids answer null. The property
+   * panel's blocked row renders the returned string verbatim (C2/D20 — the
+   * reason is the payload); its computed carries the graphRevision
+   * dependency, so a block/lift re-reads.
+   */
+  nodeBlockReason(nodeId: string): string | null {
+    return this.overlay?.nodeBlocked[nodeId] ?? null;
   }
 
   /**
@@ -3526,12 +3667,19 @@ export class GraphService implements OnDestroy {
     // (the badge branch above swallows them — no arcId); its double-activation
     // is the entry gesture (the constructor's binding).
     const portalBadges = buildPortalBadges(map, layerId);
+    // B-131 (D94/F55/C34): the blocked-NODE markers join the same batch — one
+    // DISTINCT badge pseudo-node per blocked node on this layer, derived from
+    // `overlay.nodeBlocked` in the element build (the dashed-arc class
+    // precedent reading `overlay.blocked`) and cleared by this very rebuild
+    // on lift. Same shared badge machinery (the portal-badge precedent):
+    // cull-coherent, tap-swallowed, never draggable.
+    const blockBadges = this.buildBlockedNodeBadges(map, layerId);
     // B-116 (C5/D75): record the node ids of the projection being installed —
     // the pre-command set the place-command's id delta reads (placeNodeAt).
     // Derived from the same pure builders' output, so it can never drift from
     // what cy actually holds. B-121: the EDGE ids join it — doneConnect's
     // committed-arc discovery reads that delta.
-    const projected = [...elements, ...badges, ...portalBadges];
+    const projected = [...elements, ...badges, ...portalBadges, ...blockBadges];
     this.projectedNodeIds = new Set(
       projected.filter((el) => el.group === 'nodes').map((el) => String(el.data.id)),
     );
@@ -3540,7 +3688,7 @@ export class GraphService implements OnDestroy {
     );
     this.cy.batch(() => {
       this.cy.elements().remove();
-      this.cy.add([...elements, ...badges, ...portalBadges]);
+      this.cy.add([...elements, ...badges, ...portalBadges, ...blockBadges]);
       // The swap drops ALL classes — re-project the selection accents INSIDE
       // this same batch so the signals stay the single truth (R3; B-106:
       // block/lift rebuilds included) without a second render pass (§6.1
@@ -3586,6 +3734,53 @@ export class GraphService implements OnDestroy {
       routes.set(anchor.arcId, this.facade.findRoute(anchor.onLayer, anchor.other));
     }
     return routes;
+  }
+
+  /**
+   * B-131 (D94/F55/C34): the blocked-NODE marker — one DISTINCT badge per
+   * blocked node ON the active layer, riding the EXISTING badge machinery
+   * (the B-128 portal-badge precedent): projection pseudo-NODES with the
+   * SHARED `tme-badge` class (cull-coherence comes free — badges cull WITH
+   * content, B-115, and no `min-zoomed-font-size` may ever be set, the
+   * B-107 hide-floor gotcha) plus a DISTINCT `tme-node-blocked-badge` class
+   * whose stylesheet entry carries the blocked hue — one visual language
+   * with the dashed `tme-blocked` arcs. Presence derives from
+   * `overlay.nodeBlocked` in the element build (the dashed-arc class
+   * precedent reading `overlay.blocked`, D20) and the lift clears it via
+   * the rebuild (afterGraphMutation's rebuildElements). The label is the
+   * reason verbatim in the arc-badge tail format (`blocked: <reason>` — C2
+   * spirit: the reason IS the payload). The host's id rides as `nodeId`
+   * data (carried, never parsed out of the prefixed id — the B-108
+   * precedent); single taps are display-only no-ops (the badge branch
+   * swallows them — no arcId data; the portal-badge precedent). A blocked
+   * node off this layer, unknown to the merged set, or without an authored
+   * position degrades to NO badge, never a throw (C32 spirit). R4: a live
+   * read of the overlay reference, mutates nothing; R1: the offset is
+   * LAYOUT (NODE_BLOCK_BADGE_OFFSET, the BADGE_OFFSET precedent), never
+   * computed geography.
+   */
+  private buildBlockedNodeBadges(map: WorldMapData, layerId: string): ElementDefinition[] {
+    const overlay = this.overlay;
+    if (overlay === null) return [];
+    const badges: ElementDefinition[] = [];
+    const allNodes = [...map.nodes, ...overlay.userNodes];
+    for (const [nodeId, reason] of Object.entries(overlay.nodeBlocked)) {
+      const host = allNodes.find((node) => node.id === nodeId);
+      // Off-layer / unknown / position-less hosts degrade to nothing — the
+      // marker only exists where its node is drawn (C32 spirit).
+      if (host === undefined || host.layer !== layerId || host.position === undefined) continue;
+      badges.push({
+        group: 'nodes' as const,
+        data: { id: `tme-node-blocked-badge-${nodeId}`, label: `blocked: ${reason}`, nodeId },
+        position: {
+          x: host.position.x + NODE_BLOCK_BADGE_OFFSET,
+          y: host.position.y + NODE_BLOCK_BADGE_OFFSET,
+        },
+        classes: ['tme-badge', 'tme-node-blocked-badge'],
+        grabbable: false, // pinned pseudo-node — the compound-parent field (B-103 note)
+      });
+    }
+    return badges;
   }
 
   /**

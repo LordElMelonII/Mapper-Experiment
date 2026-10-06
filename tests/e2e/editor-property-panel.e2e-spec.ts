@@ -31,6 +31,13 @@
 //   F52/D53 — every new control is a >= 44px tap target, the whole journey
 //             runs touch-alone at the phone viewport, console stays clean.
 //
+// PKG B-131 (§5 Phase 3.5 M5, D94/F55/C34) extends this suite: the Blocking
+// section — the one-tap "Block access" for leaf kinds (default reason
+// 'Closed', adjacent input for refinement), the blocked row + Lift, the
+// map marker (the D94 badge) and the route panel's blocked-nodes listing,
+// plus the caught C30 refusal for an UNSAVED placed node (the A-018
+// saved-plane gate, surfaced console-silently — the B-121 lesson).
+//
 // FX1 facts (data/worlds/fuyuki.ts): 'outskirts' is a parentless location
 // with many incident arcs (the re-kind refusal target); 'kotomine-church'
 // carries alias 'church' and four projected edges incl. the harness curve
@@ -50,6 +57,8 @@ interface TmeE2EHook {
   pan(): { x: number; y: number };
   /** C5/D75: the selected node's id — placed nodes are never id-predicted. */
   selectedNodeId(): string | null;
+  /** B-113: whether one projected element (node OR badge pseudo-node) carries a class. */
+  nodeHasClass(id: string, cls: string): boolean;
   nodeData(id: string): {
     label: string;
     kind: string;
@@ -145,6 +154,28 @@ const readSelectedId = (page: Page): Promise<string | null> =>
     if (hook === undefined) throw new Error(HOOK_ERROR);
     return hook.selectedNodeId();
   });
+
+/** B-131: whether one projected element (node or badge pseudo-node) carries a class. */
+const readHasClass = (page: Page, id: string, cls: string): Promise<boolean> =>
+  page.evaluate(
+    ({ id, cls }): boolean => {
+      const hook = (window as unknown as { __TME_E2E__?: TmeE2EHook }).__TME_E2E__;
+      if (hook === undefined) throw new Error(HOOK_ERROR);
+      return hook.nodeHasClass(id, cls);
+    },
+    { id, cls },
+  );
+
+/**
+ * B-114/B-117 (D53): open the route panel's blocked listing on the phone —
+ * in the editor regime the collapsed sheet keeps it one explicit rail tap
+ * away (reachable, never gone); desktop is the always-open sidebar.
+ */
+const openRouteSheet = async (page: Page): Promise<void> => {
+  if (!isPhone()) return;
+  await activate(page.getByTestId('tme-sheet-rail'));
+  await expect(page.getByTestId('tme-sheet-body')).toBeVisible();
+};
 
 /**
  * Wait two animation frames: panel open/close and the ResizeObserver-driven
@@ -441,6 +472,107 @@ test.describe('property panel: rename, kind & parent, aliases, description, dele
     await expect(page.getByTestId('tme-save-dock')).toBeHidden();
   });
 
+  // --- PKG B-131 (§5 Phase 3.5 M5, D94/F55/C34): the Blocking section ------
+
+  test('one-tap Block access: marker + listing + blocked row land, a real reason restates, lift clears (D94/F55, C34)', async ({
+    page,
+  }) => {
+    await openPanelFor(page, OUTSKIRTS_ID);
+    const markerId = `tme-node-blocked-badge-${OUTSKIRTS_ID}`; // the D94 marker convention
+    const input = page.getByTestId('tme-node-block-input');
+
+    // The section renders for a leaf kind; the input is pristine.
+    await expect(input).toBeVisible();
+    await expect(input).toHaveValue('');
+
+    // One tap from pristine: the ONE default reason applies, no typing
+    // (D94's authored vocabulary, C23 — the owner-reviewed 'Closed').
+    await activate(page.getByTestId('tme-node-block'));
+    await expect(page.getByTestId('tme-node-block-row')).toBeVisible();
+    await expect(page.getByTestId('tme-node-block-reason')).toHaveText('Closed');
+
+    // The map marker: the blocked-node badge is projected at the node —
+    // asserted per the badges.e2e-spec pattern (a rendered pseudo-node box
+    // off the seam) plus the DISTINCT marker class.
+    await expect.poll(() => readBoundingBox(page, markerId)).not.toBeNull();
+    expect(await readHasClass(page, markerId, 'tme-node-blocked-badge')).toBe(true);
+
+    // The route panel's blocked listing: label + reason verbatim, beside the
+    // pin-incident blocked-arc list (D94: the nodes are not pin-scoped — the
+    // snapshot listing is the projection, R4).
+    await openRouteSheet(page);
+    await expect(page.getByTestId('tme-blocked-nodes')).toBeVisible();
+    await expect(page.getByTestId('tme-blocked-node-item')).toHaveCount(1);
+    await expect(page.getByTestId('tme-blocked-node-label')).toHaveText('Outskirts');
+    await expect(page.getByTestId('tme-blocked-node-reason')).toHaveText('Closed');
+
+    // Refinement: type the real reason, tap again — adds-or-restates (the
+    // facade contract); the listing follows the restated reason live.
+    await input.fill('Flooded');
+    await activate(page.getByTestId('tme-node-block'));
+    await expect(page.getByTestId('tme-node-block-reason')).toHaveText('Flooded');
+    await expect(page.getByTestId('tme-blocked-node-reason')).toHaveText('Flooded');
+
+    // Lift: the overlay delete — marker gone (the rebuild), listing gone,
+    // row gone.
+    await activate(page.getByTestId('tme-node-block-lift'));
+    await expect(page.getByTestId('tme-node-block-row')).toHaveCount(0);
+    await expect(page.getByTestId('tme-blocked-nodes')).toHaveCount(0);
+    await expect.poll(() => readBoundingBox(page, markerId)).toBeNull();
+  });
+
+  test('container kind drafts the Blocking section away — a leaf kind brings it back (F07 dead control; the draft kind is the gate)', async ({
+    page,
+  }) => {
+    await openPanelFor(page, OUTSKIRTS_ID);
+    const kind = page.getByTestId('tme-node-kind');
+    await expect(kind).toHaveValue('location');
+    await expect(page.getByTestId('tme-node-block')).toBeVisible();
+
+    // Containers never connect to arcs (F07), so blocking one is a dead
+    // control: re-kinding the DRAFT to a container drafts the section out
+    // live (the compound box itself is never selectable — an editor box tap
+    // places, a view box tap is a no-op — so the draft kind IS the panel's
+    // kind truth). No commit: the select writes the draft only.
+    await kind.selectOption({ label: 'District' });
+    await expect(page.getByTestId('tme-node-block')).toHaveCount(0);
+    await expect(page.getByTestId('tme-node-block-input')).toHaveCount(0);
+
+    // Back to a leaf kind: the section returns.
+    await kind.selectOption({ label: 'Location' });
+    await expect(page.getByTestId('tme-node-block')).toBeVisible();
+  });
+
+  test('blocking an UNSAVED placed node is refused field-precise and console-silent; nothing lands (C30, the A-018 saved-plane gate, B-121 lesson)', async ({
+    page,
+  }) => {
+    const bad: string[] = [];
+    page.on('console', (msg) => {
+      if (msg.type() === 'error' || msg.type() === 'warning') bad.push(`console.${msg.type()}: ${msg.text()}`);
+    });
+    page.on('pageerror', (err) => bad.push(`pageerror: ${err.message}`));
+
+    // Place a node (engine-assigned id, C5 — read live) and block it WITHOUT
+    // saving: the facade's ADD path is saved-plane-gated and refuses
+    // field-precisely; the service catches it (never an uncaught console
+    // throw) and renders it; nothing lands anywhere.
+    await activate(page.getByTestId('tme-editor-toggle'));
+    await tapModelPoint(page, BG_MODEL_POINT);
+    await expect(page.getByTestId('tme-property-panel')).toBeVisible();
+    await expect.poll(readSelectedId.bind(null, page)).not.toBeNull();
+    const placedId = await readSelectedId(page);
+    if (placedId === null) throw new Error('placed node not selected (C5/D75 id discovery failed)');
+
+    await activate(page.getByTestId('tme-node-block'));
+    await expect(page.getByTestId('tme-node-block-refusal')).toBeVisible();
+    await expect(page.getByTestId('tme-node-block-refusal')).toContainText('unsaved');
+    await expect(page.getByTestId('tme-node-block-row')).toHaveCount(0);
+    await expect(page.getByTestId('tme-blocked-nodes')).toHaveCount(0);
+    await expect.poll(() => readBoundingBox(page, `tme-node-blocked-badge-${placedId}`)).toBeNull();
+
+    expect(bad, 'the caught refusal is console-silent (nothing half-applied)').toEqual([]);
+  });
+
   test('every new control meets the 44px tap-target floor (F52/D53)', async ({ page }) => {
     await openPanelFor(page, CHURCH_ID); // carries one seeded alias row
     for (const testid of [
@@ -451,6 +583,8 @@ test.describe('property panel: rename, kind & parent, aliases, description, dele
       'tme-alias-input',
       'tme-alias-remove',
       'tme-alias-add',
+      'tme-node-block-input',
+      'tme-node-block',
       'tme-node-delete',
       'tme-node-done',
     ]) {

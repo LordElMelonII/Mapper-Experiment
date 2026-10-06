@@ -24,6 +24,11 @@
 //             endpoints' rendered positions — TEST-side math, R1-safe: the UI
 //             computes nothing); all controls >= 44px, no hover affordances.
 //
+// PKG B-131 (§5 Phase 3.5 M5, D94/F55) extends this suite: the ONE-TAP
+// "Block access" beside the typed Block — the trimmed input when non-empty,
+// else the ONE shared default reason ('Closed'), no typing required; the
+// typed F14 flow and its testids stay byte-untouched.
+//
 // FX1 facts (data/worlds/fuyuki.ts): arc-outskirts-einzbern-castle is the
 // ONLY arc into Einzbern Castle (walk 240 / car 60); the walk route to the
 // castle is 'Emiya Residence → Outskirts · walk · 30' + 'Outskirts →
@@ -246,6 +251,45 @@ test.describe('arc panel + blocked toggle (PKG B-106)', () => {
 
     await page.getByTestId('tme-arc-reason-input').fill('Rockslide'); // a real reason
     await expect(block).toBeEnabled();
+  });
+
+  // --- PKG B-131 (§5 Phase 3.5 M5, D94/F55): the ONE-TAP "Block access" ----
+
+  test('one-tap Block access: blocked with the default reason, no typing; a real reason restates; lift unchanged (D94/F55, C2)', async ({
+    page,
+  }) => {
+    await tapEdgeMidpoint(page, CASTLE_ARC);
+    await expect(page.getByTestId('tme-arc-panel')).toBeVisible();
+
+    // Pristine input: the typed Block is C30-disabled while the one-tap is
+    // not — it applies the ONE shared default reason (D94's authored
+    // 'Closed') with no typing at all.
+    await expect(page.getByTestId('tme-arc-block')).toBeDisabled();
+    await activate(page, 'tme-arc-block-access');
+
+    // Blocked: the reason verbatim in the panel, dashed on the canvas — the
+    // typed flow's C2 visuals are shared (excluded from routing, still drawn).
+    await expect(page.getByTestId('tme-arc-blocked-reason')).toHaveText('Closed');
+    await expect.poll(() => readEdgeLineStyle(page, CASTLE_ARC.id)).toBe('dashed');
+
+    // F52: the one-tap is a full tap target (both projects).
+    const box = await page.getByTestId('tme-arc-block-access').boundingBox();
+    if (box === null) throw new Error('tme-arc-block-access not visible');
+    expect(box.height, 'tme-arc-block-access height >= 44px (F52)').toBeGreaterThanOrEqual(44);
+    expect(box.width, 'tme-arc-block-access width >= 44px (F52)').toBeGreaterThanOrEqual(44);
+
+    // Refinement: type the real reason, tap the typed Block — adds-or-restates
+    // (the facade contract; the F14 typed flow itself is byte-untouched and
+    // already pinned by the C2-loop cell above).
+    await page.getByTestId('tme-arc-reason-input').fill('Rockslide');
+    await activate(page, 'tme-arc-block');
+    await expect(page.getByTestId('tme-arc-blocked-reason')).toHaveText('Rockslide');
+
+    // Lift unchanged (C2): the overlay delete — solid again, open state.
+    await expect(page.getByTestId('tme-arc-lift')).toBeEnabled();
+    await activate(page, 'tme-arc-lift');
+    await expect.poll(() => readEdgeLineStyle(page, CASTLE_ARC.id)).toBe('solid');
+    await expect(page.getByTestId('tme-arc-open')).toBeVisible();
   });
 
   test('mutual exclusion: node tap hides the arc panel; edge tap clears the chip (ruling 1, D2)', async ({

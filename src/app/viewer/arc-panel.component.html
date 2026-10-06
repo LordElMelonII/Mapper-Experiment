@@ -67,6 +67,15 @@
         Block
       </button>
 
+      <!-- B-131 (D94/F55): the ONE-TAP "Block access" — the trimmed input
+           when non-empty, else the ONE shared default reason (D94's authored
+           'Closed'): no typing required. Beside the typed Block (F14's flow
+           and testids, byte-untouched), never displacing it — one mental
+           model with the property panel's one-tap. -->
+      <button type="button" class="tme-button tme-block-access" data-testid="tme-arc-block-access" (click)="blockAccess()">
+        Block access
+      </button>
+
       @if (info.overlay) {
         <!-- An overlay block exists — the contract allows lifting (C2). -->
         <button type="button" class="tme-button tme-lift-button" data-testid="tme-arc-lift" (click)="lift()">

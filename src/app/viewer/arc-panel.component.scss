@@ -131,6 +131,14 @@
   border-color: rgba(201, 86, 78, 0.35);
 }
 
+// B-131 (D94/F55): the ONE-TAP "Block access" — the same red key as the
+// typed Block (same outcome, no typing required); it rides the shared
+// .tme-button chrome (>= 44px, F52) beside it, never displacing it.
+.tme-block-access {
+  border-color: rgba(201, 86, 78, 0.7);
+  color: #e08a84;
+}
+
 // D20 made visible: the static note under a disabled Lift — why the chat
 // cannot lift a library-level block.
 .tme-authored-note {

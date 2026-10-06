@@ -25,6 +25,11 @@
 //   C3/FX2  — routing is layer-agnostic: the route to a node on the OTHER
 //             layer renders while the viewer shows that layer.
 //
+// PKG B-131 (§5 Phase 3.5 M5, D94/F55/C34) extends this suite: the
+// blocked-NODES sibling list — the snapshot's blockedNodes projection
+// rendered verbatim (label + reason) beside the pin-incident blocked-arc
+// list, absent when nothing is blocked.
+//
 // Canvas nodes are tapped through their RENDERED positions (the
 // DEV-HARNESS-ONLY window.__TME_E2E__ seam, src/app/app.ts) — real pixels,
 // both worlds, no locator-on-canvas cheating.
@@ -41,6 +46,7 @@ const PIN_ID = 'emiya-residence';
 const STATION_ID = 'fuyuki-station';
 const MISAKI_ID = 'misaki-town';
 const CASTLE_ID = 'einzbern-castle';
+const OUTSKIRTS_ID = 'outskirts'; // the B-131 blocking cell's leaf node
 
 const isPhone = (): boolean => test.info().project.name === 'phone';
 
@@ -52,6 +58,20 @@ const readPosition = (page: Page, id: string): Promise<{ x: number; y: number } 
     if (hook === undefined) throw new Error('window.__TME_E2E__ missing — dev harness not loaded');
     return hook.nodeRenderedPosition(nodeId);
   }, id);
+
+/**
+ * Wait two animation frames: editor-mode toggles and panel open/close change
+ * the stage size synchronously, but the ResizeObserver-driven re-fit runs
+ * just before the next paint — reads inside that window aim at stale
+ * coordinates (the settle precedent from the other specs).
+ */
+const settle = (page: Page): Promise<void> =>
+  page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
 
 /** F52/D53: tap a canvas node through its rendered position — touch on the
  *  phone project (genuine touchscreen), mouse click on desktop. */
@@ -173,6 +193,52 @@ test.describe('route sidebar (PKG B-105)', () => {
     await expect(page.getByTestId('tme-blocked-reason')).toHaveText(
       'Bridge closed by local authorities',
     );
+  });
+
+  // --- PKG B-131 (§5 Phase 3.5 M5, D94/F55/C34): the blocked-nodes list ----
+
+  test('blocked nodes list beside the blocked arcs: label + reason verbatim (D94/F55, C34, R4)', async ({
+    page,
+  }) => {
+    // FX1 blocks no NODE: the sibling list is ABSENT (omitted entirely when
+    // empty — the snapshot's shape), while the pin-incident blocked ARC
+    // lists. B-114: one rail tap opens the collapsed phone sheet.
+    if (isPhone()) {
+      await activate(page, 'tme-sheet-rail');
+      await expect(page.getByTestId('tme-sheet-body')).toBeVisible();
+    }
+    await expect(page.getByTestId('tme-blocked')).toBeVisible();
+    await expect(page.getByTestId('tme-blocked-nodes')).toHaveCount(0);
+
+    // Block a leaf node through the property panel's one-tap (D94/F55):
+    // editor mode, select Outskirts, Block access on the pristine input.
+    await activate(page, 'tme-editor-toggle');
+    await settle(page);
+    await tapNode(page, OUTSKIRTS_ID);
+    await expect(page.getByTestId('tme-property-panel')).toBeVisible();
+    await activate(page, 'tme-node-block');
+    await expect(page.getByTestId('tme-node-block-reason')).toHaveText('Closed');
+    // Exit editor — the block is chat-scoped overlay state, it survives.
+    await activate(page, 'tme-editor-toggle');
+
+    // The snapshot listing renders label + reason BESIDE the arc list (the
+    // blocked nodes are NOT pin-incident-scoped — the snapshot listing is
+    // the projection, R4; the panel recomputes nothing, R1). Editor exit
+    // auto-expands the phone sheet with the selection live (B-114 ruling 2);
+    // open it explicitly only if it is not already showing.
+    if (isPhone()) {
+      const body = page.getByTestId('tme-sheet-body');
+      if (!(await body.isVisible())) await activate(page, 'tme-sheet-rail');
+      await expect(body).toBeVisible();
+    }
+    await expect(page.getByTestId('tme-blocked-nodes')).toBeVisible();
+    await expect(page.getByTestId('tme-blocked-node-item')).toHaveCount(1);
+    await expect(page.getByTestId('tme-blocked-node-label')).toHaveText('Outskirts');
+    await expect(page.getByTestId('tme-blocked-node-reason')).toHaveText('Closed');
+    // Coexistence: the pin-incident arc list is untouched beside it.
+    await expect(page.getByTestId('tme-blocked')).toBeVisible();
+    await expect(page.getByTestId('tme-blocked-item')).toHaveCount(1);
+    await expect(page.getByTestId('tme-blocked-label')).toHaveText('Fuyuki Bridge');
   });
 
   test('tap the pin: current-location state, no route numbers (ruling 6)', async ({ page }) => {

@@ -21,7 +21,7 @@
 // only discrete user actions (taps, keystrokes) write signals; the route is a
 // computed in the service, so canvas drags recompute nothing.
 import { Component, computed, inject, linkedSignal } from '@angular/core';
-import type { SnapshotRoute, TravelMode } from '../../core/api';
+import type { SnapshotBlockedNode, SnapshotRoute, TravelMode } from '../../core/api';
 import { GraphService } from '../graph/graph.service';
 
 @Component({
@@ -99,6 +99,22 @@ export class RoutePanelComponent {
    */
   protected readonly blockedHere = computed((): readonly SnapshotRoute[] =>
     (this.graph.snapshot()?.routes ?? []).filter((route) => route.blockedReason !== undefined),
+  );
+
+  /**
+   * B-131 (D94/F55/C34): the blocked-NODE listing — the snapshot's
+   * `blockedNodes` projection rendered verbatim (R1/R4: the core's words,
+   * never recomputed; the snapshot signal's write on every
+   * afterGraphMutation re-renders a block/lift live). NOT pin-incident-
+   * scoped: the blocked nodes are the whole chat's state, which is exactly
+   * why this is a SIBLING list beside the pin-incident blocked arcs above —
+   * the snapshot listing is the projection, and a node block surfaces here
+   * like an arc's blockedReason (C2 spirit: label + reason verbatim;
+   * unnamed user waypoints never appear — C23, the core already excludes
+   * them; omitted entirely when nothing is blocked — the snapshot's shape).
+   */
+  protected readonly blockedNodes = computed((): readonly SnapshotBlockedNode[] =>
+    this.graph.snapshot()?.blockedNodes ?? [],
   );
 
   /**

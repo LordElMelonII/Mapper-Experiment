@@ -81,7 +81,7 @@ import {
   signal,
 } from '@angular/core';
 import type { NodeKind } from '../../core/api';
-import { GraphService, type NodeEditIssue } from '../graph/graph.service';
+import { DEFAULT_BLOCK_REASON, GraphService, type NodeEditIssue } from '../graph/graph.service';
 
 /**
  * The six AUTHORED kinds, C23 plain words — 'waypoint' is deliberately
@@ -95,6 +95,16 @@ const NODE_KIND_OPTIONS: readonly { id: NodeKind; name: string }[] = [
   { id: 'location', name: 'Location' },
   { id: 'hub', name: 'Hub' },
 ];
+
+/**
+ * B-131 (D94/F55): the kinds the Blocking section renders for — the kinds
+ * that can sit on a route (the LEAF kinds; 'waypoint' never opens this
+ * panel — the B-116 precedent). Containers never connect to arcs (F07), so
+ * blocking one is a dead control; the facade's C30 gate stays the authority
+ * regardless. The draft's kind IS the panel's truth (the same select drives
+ * it), so a re-kind drafts the section in and out live.
+ */
+const BLOCKABLE_KINDS: ReadonlySet<NodeKind> = new Set<NodeKind>(['location', 'hub']);
 
 // --- B-119 floating-panel geometry -------------------------------------------
 // The width/height maxima are MIRRORED by the SCSS in
@@ -409,6 +419,11 @@ export class PropertyPanelComponent {
         if (current !== null && this.isDirty(current)) this.commitDraft(current);
         return;
       }
+      // B-131: leaving a node (selection change / editor re-entry) clears
+      // the block-catch refusal with it — the stale message must not follow
+      // another node (the arc panel's clearArcBlockRefusal discipline,
+      // B-123).
+      this.graph.clearNodeBlockRefusal();
       if (current !== null && current.id === selId) return; // same node — keystrokes never re-seed
       if (current !== null && this.isDirty(current)) {
         const committed = this.commitDraft(current);
@@ -496,6 +511,75 @@ export class PropertyPanelComponent {
       return;
     }
     this.refusals.set([]);
+  }
+
+  // --- B-131 (D94/F55): the Blocking section --------------------------------
+
+  /**
+   * The Blocking section renders for BLOCKABLE kinds only (see
+   * BLOCKABLE_KINDS): the draft's kind is the panel's truth — the same
+   * select drives it, so a re-kind drafts the section in and out live.
+   */
+  protected readonly blockSectionOpen = computed((): boolean => {
+    const d = this.draft();
+    return d !== null && BLOCKABLE_KINDS.has(d.kind);
+  });
+
+  /**
+   * The selected node's live block reason — the overlay's C24 reference read
+   * through the service (R4, verbatim, never a copy), rendered by the
+   * blocked row. graphRevision is a dependency: a block/lift re-reads
+   * without the selection moving (the arc panel's arcInfo precedent,
+   * B-106 ruling 4).
+   */
+  protected readonly nodeBlockReason = computed((): string | null => {
+    void this.graph.graphRevision(); // dependency: a block/lift re-reads (R4)
+    const d = this.draft();
+    return d === null ? null : this.graph.nodeBlockReason(d.id);
+  });
+
+  /**
+   * The reason input's value — a controlled input ([value] + signal write on
+   * every input event; R3). NOT a draft field: the block is a discrete
+   * intent that commits immediately (the setNodeLayer/setPortal precedent).
+   * The one-tap applies the TRIMMED value when non-empty, else the ONE
+   * shared default (D94's 'Closed') — one mental model with the arc panel's
+   * one-tap.
+   */
+  protected readonly blockReason = signal('');
+
+  /** R3: the input event handler — a DOM read, then the signal write. */
+  protected onBlockReasonInput(event: Event): void {
+    this.blockReason.set((event.target as HTMLInputElement).value);
+  }
+
+  /**
+   * F55/D94: the ONE-TAP "Block access" — blocks the NODE itself (not its
+   * arcs) with the trimmed input when non-empty, else DEFAULT_BLOCK_REASON:
+   * one tap from a pristine input applies 'Closed', no typing required; the
+   * reason input stays ADJACENT for immediate refinement (type the real
+   * reason, tap again — adds-or-restates, the facade contract). A C30
+   * refusal (an UNSAVED placed node — the A-018 saved-plane gate) is caught
+   * by the service and rendered field-precise below; the input is consumed
+   * only on success (the blockArc pattern).
+   */
+  protected blockNode(): void {
+    const d = this.draft();
+    if (d === null) return;
+    const reason = this.blockReason().trim();
+    const blocked = this.graph.blockNode(d.id, reason.length > 0 ? reason : DEFAULT_BLOCK_REASON);
+    if (blocked) this.blockReason.set('');
+  }
+
+  /**
+   * B-131 (D94/C34): lift the node block through the service (R2) —
+   * overlay-ONLY state, so the lift is unconditional and the row, the
+   * listing and the marker vanish via the rebuild.
+   */
+  protected liftNodeBlock(): void {
+    const d = this.draft();
+    if (d === null) return;
+    this.graph.liftNodeBlock(d.id);
   }
 
   // --- B-126 (D83/F54): the Layer dropdown + the Detach tool -------------------

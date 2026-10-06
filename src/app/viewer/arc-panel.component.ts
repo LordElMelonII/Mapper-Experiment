@@ -51,7 +51,7 @@ import {
   signal,
 } from '@angular/core';
 import type { MapEdgeData, ModeSpec, Terrain, TravelMode } from '../../core/api';
-import { GraphService, type NodeEditIssue } from '../graph/graph.service';
+import { DEFAULT_BLOCK_REASON, GraphService, type NodeEditIssue } from '../graph/graph.service';
 
 /** The five TERRAINS with their C23 select words — api.ts's union, verbatim. */
 const TERRAIN_OPTIONS: readonly { id: Terrain; name: string }[] = [
@@ -282,6 +282,26 @@ export class ArcPanelComponent {
     const reason = this.reason().trim();
     if (sel === null || reason.length === 0) return;
     const blocked = this.graph.blockArc(sel.id, reason);
+    if (blocked) this.reason.set('');
+  }
+
+  /**
+   * B-131 (D94/F55): the ONE-TAP "Block access" — the same blocked outcome
+   * as block() without typing: the TRIMMED input when non-empty, else the
+   * ONE shared default reason (DEFAULT_BLOCK_REASON, D94's authored
+   * 'Closed') — one tap from a pristine input blocks. It sits BESIDE the
+   * typed Block (F14's flow — its C30 disabled-while-empty honesty, its
+   * testids — is byte-untouched) without displacing it, one mental model
+   * with the property panel's one-tap; refinement is type + tap again
+   * (adds-or-restates, the facade contract). The same blockArc catch applies
+   * (an UNSAVED drawn arc surfaces field-precise through arcBlockRefusal)
+   * and the input is consumed only on success.
+   */
+  protected blockAccess(): void {
+    const sel = this.graph.edgeSelection();
+    if (sel === null) return;
+    const reason = this.reason().trim();
+    const blocked = this.graph.blockArc(sel.id, reason.length > 0 ? reason : DEFAULT_BLOCK_REASON);
     if (blocked) this.reason.set('');
   }
 

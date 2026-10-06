@@ -158,6 +158,76 @@
   resize: vertical;
 }
 
+// --- B-131 (D94/F55): the Blocking section ------------------------------------
+
+// The blocked row — the arc-panel mirror (tag + reason verbatim): the red
+// key matches the canvas's blocked hue (the dashed tme-blocked arcs and the
+// tme-node-blocked-badge marker are its canvas twins).
+.tme-node-block-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.375rem;
+  margin: 0 0 0.375rem;
+}
+
+.tme-block-tag {
+  font-weight: 700;
+  color: #e08a84;
+}
+
+.tme-node-block-reason {
+  color: #9aa7b8;
+}
+
+.tme-node-block-actions {
+  margin-top: 0.375rem;
+}
+
+// The one-tap "Block access" — the red key (the block is the panel's
+// access-cutting action; Delete keeps its filled red), one >= 44px tap
+// target (F52), touch-alone (D53).
+.tme-node-block-button {
+  min-width: 44px; // F52
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid rgba(201, 86, 78, 0.7);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #e08a84;
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+// The lift — neutral chrome (it RESTORES access, never cuts it), one >= 44px
+// tap target (F52).
+.tme-node-block-lift {
+  min-width: 44px; // F52
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+// B-131: the blockNode catch's refusal — the established alert-red key, one
+// field-precise line (the arc panel's tme-block-refusal twin).
+.tme-node-block-refusal {
+  margin: 0.375rem 0 0;
+  color: #e08a84;
+}
+
 .tme-aliases {
   display: flex;
   flex-direction: column;

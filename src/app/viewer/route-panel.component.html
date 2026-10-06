@@ -149,5 +149,26 @@
         }
       </section>
     }
+
+    <!-- B-131 (D94/F55/C34): the blocked-NODE listing — the snapshot's
+         blockedNodes projection, verbatim (R1/R4: the core's words, never
+         recomputed), rendered as a SIBLING list beside the pin-incident
+         blocked arcs (blocked nodes are NOT pin-incident-scoped — the
+         snapshot listing is the whole-chat projection). Label + reason
+         verbatim (C2 spirit); unnamed user waypoints never appear (C23 —
+         the core already excludes them); omitted entirely when nothing is
+         blocked. B-114: behind the same one rail tap at narrow widths. -->
+    @if (blockedNodes().length > 0) {
+      <section class="tme-blocked-nodes" data-testid="tme-blocked-nodes" aria-label="Blocked places">
+        <h3 class="tme-blocked-title">Blocked places</h3>
+        @for (node of blockedNodes(); track node.label) {
+          <p class="tme-blocked-item" data-testid="tme-blocked-node-item">
+            <span data-testid="tme-blocked-node-label">{{ node.label }}</span>
+            <span class="tme-blocked-sep" aria-hidden="true">—</span>
+            <span data-testid="tme-blocked-node-reason">{{ node.reason }}</span>
+          </p>
+        }
+      </section>
+    }
   </div>
 </section>

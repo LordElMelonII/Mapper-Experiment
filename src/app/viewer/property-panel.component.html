@@ -170,6 +170,57 @@
         (input)="onDescriptionInput($event)"
       ></textarea>
 
+      <!-- B-131 (D94/F55): the Blocking section — BLOCKABLE kinds only (a
+           container never connects to arcs per F07, so blocking one is a
+           dead control; the facade's C30 gate stays the authority). The
+           one-tap "Block access" applies the trimmed input when non-empty,
+           else the ONE shared default reason (DEFAULT_BLOCK_REASON, D94's
+           authored 'Closed') — no typing required; the reason input stays
+           ADJACENT for immediate refinement (restate semantics: adds-or-
+           restates, the facade contract). The blocked row is the arc-panel
+           mirror: tag + reason verbatim (C2/D20) + Lift — node blocks are
+           overlay-ONLY (D94 adds no library-level node block), so the shown
+           block is always liftable here. The block is a DISCRETE intent, not
+           a draft field: it commits immediately (the Layer/Portal dropdown
+           precedent) and never rides Done. -->
+      @if (blockSectionOpen()) {
+        <span class="tme-field-label" id="tme-node-block-heading">Block access</span>
+        @if (nodeBlockReason(); as reason) {
+          <p class="tme-node-block-row" data-testid="tme-node-block-row">
+            <span class="tme-block-tag">Blocked</span>
+            <span class="tme-node-block-reason" data-testid="tme-node-block-reason">{{ reason }}</span>
+          </p>
+        }
+        <label class="tme-field-label" for="tme-node-block-input">Reason</label>
+        <input
+          id="tme-node-block-input"
+          class="tme-input"
+          type="text"
+          autocomplete="off"
+          data-testid="tme-node-block-input"
+          [value]="blockReason()"
+          (input)="onBlockReasonInput($event)"
+        />
+        <div class="tme-actions tme-node-block-actions">
+          <button type="button" class="tme-node-block-button" data-testid="tme-node-block" (click)="blockNode()">
+            Block access
+          </button>
+          @if (nodeBlockReason() !== null) {
+            <button type="button" class="tme-node-block-lift" data-testid="tme-node-block-lift" (click)="liftNodeBlock()">
+              Lift
+            </button>
+          }
+        </div>
+        <!-- B-131: the blockNode catch's refusal — blocking an UNSAVED placed
+             node (the A-018 saved-plane gate) surfaces field-precise here,
+             never an uncaught console error (the arc panel's
+             tme-arc-block-refusal pattern); cleared when the panel leaves
+             the node. -->
+        @if (graph.nodeBlockRefusal(); as refusal) {
+          <p class="tme-node-block-refusal" data-testid="tme-node-block-refusal" role="alert">{{ refusal }}</p>
+        }
+      }
+
       <!-- C30 field-precise refusals of the last commit attempt — user-visibly
            rendered (never console-only); the draft stays open, untouched. -->
       @if (refusals().length > 0) {
