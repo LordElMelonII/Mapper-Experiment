@@ -38,11 +38,11 @@ This prompt never overrides the repo docs. If they disagree, the docs win and yo
 
 Product behavior (anything the register marks as the owner's call), scope or phase changes, new dependencies, destructive operations, gate pass/fail summaries, and anything the docs don't answer. When unsure whether something is product or engineering: it's product.
 
-## First actions (R24 — R23 CLOSED, M3 committed `e638d1f`; the next milestone is the owner's pick)
+## First actions (R24 — the owner's pick is in: D89 registers the Phase 3.5 UI-polish loop; next milestone = Phase 3 M4)
 
 Repo state (reconcile; the status line is your state — **current-state-only since the R20 collapse ruling**: round history lives in EXECUTION-PLAN §8.6 item 6, the one append-only ledger): HEAD on `develop` is the host-checkout `chore:` commit **`106cab8`** (the `SillyTavern/` checkout + `.playwright-mcp/` artifacts git-ignored; AGENTS.md deploy-target re-point at http://localhost:57535) on top of the R23 resolution `docs:` commit (`8b1c45c`) and the M3 work commit **`e638d1f`** (feat: P3 M3 — A-017, B-126..B-130, C-002, the verifier's adversarial suite, and every close-out doc in one commit, landed on the owner's instruction 2026-10-06); tree clean, with `SillyTavern/` and `.playwright-mcp/` now git-ignored rather than untracked scratch. Reconcile by `git log` + the §8.6(r) ledger record. Gates at the close (lead-proven on the settled tree): `npm run verify` **641/641** (49 files); `npm run test:e2e` **335 passed / 69 cited skips** (desktop + phone-with-touch). Anything else ⇒ stop and report.
 
-**First action: report the committed state to the owner and ask what opens next** — Phase 3 M4 (per §5), the Phase 3 integration pass against local ST, or an owner-picked line; do not self-select a milestone. The M3 planning rulings D82–D88 are the law; the parked contacts stay parked (node-level blocking; the Game/View/Edit display-mode idea).
+**First action: report the R24 registration to the owner and open Phase 3 M4 (Library & forks)** — the owner's pick (2026-10-06) is registered as **D89: a new Phase 3.5 — UI Polish & Owner Satisfaction** between Phase 3 and Phase 4, an iterative owner-driven loop whose only exit is the owner's explicit satisfaction. Sequencing default (veto-able): **M4 completes first**, then the loop opens on the owner's word — their feedback IS the loop's backlog; no self-composed polish packets. The M3 planning rulings D82–D89 are the law; the parked contacts stay parked (node-level blocking; the Game/View/Edit display-mode idea).
 
 Operational facts this round proved (carry them):
 

@@ -127,3 +127,5 @@ The orchestrator decomposes a milestone into packets **at dispatch time**, never
 4. The gate passes when the full suite — unit + e2e + adversarial — is green and no critical or major finding remains open.
 
 Per-diff review (§6) stays the orchestrator's job at packet granularity; the verifier is the independent second pass at milestone granularity, not a per-packet stage.
+
+**Phase 3.5 (D89) is the exception to the milestone-gate shape:** it is a pass loop with no fixed milestones — the per-packet §6 review and green gates apply to every pass, and the "gate" is the owner's explicit satisfaction (EXECUTION-PLAN §5, Phase 3.5). The orchestrator may still call a full §11 verifier pass if the loop's accumulated changes warrant one before the owner's sign-off.
