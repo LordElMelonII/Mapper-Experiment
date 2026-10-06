@@ -7,6 +7,10 @@ const prettier = require('eslint-config-prettier');
 
 module.exports = defineConfig([
   {
+    // Machine-local, git-ignored trees (AGENTS.md §2) — never lint the host checkout.
+    ignores: ['SillyTavern/**', '.playwright-mcp/**'],
+  },
+  {
     files: ['**/*.ts'],
     extends: [
       eslint.configs.recommended,
