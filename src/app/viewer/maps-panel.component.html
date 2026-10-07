@@ -1,12 +1,18 @@
 <!-- PKG B-137 (§5 Phase 3 M4 / D40) — the Maps manager PANEL: the library
-     as a real surface. One row per stored map (Open / Duplicate / Delete —
-     the delete's inline confirm names the map, no counts, R1), the D79
-     New-map row (name → Create — the engine assigns the id, C5; disabled
-     while the trimmed name is empty, C30 honesty), the D40 card-pointer
-     SUGGESTION mark (display-only — suggested, never auto-applied), and
-     the D41 provenance line in plain words (parent's name when it is in
-     the list, else "Forked"). The empty library renders the picker-first
+     as a real surface. One row per stored map (Open / Duplicate / Export —
+     B-138's stored-map JSON download — / Delete — the delete's inline
+     confirm names the map, no counts, R1), the D79 New-map row (name →
+     Create — the engine assigns the id, C5; disabled while the trimmed
+     name is empty, C30 honesty), the D40 card-pointer SUGGESTION mark
+     (display-only — suggested, never auto-applied), and the D41
+     provenance line in plain words (parent's name when it is in the
+     list, else "Forked"). The empty library renders the picker-first
      words + the create affordance (no dead list).
+     B-138: the import family under the rows — one .json file input and
+     the "Paste your lookup table" MDS importer (F05/FX3's engine); both
+     land under a fresh engine id (C5, the re-id ruling) and never
+     auto-load (D40); refusals render the engine's field-precise words
+     (C30/C32) and never wipe the author's paste.
      SUMMON: the layers nav's Maps affordance (the D82 Manage pattern,
      both worlds); the panel renders ONLY while open (the B-117
      hide-while-closed form) — a wide floater / narrow in-stack sheet;
@@ -140,6 +146,15 @@
               >
                 Duplicate
               </button>
+              <!-- B-138: the per-row Export — the stored map's JSON download. -->
+              <button
+                type="button"
+                class="tme-button"
+                data-testid="tme-map-export"
+                (click)="exportMap(entry.id)"
+              >
+                Export
+              </button>
               <button
                 type="button"
                 class="tme-button tme-delete"
@@ -152,6 +167,45 @@
           }
         </div>
       }
+
+      <!-- B-138: the import family — a JSON map file (one control, .json,
+           >= 44px F52) and the MDS paste importer (F05/FX3's engine behind
+           a labelled textarea; the Import is disabled while the trimmed
+           paste is empty, the canCreate pattern C30). EVERY import lands
+           under a fresh engine id (C5, the re-id ruling) and NEVER
+           auto-loads (D40's explicit pick — the user opens it). -->
+      <div class="tme-import-section" data-testid="tme-maps-import">
+        <label class="tme-field-label" for="tme-maps-import-file">Import a map file</label>
+        <input
+          id="tme-maps-import-file"
+          class="tme-input tme-import-file"
+          type="file"
+          accept=".json,application/json"
+          data-testid="tme-maps-import-file"
+          (change)="importFile($event)"
+        />
+
+        <label class="tme-field-label" for="tme-maps-paste-input">Paste your lookup table</label>
+        <textarea
+          id="tme-maps-paste-input"
+          class="tme-input tme-paste-input"
+          rows="5"
+          data-testid="tme-maps-paste-input"
+          [value]="pasteValue()"
+          (input)="onPasteInput($event)"
+        ></textarea>
+        <div class="tme-create-row">
+          <button
+            type="button"
+            class="tme-button tme-create"
+            data-testid="tme-maps-paste-import"
+            [disabled]="!canImportPaste()"
+            (click)="importPaste()"
+          >
+            Import
+          </button>
+        </div>
+      </div>
 
       <!-- C32: the last store refusal in plain words — user-visibly rendered
            (never console-only), the layer-manager refusals pattern. -->

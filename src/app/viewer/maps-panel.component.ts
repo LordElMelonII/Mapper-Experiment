@@ -12,6 +12,23 @@
 // Escape closes it; a fresh loadMap closes it (the service's reset);
 // open/close moves no viewport (D91).
 //
+// PKG B-138 (§5 M4 line): the import/export family joins the panel — the
+// per-row Export (the stored map's JSON via an object-URL anchor, revoked
+// after — the background-store URL discipline), the JSON file import
+// (JSON.parse → the migrate+validate engine C31 → fresh engine id C5 →
+// library.save; NO auto-load, D40's explicit pick) and the MDS paste
+// importer (the F05/FX3 engine behind a labelled textarea; cleared only on
+// success — the author edits their paste after a refusal). EVERY import
+// lands under a FRESH engine-assigned id (`generateMapId(knownIds())` —
+// C5, the re-id ruling): a foreign file's id never overwrites a stored
+// map silently, and a second paste of the same table becomes a second map.
+// Engines are CALLED, never re-implemented: `migrateWorldMap` (the pure
+// engine behind the facade's `migrateData` command — facade.ts:633 is a
+// one-line delegation) and `importLookupTable` imported directly, the
+// B-137 pure-core-import precedent (createWorldMap/duplicateMapData) — the
+// panel's R2 discipline keeps the facade instance out of this component
+// and these are pure transforms of detached data, no loaded state.
+//
 // R2: the component mutates nothing itself — every map command goes through
 // the library STORE seam (MAP_LIBRARY, the BACKGROUND_STORE precedent — the
 // layer-manager injects its store directly) and every LOADED-state command
@@ -21,7 +38,7 @@
 // R3: events in → signals out → this template; the panel's gestures are
 // discrete taps (D2). C23: plain words everywhere a user reads — names are
 // authored strings, ids never render (rows are matched by id, spoken by
-// name). C5: create/duplicate pass the library's stored-id set as
+// name). C5: create/duplicate/import pass the library's stored-id set as
 // `exclude` — host knowledge the engine asks for; the UI never proposes
 // ids. F52/D53: every control >= 44px, touch-alone, no hover affordance;
 // the B-114 rail is the narrow form's collapse affordance (wide hides it).
@@ -33,11 +50,25 @@ import {
   computed,
   signal,
 } from '@angular/core';
-import { createWorldMap, duplicateMapData } from '../../core/model/create';
+import { createWorldMap, duplicateMapData, generateMapId } from '../../core/model/create';
+import { migrateWorldMap } from '../../core/model/migrate';
+import { importLookupTable } from '../../core/import/lookup';
+import { MapValidationError } from '../../core/model/validate';
 import type { WorldMapData } from '../../core/api';
 import { MAP_LIBRARY } from '../graph/map-library';
 import type { LibraryEntry } from '../graph/map-library';
 import { GraphService } from '../graph/graph.service';
+
+/**
+ * B-138: the export filename — the map's NAME made filesystem-safe (a
+ * presentation string, not engine data — R1): runs of Windows-reserved
+ * separators and control characters become '-', an emptied name falls back
+ * to 'map', and '.json' is appended.
+ */
+function exportFilename(name: string): string {
+  const safe = name.replace(/[\p{Cc}\\/:*?"<>|]+/gu, '-').trim(); // \p{Cc} = the control characters
+  return `${safe.length > 0 ? safe : 'map'}.json`;
+}
 
 @Component({
   selector: 'tme-maps-panel',
@@ -97,6 +128,14 @@ export class MapsPanelComponent {
 
   /** The empty-input Create's gate — C30 honesty (the canCreate pattern). */
   protected readonly canCreate = computed(() => this.createValue().trim().length > 0);
+
+  // --- The MDS paste importer (B-138, F05/FX3) --------------------------------
+
+  /** The paste textarea's text (a controlled input — R3). */
+  private readonly pasteValue = signal('');
+
+  /** The empty-paste Import's gate — the canCreate pattern (C30 honesty). */
+  protected readonly canImportPaste = computed(() => this.pasteValue().trim().length > 0);
 
   // --- The delete-confirm state ------------------------------------------------
 
@@ -169,6 +208,123 @@ export class MapsPanelComponent {
     this.error.set(null);
     this.graph.markFreshlyCreatedMap(map.id); // D79: the one-time hint arms for THIS map
     this.graph.openMapFromLibrary(map); // the Open path — loadMap closes this panel
+  }
+
+  // --- The import/export family (B-138) ----------------------------------------
+
+  /**
+   * One refusal's plain words (C32/C23): a MapValidationError's COLLECTED
+   * issues render field-precise — one `path: message` line per issue, the
+   * engine's own authored words verbatim (ids never render); anything else
+   * degrades to its Error message.
+   */
+  private words(err: unknown): string {
+    if (err instanceof MapValidationError) {
+      return err.issues
+        .map((issue) => (issue.path.length > 0 ? `${issue.path}: ${issue.message}` : issue.message))
+        .join('\n');
+    }
+    return err instanceof Error ? err.message : String(err);
+  }
+
+  /**
+   * B-138: the per-row EXPORT — an asynchronous `library.get` of the stored
+   * map, serialized as pretty JSON, downloaded through an object-URL anchor
+   * that is revoked immediately after (the background-store URL discipline —
+   * nothing leaks). A store failure degrades to words (C32); the filename is
+   * the map's NAME, sanitized (a presentation string, not engine data — R1).
+   */
+  protected async exportMap(id: string): Promise<void> {
+    let map: WorldMapData | null;
+    try {
+      map = await this.library.get(id);
+    } catch {
+      this.error.set('The map library could not be read.');
+      return;
+    }
+    if (map === null) {
+      this.error.set('That map is no longer in the library.');
+      void this.refresh();
+      return;
+    }
+    this.error.set(null);
+    const url = URL.createObjectURL(new Blob([JSON.stringify(map, null, 2)], { type: 'application/json' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = exportFilename(map.name);
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url); // revoked after — no URL leak (the background-store discipline)
+  }
+
+  protected onPasteInput(event: Event): void {
+    this.pasteValue.set((event.target as HTMLTextAreaElement).value);
+  }
+
+  /**
+   * B-138: the MDS PASTE importer (F05/FX3/D55) — the ENGINE parses, MDS-seeds
+   * and validates the paste (`importLookupTable`; a garbage paste is a
+   * MapValidationError whose field-precise issues render as words, C30/C32).
+   * The imported map lands under a FRESH engine id (C5, the re-id ruling),
+   * `library.save` refreshes the list — NO auto-load (D40's explicit pick).
+   * The textarea is NOT wiped on failure (the author edits their paste) and
+   * cleared on success.
+   */
+  protected async importPaste(): Promise<void> {
+    const text = this.pasteValue();
+    if (text.trim().length === 0) return; // the disabled Import's guard (C30 honesty)
+    let map: WorldMapData;
+    try {
+      map = importLookupTable(text);
+    } catch (err) {
+      this.error.set(this.words(err));
+      return; // the paste stays for editing
+    }
+    const fresh = { ...map, id: generateMapId(this.knownIds()) }; // the re-id ruling (C5)
+    if (!(await this.storeSave(fresh))) return;
+    this.pasteValue.set(''); // cleared ONLY on success
+    this.error.set(null);
+  }
+
+  /**
+   * B-138: the JSON FILE import — text → JSON.parse (a parse failure is
+   * words) → the migrate+validate engine (`migrateWorldMap`, C31: schema
+   * 1→2 handled, garbage refused field-precise) → re-id via `generateMapId`
+   * (C5, the re-id ruling) → `library.save` → list refresh. NO auto-load
+   * (D40's explicit pick — the user opens it). The input's DOM value resets
+   * after every attempt so re-selecting the same file re-fires `change`
+   * (control hygiene — no app state rides on it, R3 untouched).
+   */
+  protected async importFile(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    input.value = ''; // re-select the same file re-fires (control hygiene)
+    if (file === null) return;
+    let text: string;
+    try {
+      text = await file.text();
+    } catch {
+      this.error.set('The file could not be read.');
+      return;
+    }
+    let data: unknown;
+    try {
+      data = JSON.parse(text);
+    } catch (err) {
+      this.error.set(`The file is not valid JSON — ${err instanceof Error ? err.message : String(err)}.`);
+      return;
+    }
+    let map: WorldMapData;
+    try {
+      map = migrateWorldMap(data);
+    } catch (err) {
+      this.error.set(this.words(err));
+      return;
+    }
+    const fresh = { ...map, id: generateMapId(this.knownIds()) }; // the re-id ruling (C5)
+    if (!(await this.storeSave(fresh))) return;
+    this.error.set(null);
   }
 
   /**
@@ -273,6 +429,7 @@ export class MapsPanelComponent {
     this.confirmingId.set(null);
     this.error.set(null);
     this.createValue.set('');
+    this.pasteValue.set(''); // B-138: the paste importer's state joins the reset
   }
 
   /** Escape — the no-op-when-closed guard lives here (one keydown, D2). */

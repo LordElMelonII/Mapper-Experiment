@@ -44,6 +44,7 @@
 // must show NO pin — D40); 'Emiya Residence' is a known node label. The
 // harness library is session-memory: every page load seeds exactly one row
 // (the booted display map), so each cell starts from a known store.
+import { readFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
 
 interface TmeE2EHook {
@@ -520,6 +521,172 @@ test.describe('the map library: Maps panel, save dock, mapless boot, D79 hint (P
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(overflow, 'no horizontal scroll at the phone viewport (F52/D53)').toBeLessThanOrEqual(0);
+
+    expect(bad, 'console clean (housekeeping)').toEqual([]);
+  });
+});
+
+// --- PKG B-138: the import/export family ---------------------------------------
+//
+// Cited IDs (beyond the module header):
+//   §5 M4    — "JSON export/import, MDS importer UI ('paste your lookup
+//              table')": exactly this family — the per-row Export download,
+//              the JSON file import, the paste importer; fork UX is B-139's.
+//   C5       — EVERY import lands under a FRESH engine id
+//              (generateMapId(knownIds()), the re-id ruling): a foreign
+//              file's id never lands, a second paste becomes a second map.
+//   C30/C32  — the empty-paste Import is disabled (the canCreate pattern);
+//              every refusal renders the engine's field-precise words in the
+//              panel's error channel — nothing throws through the UI.
+//   D40      — NO auto-load: an import only saves; the user opens it.
+//   F05/FX3  — the paste importer IS the engine (importLookupTable: parse +
+//              MDS + validate); the engine's fixed name 'Imported Lookup
+//              Table' rides; a garbage paste returns the engine's issues and
+//              the paste SURVIVES for editing.
+//   F52/D53  — the new controls join the >= 44px sweep (the file input's box
+//              IS the tap target), touch-alone activation on the phone
+//              project; console-clean cells throughout.
+
+/** A small hand-written schemaVersion-2 map — a fixture string, not a repo file. */
+const IMPORT_FILE_JSON = JSON.stringify({
+  schemaVersion: 2,
+  id: 'foreign-map', // the foreign id that must NEVER land (the re-id ruling, C5)
+  name: 'Imported Land',
+  layers: [{ id: 'l1', name: 'Main' }],
+  scale: { unitPerPx: 1, unitLabel: 'units', unitKind: 'distance' },
+  nodes: [],
+  edges: [],
+});
+
+/** A small valid lookup-table paste — a complete walking triangle (F05 format). */
+const PASTE_TABLE = `<walking_distances>
+KEY: A:Alpha Town|B:Beta Keep|C:Cross Inn
+
+DIST(min):
+A:B10,C12
+B:C8
+</walking_distances>`;
+
+const IMPORTED_FILE_NAME = 'Imported Land';
+const IMPORTED_TABLE_NAME = 'Imported Lookup Table'; // the engine's fixed authored name (C23)
+
+test.describe('the map library: import/export family (PKG B-138)', () => {
+  test('export (per row): the download is .json and its body round-trips the seeded map', async ({ page }) => {
+    const bad = collectConsole(page);
+    await page.goto('/');
+    await expect.poll(() => readLabels(page), { timeout: 5_000 }).toContain(EMIYA_LABEL);
+
+    await openMaps(page);
+    const seededId = (await readLibraryList(page)).find((row) => row.name === SEEDED_NAME)!.id;
+
+    const downloadPromise = page.waitForEvent('download');
+    await rowActivate(page, SEEDED_NAME, 'tme-map-export');
+    const download = await downloadPromise;
+    expect(download.suggestedFilename().endsWith('.json'), 'the export downloads as .json').toBe(true);
+    const body = JSON.parse(await readFile(await download.path(), 'utf8')) as { id: string; name: string };
+    expect(body.name, 'the body IS the stored map (name round-trip)').toBe(SEEDED_NAME);
+    expect(body.id, 'the body IS the stored map (id round-trip)').toBe(seededId);
+
+    await sweepTapTargets(page); // Export joins the row's controls; the import family is swept with it
+    expect(bad, 'console clean (housekeeping)').toEqual([]);
+  });
+
+  test('import file: a schemaVersion-2 JSON lands as a fresh-id row; a corrupt file degrades to words, no row', async ({
+    page,
+  }) => {
+    const bad = collectConsole(page);
+    await page.goto('/');
+    await expect.poll(() => readLabels(page), { timeout: 5_000 }).toContain(EMIYA_LABEL);
+
+    await openMaps(page);
+    const fileInput = page.getByTestId('tme-maps-import-file');
+    await fileInput.setInputFiles({
+      name: 'imported-land.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(IMPORT_FILE_JSON, 'utf8'),
+    });
+    await expect.poll(async () => (await readLibraryList(page)).map((row) => row.name)).toContain(IMPORTED_FILE_NAME);
+    const rows = await readLibraryList(page);
+    const imported = rows.find((row) => row.name === IMPORTED_FILE_NAME)!;
+    expect(imported.id, 'the foreign id never lands — a fresh engine id does (C5, the re-id ruling)').not.toBe(
+      'foreign-map',
+    );
+    expect(imported.id).toMatch(/^map-\d+$/);
+    expect(await readLoadedMapId(page), 'NO auto-load — the user opens the import (D40)').not.toBe(imported.id);
+
+    // The corrupt file: the parse refusal renders words; no row appears.
+    const countBefore = rows.length;
+    await fileInput.setInputFiles({
+      name: 'broken.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from('{ not json', 'utf8'),
+    });
+    await expect(page.getByTestId('tme-maps-error')).toBeVisible();
+    await expect(page.getByTestId('tme-maps-error')).toContainText('not valid JSON');
+    await expect.poll(async () => (await readLibraryList(page)).length).toBe(countBefore);
+
+    expect(bad, 'console clean (housekeeping)').toEqual([]);
+  });
+
+  test('paste importer: a valid lookup table lands under the engine name with a fresh id; opening it renders the MDS nodes', async ({
+    page,
+  }) => {
+    const bad = collectConsole(page);
+    await page.goto('/');
+    await expect.poll(() => readLabels(page), { timeout: 5_000 }).toContain(EMIYA_LABEL);
+
+    await openMaps(page);
+    const textarea = page.getByTestId('tme-maps-paste-input');
+    await expect(
+      page.getByTestId('tme-maps-paste-import'),
+      'C30: the empty-paste Import is disabled (the canCreate pattern)',
+    ).toBeDisabled();
+    await textarea.fill(PASTE_TABLE);
+    await expect(page.getByTestId('tme-maps-paste-import')).toBeEnabled();
+    await activate(page, 'tme-maps-paste-import');
+
+    await expect
+      .poll(async () => (await readLibraryList(page)).map((row) => row.name))
+      .toContain(IMPORTED_TABLE_NAME);
+    const imported = (await readLibraryList(page)).find((row) => row.name === IMPORTED_TABLE_NAME)!;
+    expect(
+      imported.id,
+      'the engine fixed table id never lands — a fresh engine id does (C5, the re-id ruling)',
+    ).not.toBe('imported-lookup-table');
+    expect(imported.id).toMatch(/^map-\d+$/);
+    await expect(textarea, 'cleared on success').toHaveValue('');
+
+    // The user's explicit pick (D40): Open serves the imported map — the
+    // MDS-seeded triangle renders (all three KEY labels).
+    await rowActivate(page, IMPORTED_TABLE_NAME, 'tme-map-open');
+    await expect(page.getByTestId('tme-maps-panel')).toBeHidden(); // the fresh loadMap closed it
+    await expect.poll(() => readLabels(page), { timeout: 5_000 }).toHaveLength(3);
+    expect(await readLabels(page), 'the MDS triangle renders (all three KEY labels)').toEqual(
+      expect.arrayContaining(['Alpha Town', 'Beta Keep', 'Cross Inn']),
+    );
+
+    expect(bad, 'console clean (housekeeping)').toEqual([]);
+  });
+
+  test('paste importer, garbage: the engine field-precise words render and the paste survives for editing', async ({
+    page,
+  }) => {
+    const bad = collectConsole(page);
+    await page.goto('/');
+    await expect.poll(() => readLabels(page), { timeout: 5_000 }).toContain(EMIYA_LABEL);
+
+    await openMaps(page);
+    const textarea = page.getByTestId('tme-maps-paste-input');
+    await textarea.fill('nonsense');
+    await activate(page, 'tme-maps-paste-import');
+
+    const error = page.getByTestId('tme-maps-error');
+    await expect(error).toBeVisible();
+    await expect(error, 'the ENGINE field-precise issue, verbatim (C30/C32)').toContainText(
+      "line 1: unrecognized line 'nonsense'",
+    );
+    await expect(textarea, 'NOT wiped — the author edits their paste').toHaveValue('nonsense');
+    expect((await readLibraryList(page)).map((row) => row.name), 'no row appears').toEqual([SEEDED_NAME]);
 
     expect(bad, 'console clean (housekeeping)').toEqual([]);
   });
