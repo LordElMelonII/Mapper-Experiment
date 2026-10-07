@@ -45,9 +45,11 @@
 // the per-layer background reference. D16 restated: the pin, routing and
 // the snapshot are layer-agnostic — no layer command touches them, and none
 // ever rebuilds the effective graph (D75: dirty, never stale; saveMap owns
-// the rebuild).
-// Commands still unimplemented throw their exact TODO markers — never fake
-// data (Task 0 rule).
+// the rebuild). A-022 (P3 M4, D41/D56/D97) implements forkMap/saveForkToLibrary
+// — the D56 return-type amendment: saveForkToLibrary(): WorldMapData hands the
+// fork as it stands back to the host, detached — over the pure map constructors
+// (model/create.ts, D79) the M4 UI flows call. Every §9 command is now
+// implemented; the Task 0 stub markers are all retired.
 
 import type {
   ChatMapOverlay,
@@ -67,6 +69,7 @@ import { euclid } from './geometry/measure';
 import { buildEffectiveGraph } from './model/effective';
 import type { EffectiveGraph } from './model/effective';
 import { migrateWorldMap } from './model/migrate';
+import { generateMapId } from './model/create';
 import { isPinEligible, modeUniverseOf, resolveModeLabel, validateOverlay, validateWorldMap } from './model/validate';
 import { shortestPath } from './routing/dijkstra';
 import { minutesPriced, priceEdgeIn } from './routing/price';
@@ -80,7 +83,10 @@ export interface MapFacade {
   loadMap(map: WorldMapData, overlay: ChatMapOverlay): void;
   materialize(): void;
   forkMap(): void;
-  saveForkToLibrary(): void;
+  // D56/D97 (the return-type amendment this packet settles): returns the
+  // fork's map as it stands (post-edits), detached from the library plane —
+  // the host persists it under whatever library id/name it chooses (C25/D41).
+  saveForkToLibrary(): WorldMapData;
   validateImport(data: unknown): void;
   migrateData(data: unknown): WorldMapData;
   // Presence
@@ -121,9 +127,6 @@ export interface MapFacade {
   // Viewer state
   setActiveLayer(layerId: string): void;
 }
-
-const todo = (milestone: string, command: string): Error =>
-  new Error(`TODO(${milestone}): ${command} is not implemented — facade stub from Task 0`);
 
 /**
  * D78 + A-015: the SAVED scale's speed table is the RESOLVED mode-speed map —
@@ -230,7 +233,7 @@ export function facadeStateOf(facade: MapFacade): FacadeState {
   return state;
 }
 
-/** Facade factory: M1 + M2 commands implemented, the rest still explicit TODOs. */
+/** Facade factory: every §9 command implemented (A-022 retired the last stubs). */
 export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade {
   const state: FacadeState = {
     map: null,
@@ -563,9 +566,63 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       rebuild();
     },
 
-    // D56/C25: forks have no consumer before Phase 3 M4.
-    forkMap: () => { throw todo('Phase 3 M4', 'forkMap'); },
-    saveForkToLibrary: () => { throw todo('Phase 3 M4', 'saveForkToLibrary'); },
+    // C25/D41/D56/D97 (PKG A-022): forking copies library → a chat-attached
+    // private map and switches the chat's reference to it. The detach IS the
+    // deep copy (C24): `state.map` swaps to a structuredClone under a NEW
+    // engine-assigned map id (C5 — generateMapId; the ORIGINAL's id excluded so
+    // a fork of a fork never re-uses its own chain's ids), and the CALLER'S
+    // overlay is re-pointed IN PLACE. From then on the host's mutations of the
+    // original library object propagate into nothing the facade holds —
+    // "forks never re-sync" is the deep copy, nothing more. `forkedFrom`
+    // carries the immediate parent's id (D41 provenance); forking the current
+    // fork is legal, no special case.
+    //
+    // Load-shaped refresh (the loadMap template — the A-014/A-015 saved-plane
+    // doctrine): the id universes and savedScale are rebuilt FROM THE FORK and
+    // dirty clears — a fork starts clean (the copy IS its saved plane).
+    // `stale` flags (C8) so the next query rebuilds from the fork. No
+    // validator re-run (the documented pick): the source map was validated at
+    // loadMap and re-validated at every saveMap; the fork is its exact clone
+    // plus two engine-set fields (id — engine-generated non-empty;
+    // forkedFrom — the source's validated non-empty id), so a validateWorldMap
+    // call would spend O(map) on zero information. The active layer is viewer
+    // state over UNCHANGED layer ids (element ids are preserved by the copy)
+    // and stays — this refresh is the saved plane + dirty, not a first paint.
+    forkMap: () => {
+      const { map, overlay } = state;
+      if (map === null || overlay === null) throw new Error('[TravelMapper] no map loaded');
+      const fork = structuredClone(map); // C25/C24: the detach — forks never re-sync
+      fork.id = generateMapId(new Set([map.id])); // C5: engine-assigned; the parent chain excluded
+      fork.forkedFrom = map.id; // D41/C25 provenance — the immediate parent
+      state.map = fork; // the reference swap — the library original is no longer held (C25)
+      overlay.mapId = fork.id; // the CALLER'S overlay object, in place (C24 reference doctrine)
+      state.savedNodeIds = new Set(fork.nodes.map((nd) => nd.id));
+      state.savedEdgeIds = new Set(fork.edges.map((e) => e.id));
+      state.savedLayerIds = new Set(fork.layers.map((l) => l.id));
+      state.savedScale = savedScaleOf(fork); // A-015: the pricing seams read the fork's saved scale
+      state.dirty = false; // D75: the copy IS the saved plane — a fork starts clean
+      state.stale = true; // C8: the next materialize()/query rebuilds from the fork
+    },
+
+    // D56/D97: the explicit, non-default save-back (C25/D41). Requires a fork
+    // in progress — the loaded map's `forkedFrom` set — and returns the fork's
+    // map AS IT STANDS (post-edits, `forkedFrom` carried as provenance),
+    // deep-copied: the host persists it under whatever library id/name it
+    // chooses while the chat's fork continues to diverge (the returned
+    // snapshot is the save moment). Changes NO facade state — saving back is
+    // not a load event: no dirty clear, no saved-plane move, no rebuild flag
+    // (the D75 load-shaped list is closed); mutating the return never touches
+    // the facade.
+    saveForkToLibrary: () => {
+      const { map } = state;
+      if (map === null) throw new Error('[TravelMapper] no map loaded');
+      if (map.forkedFrom === undefined) {
+        throw new Error(
+          '[TravelMapper] saveForkToLibrary: the loaded map is not a fork — forkMap is the only path to a saveable fork (C25/D41); a library map saves through saveMap',
+        );
+      }
+      return structuredClone(map); // the save-moment snapshot, detached from the facade
+    },
 
     // Pure check — validates the candidate import, changes no state (C30).
     validateImport: (data) => {

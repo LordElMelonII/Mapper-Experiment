@@ -112,6 +112,18 @@ export interface WorldMapData {
   nodes: MapNodeData[];
   edges: MapEdgeData[];
   modes?: ModeDeclaration[];            // D78 — the mode registry; absent ⇒ exactly today: walk/car/train, scale.speed, nothing else
+  /**
+   * D41/C25 (additive amendment — the D56/D97 return-type ruling's packet):
+   * the immediate parent map's id when this map is a FORK — a chat-attached
+   * private copy that never re-syncs with its parent (C25; the deep copy IS
+   * the detach, C24). Absent on library originals and on duplicates
+   * (duplicateMapData strips it — a library duplicate is not a fork).
+   * Pure provenance: the UI may surface it, the engine only carries it —
+   * routing, the snapshot and the validators never read it. schemaVersion
+   * stays 2 (the D78/D84 additive precedent — unknown-key tolerance already
+   * covered the shape on old data, C30).
+   */
+  forkedFrom?: string;
 }
 
 // Per-chat overlay — persisted in chatMetadata, never in the library

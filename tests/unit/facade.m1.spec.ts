@@ -3,7 +3,8 @@
 // C8 materialization & stale flag · C24 live references · C27 orphan policy
 // (keep, never snap) · C30 reject-before-mutate · C1 leaf-to-leaf pin ·
 // C31 migration refusal · D17/D19 presence round-trip · D38 silent pin ·
-// D56 fork deferral · F01/D69 active-layer viewer state.
+// F01/D69 active-layer viewer state. (The D56 fork stubs became real commands
+// in A-022 — covered by tests/unit/map-lifecycle/fork.spec.ts.)
 import { describe, expect, it } from 'vitest';
 import { createFacade, facadeStateOf } from '../../src/core/facade';
 import { MapValidationError } from '../../src/core/model/validate';
@@ -298,16 +299,6 @@ describe('orphan policy', () => {
 
     expect(() => f.materialize()).not.toThrow();
     expect(facadeStateOf(f).effective!.pin).toEqual({ id: 'ghost-node', valid: false });
-  });
-});
-
-// --- deferred fork commands (D56) ------------------------------------------------------
-
-describe('fork stubs', () => {
-  it('forkMap / saveForkToLibrary stay deferred to Phase 3 M4 (D56)', () => {
-    const f = createFacade();
-    expect(() => f.forkMap()).toThrow('TODO(Phase 3 M4): forkMap');
-    expect(() => f.saveForkToLibrary()).toThrow('TODO(Phase 3 M4): saveForkToLibrary');
   });
 });
 

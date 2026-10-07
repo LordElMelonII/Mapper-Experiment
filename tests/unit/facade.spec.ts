@@ -5,9 +5,9 @@
 // (M3); A-009 implemented renderTemplate + getPromptBlock (M3); A-013
 // implemented the editor commands upsertNode/upsertEdge/removeNode/removeEdge
 // + saveMap and the additive hasUnsavedChanges (D75); A-015 implemented
-// calibrateScale (C13/D44/D45); every
-// remaining stub still throws its exact TODO marker — no fake
-// data. The surface test below stays verbatim from Task 0.
+// calibrateScale (C13/D44/D45); A-022 implemented forkMap/saveForkToLibrary
+// (D41/D56/D97 — no stubs remain). The surface test below stays verbatim from
+// Task 0.
 import { describe, expect, it } from 'vitest';
 import { createFacade } from '../../src/core/facade';
 import type { MapFacade } from '../../src/core/facade';
@@ -29,13 +29,9 @@ const FACADE_COMMANDS: (keyof MapFacade)[] = [
   'setActiveLayer',
 ];
 
-// Commands still on the TODO path after A-002, each with the milestone whose
-// packet must implement it. forkMap / saveForkToLibrary were relabeled from M1
-// to Phase 3 M4 (D56 — forks have no consumer before then).
-const UNIMPLEMENTED: readonly (readonly [keyof MapFacade, string])[] = [
-  ['forkMap', 'Phase 3 M4'],
-  ['saveForkToLibrary', 'Phase 3 M4'],
-];
+// The two fork commands A-022 implemented — gone from the TODO list above
+// (D56/D97: saveForkToLibrary's WorldMapData return is the settled amendment).
+const P3_M4_FORK_COMMANDS = ['forkMap', 'saveForkToLibrary'] as const;
 
 // The seven commands A-002 implemented — gone from the TODO list above.
 const M1_COMMANDS = [
@@ -80,11 +76,11 @@ describe('facade stub (Task 0)', () => {
     expect(keys).toEqual([...FACADE_COMMANDS].sort());
   });
 
-  it('every still-unimplemented command throws its exact TODO marker — no fake data', () => {
+  it('the fork commands no longer throw a TODO (A-022, D41/D56/D97)', () => {
     const facade = createFacade();
-    for (const [command, milestone] of UNIMPLEMENTED) {
+    for (const command of P3_M4_FORK_COMMANDS) {
       const fn = facade[command] as () => unknown;
-      expect(() => fn(), command).toThrow(`TODO(${milestone})`);
+      expect(() => fn(), command).not.toThrow(/^TODO\(/);
     }
   });
 
