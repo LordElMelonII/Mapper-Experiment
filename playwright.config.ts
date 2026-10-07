@@ -12,6 +12,12 @@ export default defineConfig({
   testMatch: '**/*.e2e-spec.ts', // keeps vitest's `*.spec.ts` glob and this runner disjoint
   fullyParallel: false,
   workers: 1,
+  // D96 (owner, R27): one retry per project, automating the record-and-rerun
+  // discipline for the documented dropped-tap flake class (synthetic touch —
+  // waypoints F26 cell, route-panel :200, editor-panel-regime :420-class; fail
+  // ~40% under full-suite load, pass isolated). A failure that survives the
+  // retry and reproduces isolated repeatedly remains a finding (AGENTS.md §6).
+  retries: 1,
   reporter: [['list']],
   use: {
     baseURL: 'http://localhost:4200',
