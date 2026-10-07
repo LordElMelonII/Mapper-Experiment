@@ -10,6 +10,11 @@
 - Fuyuki Bridge (E): 25 (walk) — **BLOCKED**: Bridge closed by local authorities
 - Misaki Town: 300 (train)
 
+**Off limits**:
+
+- Ghost House — Warded
+- Old Ferry Landing — Flooded
+
 **Known destinations** (min):
 
 - Fuyuki Station via Fuyuki Station: 50 (walk)

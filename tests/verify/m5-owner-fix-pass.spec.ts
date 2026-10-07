@@ -16,9 +16,10 @@
 // were merged as documented skips (the M5 gate's merge rule: never red). Three
 // were FIXED and FLIPPED by A-020 (the C34 through-case reason; the
 // removeNode/removeEdge saved-plane shrink) — they now pin the fixed behavior.
-// ONE documented skip REMAINS (it.skip, inline): the D94/C2-spirit prompt-
-// channel probe — exposing blockedNodes needs a C22 contract amendment, an
-// explicit owner call per the probe's own note.
+// The LAST documented skip (the D94/C2-spirit prompt-channel probe) was
+// settled by the owner as D95 and FLIPPED by A-021: blockedNodes joined the
+// C22 contract and the shipped templates render the listing — the cell below
+// is now an active green pin. No skips remain in this suite.
 import { describe, expect, it } from 'vitest';
 import Handlebars from 'handlebars';
 import { createFacade, facadeStateOf, type MapFacade } from '../../src/core/facade';
@@ -545,17 +546,19 @@ describe('D90 — the arms are saved map data, prompt-blind', () => {
     expect(prompt).toContain('Bridge closed by local authorities');
   });
 
-  // FINDING-PROBE SKIP (M5 gate, Agent D) — DO NOT merge green, DO NOT delete.
-  // D94: nodeBlocked "mirrors the arc blocks (D20 spirit: excluded from
-  // routing, visible to the prompt)"; C2's rule exists so "the LLM knows why a
-  // route is unavailable". The snapshot carries blockedNodes (C34's literal
-  // sentence — met), but snapshotContext's C22 variable contract (the ONE
-  // prompt channel) does NOT expose it — no template, default or user, can
-  // render a node-block reason. The prompt never learns why a node is barred.
-  // Whether this needs a C22/D94 contract amendment is an owner call; until
-  // then the D20-spirit half of the mirror is inoperative. Enabling this cell
-  // turns the suite red until the context exposes the listing.
-  it.skip('FINDING (D94/C2-spirit): a node-block reason can reach a prompt through the template contract', () => {
+  // FINDING-PROBE (M5 gate, Agent D) — FLIPPED to an active pin by A-021/D95
+  // (the M5 merge rule kept it it.skip — "DO NOT merge green" — until the
+  // owner settled it; it was never deleted).
+  // History — the probe's original reasoning: D94 said nodeBlocked "mirrors
+  // the arc blocks (D20 spirit: excluded from routing, visible to the
+  // prompt)"; C2's rule exists so "the LLM knows why a route is unavailable".
+  // The snapshot carried blockedNodes (C34's literal sentence — met), but
+  // snapshotContext's C22 variable contract (the ONE prompt channel) did not
+  // expose it — no template, default or user, could render a node-block
+  // reason; the prompt never learned why a node is barred. The owner settled
+  // that open call as D95 (blockedNodes joins the C22 contract; the shipped
+  // templates render the listing), so the skip flips to this green cell.
+  it('FINDING (D94/C2-spirit), settled as D95: a node-block reason reaches a prompt through the template contract', () => {
     const { f } = load(fuyuki(), { compile });
     f.setCurrentLocation('emiya-residence');
     f.setNodeBlocked('fuyuki-bridge', 'Flooded');

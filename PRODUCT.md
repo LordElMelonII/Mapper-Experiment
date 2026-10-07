@@ -92,7 +92,7 @@ F-numbers are stable feature IDs. The roadmap and test plan cite them.
 ### G. LLM context
 
 - **F33 Template-driven block** — the entire prompt block is a user-editable template; the product computes values, the user owns the words (D24).
-- **F34 Default template** — an XML-style default matching the classic lookup-table look; markdown, brackets, or bare text are equally valid user templates.
+- **F34 Default template** — an XML-style default matching the classic lookup-table look, listing nearby routes (blocked paths with their reasons) and blocked places with their reasons (D95); markdown, brackets, or bare text are equally valid user templates.
 - **F35 Injection channels** — automatic on every generation, a macro placed anywhere, or on demand via command (D23).
 - **F36 Placement control** — before chat history, or in-chat at a chosen depth and role (D23).
 - **F37 Routes optional** — users may strip route listings from their template and narrate travel themselves (D36).
@@ -128,7 +128,7 @@ F-numbers are stable feature IDs. The roadmap and test plan cite them.
 
 ### L. Owner fix pass (R25)
 
-- **F55 Node & arc quick blocking** — a one-tap "Block access" in the node property panel blocks the node itself (not its arcs), applying the default reason "Closed" with the reason input adjacent for immediate refinement; the arc panel gains the same one-tap through the existing arc-block flow. A blocked node is impassable as a route destination and as an intermediate stop but may still be a route's origin (C34); it stays drawn with a block marker and surfaces in the route panel's blocked listing and the snapshot, reason included (D94).
+- **F55 Node & arc quick blocking** — a one-tap "Block access" in the node property panel blocks the node itself (not its arcs), applying the default reason "Closed" with the reason input adjacent for immediate refinement; the arc panel gains the same one-tap through the existing arc-block flow. A blocked node is impassable as a route destination and as an intermediate stop but may still be a route's origin (C34); it stays drawn with a block marker and surfaces in the route panel's blocked listing, the snapshot, and the prompt block's blocked-places listing, reason included (D94/D95).
 - **F56 Background placement, calibration & dim** — the background pans and zooms 1:1 with the graph (D92); a per-layer calibrate mode (drag to move, scale control, "fit to graph" reset) is the only way placement changes, and it never touches node coordinates, distances, or costs; a per-layer dim slider on the rail dims the active layer's background toward the stage backdrop and follows the layer switch; placement and dim are saved with the map (D90/D93).
 
 ---

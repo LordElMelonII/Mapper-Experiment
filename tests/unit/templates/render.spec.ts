@@ -23,7 +23,9 @@ const compile: TemplateCompiler = (tpl) => Handlebars.compile(tpl);
 const render = (tpl: string, snap: MapSnapshot): string => compile(tpl)(snapshotContext(snap));
 
 // --- FX4's fixed inline snapshot: a hand-built snapshot exercising EVERY C22
-// variable (blockedReason, truncated, corrective, a cross-layer route with no
+// variable (blockedReason, truncated, corrective, blockedNodes — the D95
+// blocked-places listing, deliberately NOT the blocked route's label so the
+// golden shows both channels independently — and a cross-layer route with no
 // direction). Not FX1 — the goldens pin the template words, not the fixture map.
 const FULL: MapSnapshot = {
   location: 'Emiya Residence',
@@ -40,6 +42,7 @@ const FULL: MapSnapshot = {
     { label: 'Misaki Town', via: 'Fuyuki Station', mode: 'walk', cost: 350 },
   ],
   destinationsTruncated: true,
+  blockedNodes: [{ label: 'Ghost House', reason: 'Warded' }, { label: 'Old Ferry Landing', reason: 'Flooded' }], // D95
   unit: 'min',
   corrective: "Unknown place 'stasion' — did you mean Fuyuki Station?",
 };
@@ -114,6 +117,18 @@ describe('FX4 goldens — default XML + markdown sample, byte-exact (FX4, D24, F
     expect(out).toBe(MARKDOWN_NULL_GOLDEN);
     expect(out).not.toContain('undefined');
   });
+
+  it('a snapshot without blockedNodes renders no blocked section in either template — no <blocked_places>/"Off limits" token, no stray blank line where the section would sit (C22/D95)', () => {
+    const without = { ...FULL, blockedNodes: undefined };
+    const xml = render(DEFAULT_TEMPLATE, without);
+    const md = render(MARKDOWN_SAMPLE, without);
+    expect(xml).not.toContain('blocked_places');
+    expect(md).not.toContain('Off limits');
+    // the whitespace discipline: the sections sit flush where the listing
+    // would sit — one newline in XML, the destinations blank line in markdown
+    expect(xml).toContain('</routes>\n  <destinations');
+    expect(md).toContain('(train)\n\n**Known destinations**');
+  });
 });
 
 // --- C22: every variable reaches the output through the npm-engine compile -----
@@ -163,9 +178,9 @@ describe('C22 variable contract reaches the rendered output (C22, C2, C10, D63)'
 // --- R1/C22: the data handed to the engine --------------------------------------
 
 describe('snapshotContext — the fixed C22 contract as data (C22, R1, D63)', () => {
-  it('exactly the nine C22 variables, no more, no less', () => {
+  it('exactly the ten C22 variables (D95 joined blockedNodes), no more, no less', () => {
     expect(Object.keys(snapshotContext(FULL)).sort()).toEqual(
-      ['corrective', 'destinations', 'layer', 'location', 'region', 'routes', 'statusNote', 'truncated', 'unit'],
+      ['blockedNodes', 'corrective', 'destinations', 'layer', 'location', 'region', 'routes', 'statusNote', 'truncated', 'unit'],
     );
   });
 

@@ -13,6 +13,12 @@ import type { MapSnapshot } from '../api';
 // discipline). Formatting lives in the template words; values pass through
 // verbatim (C22, R1).
 //
+// D95: the contract's blockedNodes[] (each blocked node's authored label +
+// reason; the snapshot omits it entirely when nothing is blocked) renders a
+// blocked-places section in both templates — blocked PLACES list the way
+// blocked PATHS already list (the route lines' blocked= reason). C23-safe:
+// authored labels + reasons only, never ids.
+//
 // Whitespace: every optional section keeps its separator INSIDE its {{#if}}
 // so an absent field leaves no stray blank line, and every block tag is kept
 // mid-line (or eaten as a standalone line) — the FX4 goldens pin the exact
@@ -32,6 +38,9 @@ export const DEFAULT_TEMPLATE = `{{#if location}}<travel_context>
 {{/if}}{{#if routes}}  <routes unit="{{{unit}}}">
 {{#each routes}}    <route label="{{{label}}}"{{#if direction}} direction="{{{direction}}}"{{/if}} cost="{{{cost}}}" mode="{{{mode}}}"{{#if blockedReason}} blocked="{{{blockedReason}}}"{{/if}}/>
 {{/each}}  </routes>
+{{/if}}{{#if blockedNodes}}  <blocked_places>
+{{#each blockedNodes}}    <place label="{{{label}}}" reason="{{{reason}}}"/>
+{{/each}}  </blocked_places>
 {{/if}}{{#if destinations}}  <destinations unit="{{{unit}}}"{{#if truncated}} truncated="true"{{/if}}>
 {{#each destinations}}    <destination label="{{{label}}}" via="{{{via}}}" cost="{{{cost}}}" mode="{{{mode}}}"/>
 {{/each}}  </destinations>
@@ -55,6 +64,11 @@ export const MARKDOWN_SAMPLE = `{{#if location}}**Travel status**
 
 {{#each routes}}- {{{label}}}{{#if direction}} ({{{direction}}}){{/if}}: {{{cost}}} ({{{mode}}}){{#if blockedReason}} — **BLOCKED**: {{{blockedReason}}}{{/if}}
 {{/each}}
+{{/if}}{{#if blockedNodes}}
+**Off limits**:
+
+{{#each blockedNodes}}- {{{label}}} — {{{reason}}}
+{{/each}}
 {{/if}}{{#if destinations}}
 **Known destinations** ({{{unit}}}):
 
@@ -76,10 +90,12 @@ Note: {{{corrective}}}{{/if}}{{/if}}`;
  * C22: map a MapSnapshot to the template engine's fixed variable contract —
  * one home for the contract (the facade imports this; never a second copy).
  * Field-by-field explicit (the D63 rename `destinationsTruncated` ->
- * `truncated` is the point of the mapping), verbatim otherwise: route and
- * destination entries pass through exactly as A-008 built them, numbers stay
- * numbers (R1 — string formatting belongs to the template words), and C23
- * exclusions ride in from the snapshot untouched (the renderer adds nothing).
+ * `truncated` is the point of the mapping), verbatim otherwise: route,
+ * destination and the D95 blockedNodes entries pass through exactly as the
+ * snapshot built them (blockedNodes absent on the snapshot stays absent —
+ * the renderer adds nothing), numbers stay numbers (R1 — string formatting
+ * belongs to the template words), and C23 exclusions ride in from the
+ * snapshot untouched.
  */
 export function snapshotContext(snapshot: MapSnapshot): Record<string, unknown> {
   return {
@@ -88,6 +104,7 @@ export function snapshotContext(snapshot: MapSnapshot): Record<string, unknown> 
     layer: snapshot.layer,
     statusNote: snapshot.statusNote,
     routes: snapshot.routes,
+    blockedNodes: snapshot.blockedNodes, // D95: the blocked-places listing, verbatim (omitted stays omitted)
     destinations: snapshot.destinations,
     truncated: snapshot.destinationsTruncated,
     unit: snapshot.unit,

@@ -101,10 +101,10 @@ describe('VERIFY M3 — the C22 contract serves arbitrary user words (D24, F33, 
 // FX4: "Default XML template plus one markdown variant, golden-file tested."
 // A golden that silently stops exercising a contract variable would let the
 // templates drop that variable without a golden failure. This audit pins the
-// CONTRACT COVERAGE of each golden file itself (C22's nine variables + the
-// per-entry fields).
-describe('VERIFY M3 — FX4 goldens exercise the full C22 contract (FX4, C22, D63)', () => {
-  it('the full-snapshot XML golden carries all nine variables and every entry field', () => {
+// CONTRACT COVERAGE of each golden file itself (C22's ten variables — D95
+// added blockedNodes[] — plus the per-entry fields).
+describe('VERIFY M3 — FX4 goldens exercise the full C22 contract (FX4, C22, D63, D95)', () => {
+  it('the full-snapshot XML golden carries all ten variables and every entry field', () => {
     expect(DEFAULT_XML_GOLDEN).toContain('<location>Emiya Residence</location>'); // location
     expect(DEFAULT_XML_GOLDEN).toContain('<region>Miyama</region>'); // region
     expect(DEFAULT_XML_GOLDEN).toContain('<layer>Fuyuki City</layer>'); // layer
@@ -114,19 +114,23 @@ describe('VERIFY M3 — FX4 goldens exercise the full C22 contract (FX4, C22, D6
     expect(DEFAULT_XML_GOLDEN).toContain('cost="12"'); // routes[].cost
     expect(DEFAULT_XML_GOLDEN).toContain('mode="walk"'); // routes[].mode
     expect(DEFAULT_XML_GOLDEN).toContain('blocked="Bridge closed by local authorities"'); // routes[].blockedReason (C2)
+    expect(DEFAULT_XML_GOLDEN).toContain('<blocked_places>'); // blockedNodes[] (D95)
+    expect(DEFAULT_XML_GOLDEN).toContain('<place label="Ghost House" reason="Warded"/>'); // blockedNodes[].label + reason
     expect(DEFAULT_XML_GOLDEN).toContain('via="Fuyuki Station"'); // destinations[].via
     expect(DEFAULT_XML_GOLDEN).toContain('truncated="true"'); // truncated (D63)
     expect(DEFAULT_XML_GOLDEN).toContain('<corrective>'); // corrective (D26)
     expect(DEFAULT_XML_GOLDEN).not.toContain('undefined');
   });
 
-  it('the full-snapshot markdown golden carries the same contract through different words (D24)', () => {
+  it('the full-snapshot markdown golden carries the same contract through different words (D24, D95)', () => {
     expect(MARKDOWN_GOLDEN).toContain('**Location:** Emiya Residence');
     expect(MARKDOWN_GOLDEN).toContain('(Miyama district)');
     expect(MARKDOWN_GOLDEN).toContain('**Map layer:** Fuyuki City');
     expect(MARKDOWN_GOLDEN).toContain('**Status:** on the road to Big Bridge, ~2 km out');
     expect(MARKDOWN_GOLDEN).toContain('**Nearby routes** (min)');
     expect(MARKDOWN_GOLDEN).toContain('**BLOCKED**: Bridge closed by local authorities');
+    expect(MARKDOWN_GOLDEN).toContain('**Off limits**:'); // blockedNodes[] (D95)
+    expect(MARKDOWN_GOLDEN).toContain('- Ghost House — Warded'); // blockedNodes[].label + reason
     expect(MARKDOWN_GOLDEN).toContain('**Known destinations** (min)');
     expect(MARKDOWN_GOLDEN).toContain('via Fuyuki Station: 350');
     expect(MARKDOWN_GOLDEN).toContain('_(destination list truncated — entries omitted)_');

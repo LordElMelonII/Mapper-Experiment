@@ -8,6 +8,10 @@
     <route label="Fuyuki Bridge" direction="E" cost="25" mode="walk" blocked="Bridge closed by local authorities"/>
     <route label="Misaki Town" cost="300" mode="train"/>
   </routes>
+  <blocked_places>
+    <place label="Ghost House" reason="Warded"/>
+    <place label="Old Ferry Landing" reason="Flooded"/>
+  </blocked_places>
   <destinations unit="min" truncated="true">
     <destination label="Fuyuki Station" via="Fuyuki Station" cost="50" mode="walk"/>
     <destination label="Misaki Town" via="Fuyuki Station" cost="350" mode="walk"/>
