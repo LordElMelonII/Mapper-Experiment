@@ -48,7 +48,10 @@
 // the rebuild). A-022 (P3 M4, D41/D56/D97) implements forkMap/saveForkToLibrary
 // — the D56 return-type amendment: saveForkToLibrary(): WorldMapData hands the
 // fork as it stands back to the host, detached — over the pure map constructors
-// (model/create.ts, D79) the M4 UI flows call. Every §9 command is now
+// (model/create.ts, D79) the M4 UI flows call. A-023 (the M4 gate's two fork
+// findings, D98/D99) amends forkMap — the OPTIONAL id-exclusion channel (the
+// exact C5 contract createWorldMap/duplicateMapData carry) and the dirty-session
+// refusal (C30 reject-before-mutate, riding D75's flag). Every §9 command is now
 // implemented; the Task 0 stub markers are all retired.
 
 import type {
@@ -82,7 +85,15 @@ export interface MapFacade {
   // Map lifecycle
   loadMap(map: WorldMapData, overlay: ChatMapOverlay): void;
   materialize(): void;
-  forkMap(): void;
+  // D98 (the M4 gate's mixed-signature §9 amendment, registered at review): the
+  // OPTIONAL id-exclusion channel — the exact C5 contract createWorldMap /
+  // duplicateMapData already carry (model/create.ts). The CALLER brings its
+  // stored-id knowledge (the library's id set — ids persisted by EARLIER
+  // processes, whose domain the host store keeps beyond this one); the ENGINE
+  // still generates and never a proposed id (C5). Omitted (every B-137-era
+  // call site) ⇒ today's behavior: bare C5 generation with the parent chain
+  // excluded.
+  forkMap(exclude?: ReadonlySet<string>): void;
   // D56/D97 (the return-type amendment this packet settles): returns the
   // fork's map as it stands (post-edits), detached from the library plane —
   // the host persists it under whatever library id/name it chooses (C25/D41).
@@ -566,16 +577,44 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       rebuild();
     },
 
-    // C25/D41/D56/D97 (PKG A-022): forking copies library → a chat-attached
-    // private map and switches the chat's reference to it. The detach IS the
-    // deep copy (C24): `state.map` swaps to a structuredClone under a NEW
-    // engine-assigned map id (C5 — generateMapId; the ORIGINAL's id excluded so
-    // a fork of a fork never re-uses its own chain's ids), and the CALLER'S
-    // overlay is re-pointed IN PLACE. From then on the host's mutations of the
-    // original library object propagate into nothing the facade holds —
-    // "forks never re-sync" is the deep copy, nothing more. `forkedFrom`
-    // carries the immediate parent's id (D41 provenance); forking the current
-    // fork is legal, no special case.
+    // C25/D41/D56/D97 (PKG A-022) · D99/D98 (the M4 gate's two fork findings,
+    // reproduced by the verify suite's m4-library-forks-adversarial pins):
+    // forking copies library → a chat-attached private map and switches the
+    // chat's reference to it. The detach IS the deep copy (C24): `state.map`
+    // swaps to a structuredClone under a NEW engine-assigned map id (C5 —
+    // generateMapId), and the CALLER'S overlay is re-pointed IN PLACE. From
+    // then on the host's mutations of the original library object propagate
+    // into nothing the facade holds — "forks never re-sync" is the deep copy,
+    // nothing more. `forkedFrom` carries the immediate parent's id (D41
+    // provenance); forking the current fork is legal, no special case.
+    //
+    // D99 — the dirty refusal, FIRST (C30 reject-before-mutate): a session
+    // with unsaved editor changes refuses before any state moves. C25's
+    // sentence is "Forking copies library"; C29/D75/F45 make an unsaved draft
+    // non-library truth, and the pre-ruling behavior — cloning the LIVE map
+    // and installing the clone as the fork's SAVED plane — was an implicit
+    // save: silently promoting exactly the state C13's explicit-action
+    // discipline and D10's user authority forbid (the finding: an unsaved
+    // calibration became routing/snapshot pricing the instant the fork
+    // landed). The check rides the EXISTING D75 `dirty` flag — cleared only by
+    // loadMap/saveMap — nothing new is tracked (D75's load-shaped list stays
+    // closed; the D97 statelessness is unaffected). Consequence: the draft
+    // dies with the refusal — the user is TOLD (the message names the state
+    // and both honest recovery paths), never guessed around; the UI layer
+    // wraps if it wants save-then-fork affordances. The established flows are
+    // untouched: loadMap clears dirty (a forkFromLibrary fresh load forks
+    // clean), saveMap clears dirty (a saved session forks clean).
+    //
+    // D98 — the id-exclusion channel: `exclude` is the CALLER's stored-id
+    // knowledge (the library's id set — ids persisted by EARLIER processes,
+    // whose counter domain a fresh process would otherwise re-walk straight
+    // into a D97 save-back collision), the exact C5 contract createWorldMap /
+    // duplicateMapData carry (model/create.ts): the ENGINE still generates and
+    // never a proposed id, skipping excluded candidates while the counter
+    // still advances (excluded candidates included). The parent's own id
+    // joins the set unconditionally — a fork of a fork never re-uses its
+    // chain's ids, with or without a caller set. A set COPY is made (the
+    // caller's object is never mutated host-side).
     //
     // Load-shaped refresh (the loadMap template — the A-014/A-015 saved-plane
     // doctrine): the id universes and savedScale are rebuilt FROM THE FORK and
@@ -588,11 +627,31 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
     // call would spend O(map) on zero information. The active layer is viewer
     // state over UNCHANGED layer ids (element ids are preserved by the copy)
     // and stays — this refresh is the saved plane + dirty, not a first paint.
-    forkMap: () => {
+    forkMap: (exclude) => {
       const { map, overlay } = state;
       if (map === null || overlay === null) throw new Error('[TravelMapper] no map loaded');
+      // D99, FIRST (C30 reject-before-mutate): a dirty session refuses before
+      // any state moves — the fork never gets to promote the draft.
+      if (state.dirty) {
+        throw new Error(
+          '[TravelMapper] forkMap: the session has unsaved changes — save it or discard it before forking',
+        );
+      }
+      // C30/F50 (the setStatusNote/reorderLayers runtime-lie precedent): a
+      // runtime caller can bypass the typed optional — a non-Set `exclude`
+      // would surface as an opaque TypeError from generateMapId instead of a
+      // field-precise refusal. (createWorldMap/duplicateMapData stay the C5
+      // door's guard-free pure shapes.)
+      if (exclude !== undefined && typeof (exclude as { has?: unknown }).has !== 'function') {
+        throw new Error(`[TravelMapper] forkMap: exclude must be a ReadonlySet of map ids (got '${String(exclude)}')`);
+      }
       const fork = structuredClone(map); // C25/C24: the detach — forks never re-sync
-      fork.id = generateMapId(new Set([map.id])); // C5: engine-assigned; the parent chain excluded
+      // D98/C5: engine-assigned — skip the CALLER's excluded candidates (its
+      // library's stored ids) AND the parent chain, the counter still
+      // advancing (the constructors' exact discipline).
+      const skip = new Set(exclude ?? []);
+      skip.add(map.id);
+      fork.id = generateMapId(skip);
       fork.forkedFrom = map.id; // D41/C25 provenance — the immediate parent
       state.map = fork; // the reference swap — the library original is no longer held (C25)
       overlay.mapId = fork.id; // the CALLER'S overlay object, in place (C24 reference doctrine)

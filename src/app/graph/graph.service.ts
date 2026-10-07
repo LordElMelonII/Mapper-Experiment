@@ -2041,12 +2041,29 @@ export class GraphService implements OnDestroy {
    * service never re-pointed: the next explicit Open/New/fork re-establishes
    * references; the words state what happened.
    *
+   * D98 (the M4 gate's finding 1, the A-023 repair): the id-exclusion WIRING
+   * lives here — before the fork, this wrapper asks the store for its id set
+   * and passes it to `facade.forkMap(exclude)`, so a fork in a FRESH process
+   * mints AROUND ids a prior session persisted (the D97 save-back would
+   * otherwise upsert by a re-walked 'map-1' into an unrelated stored row).
+   * A store refusal to serve the list degrades to bare C5 generation and is
+   * SAFE from the finding: a store that cannot `list()` also cannot `save()`,
+   * so the destructive collision save-back cannot land through it (C32 — one
+   * behavior refuse cannot be half-broken).
+   *
    * @returns true on success; false with `forkError` words on any refusal.
    */
-  forkFromLibrary(map: WorldMapData): boolean {
+  async forkFromLibrary(map: WorldMapData): Promise<boolean> {
     const facade = this.facade;
     if (facade === null) return false; // no core — the openMapFromLibrary silent degrade
     this.forkError.set(null); // a retried fork never shows the last attempt's words
+    let exclude: ReadonlySet<string>;
+    try {
+      const rows = await this.library.list(); // the store's order contract is irrelevant here — ids only (C5)
+      exclude = new Set(rows.map((row) => row.id)); // D98: the caller's stored-id knowledge (the engine still generates)
+    } catch {
+      exclude = new Set(); // the degrade documented above — never a proposed id
+    }
     const overlay: ChatMapOverlay = {
       mapId: map.id,
       currentLocationId: null, // D40: the fresh session starts with NO pin — the user sets it
@@ -2058,7 +2075,7 @@ export class GraphService implements OnDestroy {
     };
     try {
       facade.loadMap(map, overlay); // the parent load (reject-before-mutate) — the fork copies the freshly loaded library state
-      facade.forkMap(); // the C25 switch: the engine's private clone + THIS overlay object re-pointed in place
+      facade.forkMap(exclude); // the D98 channel + the C25 switch: the engine's private clone (minted AROUND the store's ids) + THIS overlay object re-pointed in place
       const fork = facade.saveForkToLibrary(); // D97: the fork as it stands, detached — the §9 read-back
       facade.loadMap(fork, overlay); // §9 loadMap = THE reference command (C24): the facade now holds THE CALLER'S object
       this.loadMap(fork, overlay, facade); // R4: the service holds the same references — the full viewer reset

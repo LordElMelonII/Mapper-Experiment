@@ -404,7 +404,7 @@ export class MapsPanelComponent {
     }
     this.error.set(null);
     this.savedBackNote.set(null); // the next fork-family action clears the last success words
-    this.graph.forkFromLibrary(map); // the picker re-opens after the fork's inner load — words on refusal
+    await this.graph.forkFromLibrary(map); // the picker re-opens after the fork's inner load — words on refusal
   }
 
   /**

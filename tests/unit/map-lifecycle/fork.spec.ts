@@ -5,11 +5,20 @@
 // the explicit save-back · D56/D97 the WorldMapData return, detached, no
 // facade state moves · D75 a fork starts clean (the copy IS the saved plane) ·
 // A-014 saved-plane universes rebuilt from the fork (F50 gate family).
+// PKG A-023 (the M4 gate's two fork findings): D98 the OPTIONAL exclusion
+// channel — the exact create.ts C5 contract's shape (the CALLER passes its
+// library's stored-id set, the engine still generates and skips excluded
+// candidates while the counter still advances; the parent chain is excluded
+// unconditionally) — and D99 the dirty-session refusal ("the session has
+// unsaved changes — save it or discard it before forking"; C30
+// reject-before-mutate proves the flag rides D75's existing dirty state, and a
+// refused fork promotes NOTHING).
 // FX1 is thawed per C24 — every suite loads a fresh JSON clone so tests never
 // interact.
 import { describe, expect, it } from 'vitest';
 import { createFacade, facadeStateOf } from '../../../src/core/facade';
 import { validateOverlay } from '../../../src/core/model/validate';
+import { generateMapId } from '../../../src/core/model/create';
 import { fuyukiMap } from '../../../data/worlds/fuyuki';
 import type { ChatMapOverlay, WorldMapData } from '../../../src/core/api';
 
@@ -230,5 +239,102 @@ describe('binds survive the fork', () => {
     const fork = facadeStateOf(f).map!;
     expect(overlay.mapId).toBe(fork.id);
     expect(() => validateOverlay(overlay, fork)).not.toThrow();
+  });
+});
+
+// --- forkMap — the M4 gate's fork findings (PKG A-023): D98 exclusion · D99 dirty refusal -----
+
+describe('forkMap — D98 exclusion channel · D99 dirty refusal', () => {
+  it('forkMap honors the exclude set — the mint skips the excluded candidate, the counter still advances (D98, C5)', () => {
+    const { f, map } = loadFuyuki();
+    // Locate the module counter without assuming an absolute position: spend one
+    // candidate via create.ts's own generator, then the fork's natural mint is
+    // probe+1 — exclude THAT and the fork must mint probe+2 (skip + advance, the
+    // constructors' exact C5 discipline; the counter consumes excluded candidates).
+    const probe = generateMapId();
+    const n = Number(probe.slice('map-'.length));
+    const excludedCandidate = `map-${n + 1}`;
+    f.forkMap(new Set([excludedCandidate, map.id])); // the caller passes its library's id set
+    const fork = facadeStateOf(f).map!;
+    expect(fork.id).toBe(`map-${n + 2}`); // the excluded candidate SKIPPED — minted around it
+    expect(fork.id).not.toBe(map.id);     // the parent's id is never re-issued (C5)
+    expect(fork.forkedFrom).toBe(map.id); // D41 provenance — unchanged by the channel
+  });
+
+  it('fork-of-fork with a caller set: the parent chain stays excluded and the caller channel keeps gating the mint (D98, C5, C25/D41)', () => {
+    const { f, map } = loadFuyuki();
+    const probe = generateMapId();
+    const n = Number(probe.slice('map-'.length));
+    const callerSet = new Set([`map-${n + 1}`, map.id]); // the caller's stored-id knowledge
+    f.forkMap(callerSet);
+    const fork1 = facadeStateOf(f).map!;
+    expect(fork1.id).toBe(`map-${n + 2}`);  // the caller-set candidate skipped
+    expect(fork1.forkedFrom).toBe(map.id);  // the immediate parent
+
+    f.forkMap(callerSet); // the SAME caller set — stale, and NOT containing fork1's id
+    const fork2 = facadeStateOf(f).map!;
+    expect(fork2.id).toBe(`map-${n + 3}`);                     // a fresh mint beyond both
+    expect(fork2.id !== fork1.id && fork2.id !== map.id).toBe(true); // the chain's ids are never re-used — with or without a caller set (C5)
+    expect(fork2.forkedFrom).toBe(fork1.id);                   // the immediate parent, no special case (C25/D41)
+  });
+
+  it('a dirty session refuses field-precisely and NOTHING moves — reject-before-mutate (D99, C30, C25/D75/F45)', () => {
+    const { f, map, overlay } = loadFuyuki();
+    f.upsertNode({ id: '', label: 'Draft', kind: 'location', layer: 'layer-fuyuki', position: { x: 9, y: 9 } }); // the unsaved draft
+    expect(f.hasUnsavedChanges()).toBe(true);
+    const mapRef = facadeStateOf(f).map;
+    const savedNodes = facadeStateOf(f).savedNodeIds;
+    const savedEdges = facadeStateOf(f).savedEdgeIds;
+    const savedLayers = facadeStateOf(f).savedLayerIds;
+    const savedScale = facadeStateOf(f).savedScale;
+    const mapIdBefore = overlay.mapId;
+    const snapshotBefore = f.getSnapshot();
+
+    // the refusal, field-precise — the state AND both honest recovery paths named (D99)
+    expect(() => f.forkMap()).toThrow(/the session has unsaved changes/);
+    expect(() => f.forkMap()).toThrow(/save it or discard it before forking/);
+    expect(() => f.forkMap(new Set(['map-999']))).toThrow(/unsaved changes/); // the exclusion form refuses identically
+
+    // C30 NOTHING moves — reject-before-mutate proven on every plane:
+    expect(facadeStateOf(f).map).toBe(mapRef);      // no fork installed — the same reference (C25)
+    expect(f.hasUnsavedChanges()).toBe(true);       // the D75 flag untouched
+    expect(overlay.mapId).toBe(mapIdBefore);        // the chat still references the parent (C24)
+    expect(facadeStateOf(f).savedNodeIds).toBe(savedNodes); // the Set identity itself — nothing rebuilt (A-014)
+    expect(facadeStateOf(f).savedEdgeIds).toBe(savedEdges);
+    expect(facadeStateOf(f).savedLayerIds).toBe(savedLayers);
+    expect(facadeStateOf(f).savedScale).toBe(savedScale);   // the A-015 pricing seam untouched (F45)
+    expect(f.getSnapshot()).toEqual(snapshotBefore);        // projections byte-equal — never 5→10 'units' drift
+    // the draft promotes NOTHING: it is still the live map's unsaved state — save or discard stays the user's call (D10)
+    expect(facadeStateOf(f).map!.nodes.some((nd) => nd.label === 'Draft')).toBe(true);
+    expect(facadeStateOf(f).map!.forkedFrom).toBeUndefined(); // the parent was never re-pointed at a fork
+    void map;
+  });
+
+  it('saveMap clears dirty — the saved-then-fork path works, and the saved draft rides the fork as library truth (D99, D75)', () => {
+    const { f, map, overlay } = loadFuyuki();
+    f.upsertNode({ id: '', label: 'Saved Draft', kind: 'location', layer: 'layer-fuyuki', position: { x: 9, y: 9 } });
+    expect(f.hasUnsavedChanges()).toBe(true);
+    f.saveMap(); // the ONE explicit path that takes the draft live (C13/C29/D75)
+    expect(f.hasUnsavedChanges()).toBe(false); // dirty cleared exactly by saveMap
+    f.forkMap(new Set(['map-999'])); // the exclusion channel rides fine post-save (D98)
+    const fork = facadeStateOf(f).map!;
+    expect(fork.id).not.toBe('map-999'); // the engine still generates — never a proposed id (C5)
+    expect(fork.forkedFrom).toBe(map.id);
+    expect(overlay.mapId).toBe(fork.id); // the C25 overlay re-point happened
+    expect(f.hasUnsavedChanges()).toBe(false); // the copy IS the fork's saved plane (D75)
+    expect(fork.nodes.some((nd) => nd.label === 'Saved Draft')).toBe(true); // the SAVED draft is library truth the fork copies (D75)
+  });
+
+  it('a fresh loadMap → forkMap still works after a refused fork — the established flow; the refusal lingers on nothing (D99, D75)', () => {
+    const { f } = loadFuyuki();
+    f.upsertNode({ id: '', label: 'Abandoned Draft', kind: 'location', layer: 'layer-fuyuki', position: { x: 9, y: 9 } });
+    expect(() => f.forkMap()).toThrow(/unsaved changes/); // refused while dirty
+    const fresh = fuyuki();
+    f.loadMap(fresh, fuyukiOverlay(fresh)); // discard-via-reload: loadMap clears dirty (D75)
+    expect(f.hasUnsavedChanges()).toBe(false);
+    f.forkMap(); // the established no-arg flow — every B-137-era call site (D98's mixed signature)
+    const fork = facadeStateOf(f).map!;
+    expect(fork.forkedFrom).toBe(fresh.id);
+    expect(f.hasUnsavedChanges()).toBe(false);
   });
 });

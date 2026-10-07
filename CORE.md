@@ -123,7 +123,7 @@ All queries (routing, snapshot, template rendering) run against the **effective 
 **The facade — the only command surface the frontend and host may call:**
 
 ```
-Map lifecycle    loadMap · materialize · forkMap · saveForkToLibrary(): WorldMapData (D97 — the fork as it stands, detached; the host persists it under its own id/name) · validateImport · migrateData
+Map lifecycle    loadMap · materialize · forkMap(exclude?: ReadonlySet<string>) (D98 — the optional excluded-id channel: the caller passes its library's stored-id set, the engine still generates, C5; refuses a dirty session — D99: save it or discard it first) · saveForkToLibrary(): WorldMapData (D97 — the fork as it stands, detached; the host persists it under its own id/name) · validateImport · migrateData
 Presence         setCurrentLocation · setStatusNote · setTravelMode · setCorrective (D63)
 Overlay edits    setBlocked · setNodeBlocked (node mirror of setBlocked — D94/C34: saved-plane-gated add, unconditional lift, non-empty reason) · addUserNodeAt · removeUserNode · promoteUserNode
 Editor commands  upsertNode · upsertEdge · removeNode · removeEdge · calibrateScale(arcId, authoredDistance, unit?) — the optional unit (D44/D45) seeds `scale.unitLabel`/`unitKind` when present; absent ⇒ re-measure in the established unit · saveMap · hasUnsavedChanges (D75 — the F45 dirty flag's core-side read; the editor-command semantics are register row D75)
