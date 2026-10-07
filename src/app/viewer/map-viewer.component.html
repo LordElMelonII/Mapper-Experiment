@@ -19,27 +19,40 @@
 <figure class="tme-viewer">
   <div class="tme-stage">
     @if (graph.activeBackground(); as asset) {
-      <!-- F03/D29/D69: the active layer's background — fitted + centered
-           (object-fit contain letterboxes aspect mismatch), never interactive;
-           the node graph is always the interface on top. B-130 (D84/C32):
-           a failed load degrades to NO background — the backgroundFailed
-           flag hides the img (one [TravelMapper] warn, the canvas untouched);
-           the flag re-arms on any src change, so a retry succeeds silently.
-           B-132 (D90/D93): the per-layer background DIM applies here as the
-           img's opacity TOWARD THE STAGE BACKDROP — `1 − dim` of the active
-           layer's arm (the service's live read: follows layer switches and
-           the D93 fresh-start reset through the editorRevision dependency).
-           Presentational styling only — the displayed/edited value stays the
-           core arm (R4); the value renders verbatim on the rail (R1). The
-           binding is deliberately ONE style attribute: B-134's D92
-           transform lands beside it without rework. -->
+      <!-- F03/D29/D69: the active layer's background — a MODEL-SPACE surface
+           as of B-134 (D92/D93): its placement arm
+           (LayerData.backgroundPlacement — the service's live read joined
+           with cy's viewport) positions it in the graph's coordinate plane
+           and it pans/zooms 1:1 with the viewport; the app computes the
+           aspect-locked fit-to-graph default ONCE per background-set /
+           loadMap / layer-switch (never off a graph edit, D92), and a
+           degenerate extent falls back to the D84 stage-contain shape
+           (the bare SCSS rule — the callback clears its inline box). Never
+           interactive; the node graph is always the interface on top.
+           B-130 (D84/C32): a failed load degrades to NO background — the
+           backgroundFailed flag hides the img (one [TravelMapper] warn, the
+           canvas untouched); the flag re-arms on any src change, so a retry
+           succeeds silently. B-132 (D90/D93): the per-layer background DIM
+           applies here as the img's opacity TOWARD THE STAGE BACKDROP —
+           `1 − dim` of the active layer's arm (the service's live read:
+           follows layer switches and the D93 fresh-start reset through the
+           editorRevision dependency). Presentational styling only — the
+           displayed/edited value stays the core arm (R4); the value renders
+           verbatim on the rail (R1). The dim binding is deliberately ONE
+           style attribute: the B-134 D92 transform landed beside it as
+           direct event-driven work (the B-113 cull precedent — high
+           frequency, no signal writes), applied by the service's registered
+           callback; the (load) report is the discrete seam that hands the
+           service the natural size it cannot read off the DOM (D81). -->
       @if (!graph.backgroundFailed()) {
         <img
           class="tme-bg"
           data-testid="tme-bg"
+          #bgImg
           [src]="asset"
           [style.opacity]="1 - graph.activeLayerDim()"
           alt=""
+          (load)="noteBackgroundLoaded($event)"
           (error)="graph.backgroundLoadFailed()"
         />
       }

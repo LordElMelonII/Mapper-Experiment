@@ -36,10 +36,13 @@
 // (D69) — so Fuyuki's row opens with a background (Remove visible) and
 // Misaki's opens with none. Canvas taps aim through the DEV-HARNESS-ONLY
 // window.__TME_E2E__ seam (src/app/app.ts).
-import { expect, test, type Page } from '@playwright/test';
+import { chromium, devices, expect, test, type CDPSession, type Page, type Point } from '@playwright/test';
 
 interface TmeE2EHook {
   nodeRenderedPosition(id: string): { x: number; y: number } | null;
+  /** B-134: the engine's own viewport reads — the transform math's inputs. */
+  zoom(): number;
+  pan(): { x: number; y: number };
 }
 
 const HOOK_ERROR = 'window.__TME_E2E__ missing — dev harness not loaded';
@@ -597,5 +600,512 @@ test.describe('per-layer background dim on the rail (PKG B-132, D90/D93/F56)', (
 
     await expectHeaders(page);
     await expectCleanConsole(bad);
+  });
+});
+
+// PKG B-134 (§5 Phase 3.5 M5 — D92/D93): the background sync render — the
+// tme-bg image joins the viewport transform. The placement
+// (`LayerData.backgroundPlacement`, A-019: x/y = the image's CENTER in model
+// coordinates, scale = MODEL UNITS PER IMAGE PIXEL) positions it in the
+// graph's plane; it pans and zooms 1:1 with cy, always. The DEFAULT
+// placement — an aspect-locked CONTAIN fit of the natural image size to the
+// active layer's node bounding box — is computed ONCE per background-set /
+// loadMap / layer-switch (never off a graph edit); it persists ONLY at the
+// background-set authoring moment (ONE facade write, dirty — part of the
+// authoring action, D75); at loadMap/layer-switch it is COMPUTED AND HELD in
+// app state and NEVER auto-persisted (an unedited map never opens dirty).
+// Degenerate extents (zero-area node bbox) fall back to the D84
+// stage-contain shape until B-135's calibrate writes an arm. The C32
+// failed-load degrade stands; D91 zero-motion binds the background too (a
+// background set/transform never moves the viewport).
+//
+// Cited IDs:
+//   D92      — the model-space transform (1:1 pan/zoom), the computed-once
+//              default, the degenerate fallback, edits-never-move-it.
+//   D93/A-019— the placement arm's shape and fresh-start reset; the arm
+//              renders verbatim whenever present.
+//   D75/F45  — the ONE dirtying write per background-set (the authoring
+//              moment); loadMap/layer-switch compute-and-hold only.
+//   D91      — zero-motion: the background appearing/changing/transforming
+//              never calls fitView, never notifies resize, never moves
+//              zoom/pan.
+//   C32      — the dead-src degrade keeps working with the transform live.
+//   D53/F52  — every interaction family at BOTH projects: read-only
+//              placement cells run on both; the touch gesture family runs
+//              on the phone project through the in-test Chromium twin (the
+//              interactions.e2e-spec precedent — CDP touch needs Chromium).
+//
+// Expected-value discipline (R1 spirit): every expected number is computed
+// IN-PAGE/test-side from the ENGINE's own reads (the hook's zoom/pan, the
+// img's natural size) over FX1's authored positions — the spec hardcodes
+// only the fixture facts, never a measured pixel.
+test.describe('background sync render (PKG B-134, D92/D93/D75/D91)', () => {
+  // FX1 facts (data/worlds/fuyuki.ts): the 13 POSITIONED Fuyuki leaves. The
+  // two district containers carry no authored position (labels, not
+  // extents); Misaki holds exactly ONE positioned node — a zero-area bbox,
+  // the degenerate case of the fallback cell.
+  const FUYUKI_POSITIONS: ReadonlyArray<readonly [number, number]> = [
+    [100, 250], // emiya-residence
+    [190, 300], // shopping-district
+    [170, 160], // homurahara-academy
+    [60, 210], // matou-residence
+    [95, 125], // tohsaka-residence
+    [150, 470], // ryuudou-temple
+    [30, 360], // outskirts
+    [400, 285], // fuyuki-bridge
+    [560, 260], // fuyuki-station
+    [595, 420], // harbor
+    [520, 85], // kotomine-church
+    [625, 140], // ghost-house
+    [-380, 120], // einzbern-castle
+  ];
+  const FUYUKI_CENTER = (): { x: number; y: number } => ({
+    x: (Math.min(...FUYUKI_POSITIONS.map((p) => p[0])) + Math.max(...FUYUKI_POSITIONS.map((p) => p[0]))) / 2,
+    y: (Math.min(...FUYUKI_POSITIONS.map((p) => p[1])) + Math.max(...FUYUKI_POSITIONS.map((p) => p[1]))) / 2,
+  });
+  const FUYUKI_W = (): number =>
+    Math.max(...FUYUKI_POSITIONS.map((p) => p[0])) - Math.min(...FUYUKI_POSITIONS.map((p) => p[0]));
+  const FUYUKI_H = (): number =>
+    Math.max(...FUYUKI_POSITIONS.map((p) => p[1])) - Math.min(...FUYUKI_POSITIONS.map((p) => p[1]));
+  /** The D92 default scale for a natural image size: the aspect-locked contain fit. */
+  const defaultScaleFor = (nw: number, nh: number): number =>
+    Math.min(FUYUKI_W() / nw, FUYUKI_H() / nh);
+
+  /**
+   * The tme-bg render read — EVERYTHING the placement math consumes, read in
+   * ONE evaluate so the facts are same-tick consistent: the img's laid-out
+   * box, its inline style box (placed vs fallback discriminator), its
+   * natural size, the canvas host box, and the engine's own zoom/pan.
+   */
+  interface BgRenderRead {
+    box: { left: number; top: number; width: number; height: number } | null;
+    inline: { left: string; top: string; width: string; height: string } | null;
+    natural: { w: number; h: number } | null;
+    canvas: { x: number; y: number; width: number; height: number };
+    zoom: number;
+    pan: { x: number; y: number };
+  }
+
+  const readBgRender = async (page: Page): Promise<BgRenderRead> =>
+    page.evaluate((): BgRenderRead => {
+      const hook = (window as unknown as { __TME_E2E__?: TmeE2EHook }).__TME_E2E__;
+      if (hook === undefined) throw new Error(HOOK_ERROR);
+      const canvas = document.querySelector<HTMLElement>('[data-testid="tme-canvas"]');
+      if (canvas === null) throw new Error('canvas host missing');
+      const cb = canvas.getBoundingClientRect();
+      const img = document.querySelector<HTMLImageElement>('[data-testid="tme-bg"]');
+      return {
+        box:
+          img === null
+            ? null
+            : (({ left, top, width, height }) => ({ left, top, width, height }))(img.getBoundingClientRect()),
+        inline:
+          img === null
+            ? null
+            : { left: img.style.left, top: img.style.top, width: img.style.width, height: img.style.height },
+        natural: img !== null && img.naturalWidth > 0 ? { w: img.naturalWidth, h: img.naturalHeight } : null,
+        canvas: { x: cb.left, y: cb.top, width: cb.width, height: cb.height },
+        zoom: hook.zoom(),
+        pan: hook.pan(),
+      };
+    });
+
+  /**
+   * The placement mapping assert (the tapModelPoint precedent inverted):
+   * model center = (img box center − canvasBox.topLeft − pan) / zoom, the
+   * implied model-units-per-image-px = (box size / zoom) / natural.
+   * Tolerances absorb layout quantization (LayoutUnit 1/64 px) divided by
+   * the fit zoom — centers at precision 0 (±0.5 model units), scale at
+   * precision 2.
+   */
+  const expectPlacement = (read: BgRenderRead, label: string): void => {
+    if (read.box === null || read.natural === null) throw new Error(`${label}: img/natural not rendered`);
+    const cx = (read.box.left + read.box.width / 2 - read.canvas.x - read.pan.x) / read.zoom;
+    const cy = (read.box.top + read.box.height / 2 - read.canvas.y - read.pan.y) / read.zoom;
+    const sx = read.box.width / read.zoom / read.natural.w;
+    const sy = read.box.height / read.zoom / read.natural.h;
+    const expectedScale = defaultScaleFor(read.natural.w, read.natural.h);
+    expect(cx, `${label}: the img center sits at the node-bbox center (model x)`).toBeCloseTo(FUYUKI_CENTER().x, 0);
+    expect(cy, `${label}: the img center sits at the node-bbox center (model y)`).toBeCloseTo(FUYUKI_CENTER().y, 0);
+    expect(sx, `${label}: scale = the aspect-locked contain fit (x axis)`).toBeCloseTo(expectedScale, 2);
+    expect(
+      sy,
+      `${label}: scale = the aspect-locked contain fit (y axis — one scale, no rotation)`,
+    ).toBeCloseTo(expectedScale, 2);
+  };
+
+  /** Placed-and-decoded: the img has a bitmap AND an inline transform box. */
+  const bgPlaced = async (page: Page): Promise<boolean> => {
+    const read = await readBgRender(page);
+    return read.natural !== null && read.inline !== null && read.inline.width !== '';
+  };
+
+  /**
+   * Placed for a KNOWN natural pair — the gate for a src SWAP on a SURVIVING
+   * img element (the authoring moment): the poll must not pass on the old
+   * bitmap/box (inline stays non-empty through the swap) nor on a torn
+   * intrinsic pair (the B-134 finding — a src swap updates naturalWidth and
+   * naturalHeight in separate decoder steps, briefly e.g. 64×96). Passes
+   * only when the pair settled to (nw, nh) AND the rendered box is
+   * aspect-locked to it (the settled box the load event's apply wrote).
+   */
+  const bgPlacedFor = async (page: Page, nw: number, nh: number): Promise<boolean> => {
+    const read = await readBgRender(page);
+    if (read.natural === null || read.natural.w !== nw || read.natural.h !== nh) return false;
+    if (read.inline === null || read.inline.width === '' || read.box === null) return false;
+    const sx = read.box.width / read.zoom / nw;
+    const sy = read.box.height / read.zoom / nh;
+    return Math.abs(sx - sy) < 1e-6;
+  };
+
+  /** Fallback-and-decoded: the img has a bitmap and NO inline box (the D84 shape). */
+  const bgFallback = async (page: Page): Promise<boolean> => {
+    const read = await readBgRender(page);
+    return read.natural !== null && read.inline !== null && read.inline.width === '';
+  };
+
+  /**
+   * The B-133c coverage discipline (the waypoints clearPinchCenter local
+   * shape): a live-scanned clear-canvas point — elementFromPoint proves the
+   * aim reaches the canvas (the D91 bands and the floating panels reject
+   * it), and a 40px node-corridor keeps it off every rendered node. With
+   * minSpread > 0 the point doubles as a pinch center with room for both
+   * fingers (spreadMax = the largest two-sided spread that stays on-canvas).
+   */
+  const clearCanvasPoint = async (page: Page, minSpread = 0): Promise<{ at: Point; spreadMax: number }> => {
+    await settle(page);
+    const found = await page.evaluate((minSpreadArg): { at: Point; spreadMax: number } | null => {
+      const hook = (window as unknown as { __TME_E2E__?: TmeE2EHook }).__TME_E2E__;
+      if (hook === undefined) throw new Error(HOOK_ERROR);
+      const cb = document.querySelector('[data-testid="tme-canvas"]')!.getBoundingClientRect();
+      const ids = [
+        'emiya-residence', 'shopping-district', 'homurahara-academy', 'matou-residence',
+        'tohsaka-residence', 'ryuudou-temple', 'outskirts', 'fuyuki-bridge', 'fuyuki-station',
+        'harbor', 'kotomine-church', 'ghost-house', 'einzbern-castle',
+      ];
+      const nodePts = ids
+        .map((id) => hook.nodeRenderedPosition(id))
+        .filter((p): p is { x: number; y: number } => p !== null)
+        .map((p) => ({ x: p.x + cb.left, y: p.y + cb.top }));
+      for (let y = cb.top + 40; y < cb.top + cb.height - 60; y += 10) {
+        for (const fx of [0.5, 0.35, 0.65, 0.2, 0.8, 0.09, 0.91]) {
+          const x = cb.left + cb.width * fx;
+          const el = document.elementFromPoint(x, y);
+          if (el === null || el.closest('.tme-canvas') === null) continue;
+          if (nodePts.some((p) => Math.hypot(p.x - x, p.y - y) < 40)) continue;
+          const spreadMax = Math.min(120, x - cb.left - 12, cb.left + cb.width - x - 12);
+          if (spreadMax >= minSpreadArg) return { at: { x, y }, spreadMax };
+        }
+      }
+      return null;
+    }, minSpread);
+    if (found === null) throw new Error(`clearCanvasPoint: no clear canvas corridor (minSpread=${minSpread})`);
+    return found;
+  };
+
+  const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+  /**
+   * The interactions.e2e-spec twin, verbatim in shape: the phone project is
+   * WebKit and a CDP session exists only in Chromium, so the
+   * input-pipeline gestures run on an in-test Chromium page with the SAME
+   * iPhone 13 emulation.
+   */
+  const withPhoneChromiumPage = async (run: (page: Page) => Promise<void>): Promise<void> => {
+    const browser = await chromium.launch();
+    const context = await browser.newContext({ ...devices['iPhone 13'] });
+    const page = await context.newPage();
+    try {
+      await page.goto('/');
+      await expect(page.getByTestId('tme-canvas')).toBeVisible();
+      await expect.poll(() => bgPlaced(page), { timeout: 5_000 }).toBe(true); // the boot bg placed
+      await run(page);
+    } finally {
+      await browser.close();
+    }
+  };
+
+  /** CDP one-finger drag (the interactions precedent). */
+  const cdpTouchDrag = async (cdp: CDPSession, from: Point, dx: number, dy: number): Promise<void> => {
+    const steps = 6;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: from.x, y: from.y }] });
+    await sleep(40);
+    for (let i = 1; i <= steps; i++) {
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x: from.x + (dx * i) / steps, y: from.y + (dy * i) / steps }],
+      });
+      await sleep(25);
+    }
+    // The R23 gotcha: hold before touchEnd or Chromium drops the NEXT tap's
+    // click — these cells tap nothing after, the hold is pure hygiene.
+    await sleep(200);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+
+  /** CDP two-finger pinch (the interactions precedent): spread `from` → `to`. */
+  const cdpPinch = async (cdp: CDPSession, center: Point, from: number, to: number): Promise<void> => {
+    const steps = 6;
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [
+        { x: center.x - from, y: center.y },
+        { x: center.x + from, y: center.y },
+      ],
+    });
+    await sleep(60);
+    for (let i = 1; i <= steps; i++) {
+      const spread = from + ((to - from) * i) / steps;
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [
+          { x: center.x - spread, y: center.y },
+          { x: center.x + spread, y: center.y },
+        ],
+      });
+      await sleep(30);
+    }
+    await sleep(200); // the same dropped-input hygiene
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByTestId('tme-canvas')).toBeVisible();
+    await settle(page);
+  });
+
+  test('D92 default: the img fits the node bbox aspect-locked, computed once at load, never persisted (D92/D93/D75)', async ({
+    page,
+  }) => {
+    const bad = collectConsole(page);
+    await expectHeaders(page);
+
+    // The harness boots Fuyuki with its background (D69) and NO placement
+    // arm — the computed default applies (the inline transform is present).
+    await expect.poll(() => bgPlaced(page), { timeout: 5_000 }).toBe(true);
+    expectPlacement(await readBgRender(page), 'boot default');
+
+    // D75 (adjudication 1): the loadMap compute is HELD, never written — an
+    // unedited map opens CLEAN (the dock stays dark).
+    await expect(page.getByTestId('tme-save-dock')).toHaveCount(0);
+
+    await expectHeaders(page);
+    await expectCleanConsole(bad);
+  });
+
+  test('D92 transform: the img pans and zooms 1:1 with the viewport (desktop wheel + drag)', async ({
+    page,
+  }) => {
+    test.skip(isPhone(), 'the touch twin cell carries the phone pass of this family (D53)');
+    const bad = collectConsole(page);
+    await expect.poll(() => bgPlaced(page), { timeout: 5_000 }).toBe(true);
+
+    // WHEEL ZOOM about a clear point: the rendered width tracks the zoom
+    // ratio exactly (the anchor-dependent left/top shift is the SAME 1:1
+    // law — width is its anchor-free proof).
+    const aim = await clearCanvasPoint(page);
+    await page.mouse.move(aim.at.x, aim.at.y);
+    const before = await readBgRender(page);
+    await page.mouse.wheel(0, -240);
+    await settle(page);
+    const zoomed = await readBgRender(page);
+    expect(zoomed.zoom, 'the wheel zoomed the viewport').toBeGreaterThan(before.zoom);
+    expect(
+      zoomed.box!.width / before.box!.width,
+      'the img width scales 1:1 with the zoom (D92)',
+    ).toBeCloseTo(zoomed.zoom / before.zoom, 2);
+
+    // MOUSE DRAG pan: a pure pan (zoom byte-unchanged) shifts the img by
+    // exactly the pan delta, width untouched.
+    const start = await clearCanvasPoint(page);
+    await page.mouse.move(start.at.x, start.at.y);
+    await page.mouse.down();
+    await page.mouse.move(start.at.x + 130, start.at.y - 70, { steps: 8 });
+    await page.mouse.up();
+    await settle(page);
+    const panned = await readBgRender(page);
+    expect(panned.zoom, 'a pan never changes zoom').toBe(zoomed.zoom);
+    expect(panned.box!.left - zoomed.box!.left, 'the img left tracks the pan delta (D92)').toBeCloseTo(
+      panned.pan.x - zoomed.pan.x,
+      0,
+    );
+    expect(panned.box!.top - zoomed.box!.top, 'the img top tracks the pan delta (D92)').toBeCloseTo(
+      panned.pan.y - zoomed.pan.y,
+      0,
+    );
+    expect(panned.box!.width, 'a pan never rescales the img').toBeCloseTo(zoomed.box!.width, 2);
+
+    await expectCleanConsole(bad);
+  });
+
+  test('D92 transform: the touch twin — drag pans and pinch zooms the img 1:1 (D53/F52)', async () => {
+    test.skip(!isPhone(), 'touch gestures need the in-test Chromium twin (the interactions precedent)');
+    await withPhoneChromiumPage(async (page) => {
+      const bad = collectConsole(page);
+
+      // TOUCH-DRAG pan (one finger): the img tracks the pan delta 1:1.
+      const start = await clearCanvasPoint(page);
+      const cdp = await page.context().newCDPSession(page);
+      const before = await readBgRender(page);
+      await cdpTouchDrag(cdp, start.at, 100, 50);
+      await settle(page);
+      const after = await readBgRender(page);
+      expect(after.zoom, 'a drag pan never changes zoom').toBe(before.zoom);
+      expect(after.box!.left - before.box!.left, 'the img left tracks the touch-pan delta (D92)').toBeCloseTo(
+        after.pan.x - before.pan.x,
+        0,
+      );
+      expect(after.box!.top - before.box!.top, 'the img top tracks the touch-pan delta (D92)').toBeCloseTo(
+        after.pan.y - before.pan.y,
+        0,
+      );
+
+      // PINCH zoom (two fingers): the rendered width tracks the zoom ratio.
+      const { at, spreadMax } = await clearCanvasPoint(page, 40);
+      const pb = await readBgRender(page);
+      await cdpPinch(cdp, at, spreadMax * 0.5, spreadMax);
+      await settle(page);
+      const pa = await readBgRender(page);
+      expect(pa.zoom, 'the pinch zoomed the viewport').toBeGreaterThan(pb.zoom);
+      expect(
+        pa.box!.width / pb.box!.width,
+        'the img width scales 1:1 with the pinch zoom (D92)',
+      ).toBeCloseTo(pa.zoom / pb.zoom, 2);
+
+      await expectCleanConsole(bad);
+    });
+  });
+
+  test('D93 arm round-trip: the authoring moment persists once; save + leave/return renders it verbatim; zero-motion holds (D92/D93/D75/D91)', async ({
+    page,
+  }) => {
+    const bad = collectConsole(page);
+    await expectHeaders(page);
+
+    // Boot: the default held, the dock dark, the viewport noted.
+    await expect.poll(() => bgPlaced(page), { timeout: 5_000 }).toBe(true);
+    const boot = await readBgRender(page);
+
+    // The authoring moment: a NEW source on the ACTIVE layer. The img load
+    // resolves the natural size, ONE setLayerBackgroundPlacement writes the
+    // computed default (dirty — D75), and (D91) the background appearing/
+    // changing/transforming never moves the viewport.
+    await tap(page.getByTestId('tme-layer-manage'));
+    await expect(page.getByTestId('tme-layer-manager-body')).toBeVisible();
+    await setUrlOn(page, FUYUKI_ROW, SVG_URL);
+    // The swap gate: the SURVIVING img element's naturals settle to the
+    // SVG's 64×64 and the box re-locks to their aspect (see bgPlacedFor).
+    await expect.poll(() => bgPlacedFor(page, 64, 64), { timeout: 5_000 }).toBe(true);
+    const authored = await readBgRender(page);
+    expect(authored.zoom, 'D91 zero-motion: the set + persist never zoom').toBe(boot.zoom);
+    expect(authored.pan, 'D91 zero-motion: the set + persist never pan').toEqual(boot.pan);
+    expectPlacement(authored, 'authored default (the persisted arm)');
+
+    // Save: the dock clears; the arm survives in map data.
+    await tap(page.getByTestId('tme-save'));
+    await expect(page.getByTestId('tme-save-dock')).toHaveCount(0);
+
+    // The loadMap/layer-switch read path a persisted map binds: leave the
+    // layer and come back — the ARM renders verbatim (same center, same
+    // scale), and the switch dirties nothing.
+    await page.getByTestId('tme-layer-layer-misaki').click();
+    await expect(page.getByTestId('tme-bg')).toHaveCount(0);
+    await page.getByTestId('tme-layer-layer-fuyuki').click();
+    await expect.poll(() => bgPlaced(page), { timeout: 5_000 }).toBe(true);
+    expectPlacement(await readBgRender(page), 'the arm re-read after the switch');
+    await expect(page.getByTestId('tme-save-dock')).toHaveCount(0);
+
+    await expectHeaders(page);
+    await expectCleanConsole(bad);
+  });
+
+  test('D92 layer switch: the default recomputes per layer from app state, never persists (D92/D75)', async ({
+    page,
+  }) => {
+    const bad = collectConsole(page);
+
+    await expect.poll(() => bgPlaced(page), { timeout: 5_000 }).toBe(true);
+    expectPlacement(await readBgRender(page), 'boot default');
+
+    // Misaki carries NO background: the img leaves the stage entirely.
+    await page.getByTestId('tme-layer-layer-misaki').click();
+    await expect(page.getByTestId('tme-bg')).toHaveCount(0);
+
+    // Back: the default re-applies from the recomputed hold — identical
+    // placement, and still nothing persisted (D75).
+    await page.getByTestId('tme-layer-layer-fuyuki').click();
+    await expect.poll(() => bgPlaced(page), { timeout: 5_000 }).toBe(true);
+    expectPlacement(await readBgRender(page), 'the recomputed default after the round trip');
+    await expect(page.getByTestId('tme-save-dock')).toHaveCount(0);
+
+    await expectCleanConsole(bad);
+  });
+
+  test('D92 degenerate extents: a single-node layer falls back to the stage-contain shape (D92)', async ({
+    page,
+  }) => {
+    const bad = collectConsole(page);
+
+    await expect.poll(() => bgPlaced(page), { timeout: 5_000 }).toBe(true);
+
+    // Misaki holds exactly ONE positioned node (FX1) — its node bbox has
+    // zero area, so the fit-to-graph is undefined. Give it a background and
+    // switch to it: the default is undefined → the D84 stage-contain
+    // fallback renders (no inline box) until B-135's calibrate writes an arm.
+    await tap(page.getByTestId('tme-layer-manage'));
+    await expect(page.getByTestId('tme-layer-manager-body')).toBeVisible();
+    await setUrlOn(page, MISAKI_ROW, SVG_URL);
+    await page.getByTestId('tme-layer-layer-misaki').click();
+    await expect.poll(() => bgFallback(page), { timeout: 5_000 }).toBe(true);
+
+    // The fallback IS the old contain shape: the img box equals the canvas
+    // box (inset:0), no inline transform anywhere.
+    const read = await readBgRender(page);
+    expect(read.inline!.width, 'no inline transform in the fallback').toBe('');
+    expect(read.box!.left, 'fallback: the img spans the canvas (left)').toBeCloseTo(read.canvas.x, 0);
+    expect(read.box!.top, 'fallback: the img spans the canvas (top)').toBeCloseTo(read.canvas.y, 0);
+    expect(read.box!.width, 'fallback: the img spans the canvas (width)').toBeCloseTo(read.canvas.width, 0);
+    expect(read.box!.height, 'fallback: the img spans the canvas (height)').toBeCloseTo(read.canvas.height, 0);
+
+    await expectCleanConsole(bad);
+  });
+
+  test('C32 degrade with the transform live: a dead src hides the img, nothing throws (C32/D92, desktop)', async ({
+    page,
+  }) => {
+    test.skip(isPhone(), 'the dead-URL console tolerances are the B-130 degrade cell\u2019s desktop tuning');
+    const bad = collectConsole(page);
+
+    await expect.poll(() => bgPlaced(page), { timeout: 5_000 }).toBe(true);
+
+    // The placed default is live; REPLACE it with a dead URL (the harness
+    // assetId arm → a hostile src). The load degrades to NO background —
+    // the img hides, ONE warn, and the transform machinery never throws.
+    await tap(page.getByTestId('tme-layer-manage'));
+    await setUrlOn(page, FUYUKI_ROW, DEAD_URL);
+    await expect
+      .poll(() => bad.warnings.filter((w) => w.includes('[TravelMapper] background load failed')), {
+        timeout: 5_000,
+      })
+      .toHaveLength(1);
+    await expect.poll(() => readBg(page), { timeout: 5_000 }).toBeNull();
+    expect(bad.pageErrors, 'no page error (C32: degrade, never throw)').toEqual([]);
+    expect(
+      bad.errors.filter((e) => !e.startsWith('Failed to load resource')),
+      'no app console errors beyond the browser resource note',
+    ).toEqual([]);
+
+    // The transform stream stays healthy over the hidden img (the @if
+    // unmounted it — the callback skips) and the graph stays the interface.
+    const aim = await clearCanvasPoint(page);
+    await page.mouse.move(aim.at.x, aim.at.y);
+    await page.mouse.wheel(0, -240);
+    await settle(page);
+    await tapNode(page, EMIYA_ID);
+    await expect(page.getByTestId('tme-selection-chip')).toBeVisible();
+    expect(bad.pageErrors, 'still no page error after zoom + tap (C32/F03)').toEqual([]);
+
+    await expectHeaders(page);
   });
 });

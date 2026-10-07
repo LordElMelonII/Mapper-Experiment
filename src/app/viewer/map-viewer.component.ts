@@ -54,6 +54,14 @@ export class MapViewerComponent implements AfterViewInit, OnDestroy {
   private readonly canvasHost = viewChild.required<ElementRef<HTMLDivElement>>('canvasHost');
 
   /**
+   * B-134 (D92): the tme-bg <img> — optional (the @if unmounts it when the
+   * layer has no background or the C32 flag hides it). The transform
+   * callback re-reads this signal per invocation, so an img re-created by a
+   * failed-load re-arm is picked up without bookkeeping.
+   */
+  private readonly bgImg = viewChild<ElementRef<HTMLImageElement>>('bgImg');
+
+  /**
    * D81/B-127 (D86): the stage's INTERACTIVE chrome — the viewport-preserve
    * clamp's avoidance targets. The RAIL rect (the whole control surface,
    * collapsed strip included — it is still the rail), the selection chip,
@@ -86,10 +94,18 @@ export class MapViewerComponent implements AfterViewInit, OnDestroy {
     const host = this.canvasHost().nativeElement;
     this.graph.mount(host);
     this.resizeObserver.observe(host);
+    // B-134 (D92): the background transform application — the cull
+    // precedent's seam: the service sees the zoom/pan stream, this
+    // component owns the img's DOM (the D81 discipline), so the service
+    // calls OUT and the consumer applies. Registered after mount (mount's
+    // own fit precedes it harmlessly — the callback is simply not there
+    // yet, and the discrete img-load pass re-applies once loaded).
+    this.graph.setBackgroundTransformListener(() => this.applyBackgroundTransform());
   }
 
   ngOnDestroy(): void {
     this.resizeObserver.disconnect();
+    this.graph.setBackgroundTransformListener(null); // B-134: gone before unmount
     this.graph.unmount();
   }
 
@@ -144,5 +160,74 @@ export class MapViewerComponent implements AfterViewInit, OnDestroy {
    */
   protected selectLayer(layerId: string): void {
     this.graph.selectLayer(layerId);
+  }
+
+  /**
+   * B-134: the tme-bg img's discrete `load` report — the service cannot read
+   * the DOM (D81), and the natural size is a DOM fact only the loaded img
+   * carries. The service owns everything else (compute, persist, apply).
+   */
+  protected noteBackgroundLoaded(event: Event): void {
+    const img = event.target as HTMLImageElement;
+    this.graph.noteBackgroundImageLoaded(img.naturalWidth, img.naturalHeight);
+  }
+
+  /**
+   * B-134 (D92): the background transform application — the registered
+   * callback the service's `zoom`/`pan` handlers and discrete background
+   * sites invoke. The cull precedent's discipline: direct, idempotent,
+   * event-frequency work — NO signals, no change detection (D2), no fit and
+   * no resize (D91 zero-motion: the transform only READS the viewport).
+   *
+   * screen = canvasBox.topLeft + pan + model × zoom (the tapModelPoint
+   * precedent). With the placement {x, y, scale} (model center + model
+   * units per image px) and the img's natural size: width = naturalW ×
+   * scale × zoom px, left = canvasLeft + pan.x + (x − naturalW·scale/2)
+   * × zoom — expressed in the img's containing-block space (the stage),
+   * where the canvas origin is the canvas host's LAYOUT offset
+   * (offsetLeft/offsetTop — relative to the same positioned ancestor, the
+   * stage). The layout offset is deliberately NOT the viewport
+   * getBoundingClientRect: an overflow-hidden ancestor CAN scroll
+   * programmatically (WebKit's input-focus scroll does exactly that to the
+   * stage when a sheet input is focused) — the gBCR pair would bake that
+   * scroll into the style and tear the img off the canvas, while the canvas
+   * and the img (both stage content) must stay glued through any scroll.
+   * The four inline styles REPLACE the D84 stage-contain fit; a null
+   * placement (degenerate extents / no compute) CLEARS them, restoring the
+   * bare SCSS rule byte-verbatim (the fallback branch). Skips silently
+   * while the img has no decoded bitmap, or while its intrinsic pair
+   * disagrees with the service's src-tagged expectation (a src swap updates
+   * naturalWidth/Height in separate decoder steps — the B-134 finding; the
+   * settled pair arrives with the load event's re-apply).
+   */
+  private applyBackgroundTransform(): void {
+    const img = this.bgImg()?.nativeElement;
+    if (img === undefined || img.naturalWidth === 0 || img.naturalHeight === 0) return;
+    const state = this.graph.backgroundRenderState();
+    if (state === null) {
+      if (img.style.width !== '') {
+        img.style.left = '';
+        img.style.top = '';
+        img.style.width = '';
+        img.style.height = '';
+      }
+      return;
+    }
+    // The torn-natural guard (the B-134 finding): the img's intrinsic pair
+    // must equal the load report's src-tagged pair, or a swap is mid-flight
+    // and this pass would write a non-aspect-locked box.
+    if (state.natural === null || img.naturalWidth !== state.natural.w || img.naturalHeight !== state.natural.h) {
+      return;
+    }
+    if (img.offsetParent === null) return; // not laid out (hidden stage) — nothing to place (C32 spirit)
+    const canvas = this.canvasHost().nativeElement;
+    const w = state.natural.w * state.scale * state.zoom;
+    const h = state.natural.h * state.scale * state.zoom;
+    const left = canvas.offsetLeft + state.pan.x + (state.x - (state.natural.w * state.scale) / 2) * state.zoom;
+    const top = canvas.offsetTop + state.pan.y + (state.y - (state.natural.h * state.scale) / 2) * state.zoom;
+    img.style.left = `${left}px`;
+    img.style.top = `${top}px`;
+    img.style.width = `${w}px`;
+    img.style.height = `${h}px`;
   }
 }

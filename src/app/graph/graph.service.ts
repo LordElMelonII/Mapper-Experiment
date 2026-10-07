@@ -179,7 +179,8 @@
 // min/max zoom) and `fitToView` (the PUBLIC user Fit — the user is the
 // authority, D10 — calling the ONE internal fit site, B-120/D81). All
 // three are the notifyResize class: NO signal writes, no logging (D2);
-// the only follower is the B-113 `zoom`-event cull handler.
+// the only followers are the B-113 `zoom`-event cull handler and (B-134)
+// the background transform application on the same `zoom`/`pan` stream.
 // B-130 (§5 Phase 3 M3 — D84/D29/C32): layer backgrounds go live end-to-end.
 // (1) `setLayerBackground` — the R2 wrapper over the facade command (the
 // B-126 layer-wrapper discipline: NodeEditRefusal shape, editorRevision bump
@@ -252,12 +253,42 @@
 // control (documented in the method). Commit-on-input: map data, dirty
 // per tick (D75 — the dock lighting is correct), no rebuild, no B-121
 // entry (the B-130 background-set discipline).
+// B-134 (§5 Phase 3.5 M5 — D92/D93): the background joins the VIEWPORT
+// transform. The tme-bg <img> becomes a MODEL-SPACE surface: its placement
+// (`LayerData.backgroundPlacement`, A-019 — x/y = the image's center in model
+// coordinates, scale = model units per image pixel) positions it in the
+// graph's plane and it pans/zooms 1:1 with cy. (1) THE DEFAULT — an
+// aspect-locked CONTAIN fit of the natural image size to the active layer's
+// node bounding box (data positions of the layer's library nodes + overlay
+// waypoints; containers carry none), computed by ONE function
+// (defaultPlacementFor — B-135's "fit to graph" re-uses it) at EXACTLY three
+// sites: background-set, loadMap, layer-switch — never off a graph edit
+// (D92: edits never move the placement). The default persists ONLY at the
+// background-set authoring moment (the img load resolves the natural size,
+// ONE facade.setLayerBackgroundPlacement write — dirty, part of the
+// authoring action, D75); at loadMap/layer-switch it is COMPUTED AND HELD in
+// app state (heldDefaultPlacement) and NEVER auto-persisted — an unedited
+// map never opens dirty. DEGENERATE extents (no/one/coincident positioned
+// node — zero-area bbox) leave the placement undefined: the render falls
+// back to the D84 stage-contain shape until B-135's explicit calibrate
+// writes an arm. (2) THE STREAM — the transform rides the B-113 cull
+// precedent's seam: the high-frequency `zoom`/`pan` handlers write NO
+// signals; the service calls a listener REGISTERED BY THE VIEWER (the D81
+// discipline mirrored — the service owns cy's viewport, the component owns
+// its DOM: the callback reads backgroundRenderState() (placement × live
+// zoom/pan) and applies left/top/width/height to the img directly, per
+// event, idempotent). D91 zero-motion binds too: nothing here fits, resizes
+// or pans — the transform only READS the viewport; the C32 failed-load
+// degrade stands (no natural size ⇒ no compute, no persist, the img hides).
 // The ONE cytoscape instance (D3): created headless
 // in the constructor, `mount()`/`unmount()` on demand — computation works with
 // the UI closed. Zoneless (D2): the service writes signals; the ONLY canvas
 // events bound are discrete gestures (`tap` → selection signals, `free` →
 // debug log) plus B-113's `zoom` (high-frequency, writes NO signals — it only
-// toggles the cull class on threshold crossings); the tapstart/tapdrag/tapend
+// toggles the cull class on threshold crossings; B-134's background
+// transform application joins the same handler, also writing no signals)
+// and B-134's `pan` (the same class — the tme-bg transform per event); the
+// tapstart/tapdrag/tapend
 // stream is never registered, so dragging costs zero change detection.
 //
 // R4 (no shadow truth): the service stores the SAME live WorldMapData +
@@ -1600,7 +1631,7 @@ export class GraphService implements OnDestroy {
       const node = event.target as NodeSingular;
       this.persistNodePosition(node.id(), node.position());
     });
-    this.cy.on('zoom', () => {
+    this.cy.on('zoom pan', () => {
       // B-113 (§5 M4 label culling, §6.1 dense row): `zoom` is a Core
       // GraphEventName in the installed @types/cytoscape 3.21.9
       // (index.d.ts:5387 — "when the viewport is zoomed"), and the runtime
@@ -1610,7 +1641,15 @@ export class GraphService implements OnDestroy {
       // handler writes NO signals and no change detection — applyLabelCull
       // reads two scalars and, only on a threshold crossing, toggles one
       // class inside cy.batch (one render pass).
+      //
+      // B-134 (D92): `pan` joins the same registration ("when the viewport is
+      // panned", index.d.ts:5378) — a pan-only gesture emits `pan` without
+      // `zoom`, so the background transform must ride both names. The
+      // application is the cull precedent's DIRECT event work, never a signal
+      // write: the registered viewer callback reads the placement × live
+      // viewport and styles the img (idempotent, one pass).
       this.applyLabelCull();
+      this.applyBackgroundTransform();
     });
 
     // B-128 (D85/F02): the portal ENTRY GESTURE — double-activation on a
@@ -1714,6 +1753,13 @@ export class GraphService implements OnDestroy {
       facade.setActiveLayer(firstLayer); // R2: viewer state flows through the facade
     }
     this.activeLayer.set(firstLayer);
+    // B-134 (D92): the loadMap compute site — any pending authoring moment
+    // dies with the old map, the held default recomputes for the first layer
+    // (compute-AND-HOLD: never persisted here — an unedited map never opens
+    // dirty, D75), and one transform pass follows (a no-op pre-mount).
+    this.pendingPlacementLayer = null;
+    this.recomputeHeldDefault();
+    this.applyBackgroundTransform();
     this.rebuildElements();
     this.refreshSnapshot();
     // B-120 (R21 ruling 1): loadMap deliberately has NO fit of its own — the
@@ -1751,8 +1797,9 @@ export class GraphService implements OnDestroy {
   // zoom/pan are cy-level viewport state like the user's own wheel/pinch, so
   // the rail buttons are the same gesture class). All three write NO signals
   // and log nothing (D2 — the notifyResize class): cy.zoom()/cy.fit emit the
-  // core `zoom` event, whose B-113 handler (applyLabelCull) is the only
-  // follower and itself writes no signals.
+  // core `zoom` event, whose B-113 handler (applyLabelCull) and B-134
+  // background application are the only followers and themselves write no
+  // signals.
 
   /**
    * B-127 (D86): zoom IN one ×1.25 step about the VIEWPORT CENTER (the rail
@@ -1834,6 +1881,14 @@ export class GraphService implements OnDestroy {
   selectLayer(layerId: string): void {
     this.facade?.setActiveLayer(layerId);
     this.activeLayer.set(layerId);
+    // B-134 (D92): the layer-switch compute site — the same discipline as
+    // loadMap: a pending authoring moment belongs to ONE layer (a switch
+    // abandons it), the new layer's default recomputes INTO APP STATE only
+    // (never persisted here, D75), and the transform follows. Placed before
+    // fitView so the fit's own zoom event applies the FRESH facts.
+    this.pendingPlacementLayer = null;
+    this.recomputeHeldDefault();
+    this.applyBackgroundTransform();
     const sourceId = this.drawArcSourceId(); // B-128: the mid-pick switch keeps its pick
     if (sourceId !== null) {
       const source = this.map()?.nodes.find((nd) => nd.id === sourceId);
@@ -2646,7 +2701,16 @@ export class GraphService implements OnDestroy {
     } catch (error) {
       return nodeEditRefusal(error);
     }
+    // B-134 (D92/D75 — adjudication 1): the background-set authoring moment.
+    // Only a set on the ACTIVE layer can persist the default (the img load
+    // that resolves the natural size is the active layer's): the flag arms
+    // exactly one facade.setLayerBackgroundPlacement write at that load. A
+    // set on an inactive layer gets its default computed-AND-HELD at the
+    // layer switch to it. The D93 fresh-start reset has already cleared the
+    // old placement arm, so the computed default renders meanwhile.
+    this.pendingPlacementLayer = layerId === this.activeLayer() ? layerId : null;
     this.editorRevision.update((n) => n + 1); // F45/C24: the dock lights; activeBackground re-reads
+    this.applyBackgroundTransform(); // discrete pass: the src swap re-renders from live facts
     return null;
   }
 
@@ -2732,6 +2796,213 @@ export class GraphService implements OnDestroy {
     if (facade === null || layerId === null) return; // degrade before loadMap (C32 spirit)
     facade.setLayerBackgroundDim(layerId, dim);
     this.editorRevision.update((n) => n + 1); // F45/C24: the dock lights; the reads re-read
+  }
+
+  // --- Background sync render (PKG B-134, §5 Phase 3.5 M5 — D92/D93) --------
+
+  /**
+   * B-134: the CURRENT tme-bg image's natural size, reported by the viewer at
+   * the img's `load` event (the service never reads the DOM — the D81
+   * discipline; the component owns the img). Tagged with the src it belongs
+   * to, so a compute site can tell a CURRENT natural (same src — a switch
+   * between two layers sharing one URL never re-fires the load) from a STALE
+   * one (the src swapped; the load event will re-report). null until the
+   * first load.
+   */
+  private bgNatural: { src: string; w: number; h: number } | null = null;
+
+  /**
+   * B-134 (D92): the computed-and-held default placement for the ACTIVE
+   * layer — recomputed ONLY at the three D92 compute sites (background-set
+   * via the img load, loadMap, layer-switch), never off a graph edit (edits
+   * never move the placement). null = the extents were degenerate (the D84
+   * stage-contain fallback applies) or no compute has run yet. APP STATE
+   * only: this never persists by itself (D75 — an unedited map never opens
+   * dirty); the arm (`LayerData.backgroundPlacement`) always wins over it.
+   */
+  private heldDefaultPlacement: { x: number; y: number; scale: number } | null = null;
+
+  /**
+   * B-134 (D92/D75 — adjudication 1): the background-set authoring moment —
+   * the layer a setLayerBackground call armed. At that layer's NEXT img load
+   * the computed default persists through exactly ONE
+   * facade.setLayerBackgroundPlacement write (dirty — part of the authoring
+   * action), then the flag clears. Any layer switch / loadMap abandons it;
+   * a degenerate fit or a failed load (C32) consumes it without a write.
+   */
+  private pendingPlacementLayer: string | null = null;
+
+  /**
+   * B-134: the viewer-registered transform application — the cull
+   * precedent's seam mirrored. The service owns cy's viewport (it sees the
+   * zoom/pan stream), the component owns the img's DOM (the D81 discipline:
+   * the service never reads the DOM), so the high-frequency handlers call
+   * OUT to this listener instead of touching DOM here. Registered at the
+   * component's mount, cleared at its teardown. Writes nothing (D2).
+   */
+  private bgTransformListener: (() => void) | null = null;
+
+  /** B-134: the component registers/unregisters the transform application. */
+  setBackgroundTransformListener(listener: (() => void) | null): void {
+    this.bgTransformListener = listener;
+  }
+
+  /**
+   * B-134 (D2): the high-frequency path's whole body — one mounted gate and
+   * one registered-callback call, like applyLabelCull's two scalar reads.
+   * Every caller is either the `zoom`/`pan` stream or a DISCRETE state
+   * change (img load, background-set, loadMap, layer switch); the callback
+   * itself is idempotent direct DOM work (no signals, no change detection).
+   */
+  private applyBackgroundTransform(): void {
+    if (!this.mounted) return; // headless has no viewport to place against (C32 spirit)
+    this.bgTransformListener?.();
+  }
+
+  /**
+   * B-134: the D92 default placement for one layer — an aspect-locked
+   * CONTAIN fit of the natural image size to the layer's node bounding box:
+   * scale = min(bboxW/natW, bboxH/natH) MODEL UNITS PER IMAGE PIXEL, x/y =
+   * the bbox center (the D84 stage-contain philosophy carried into model
+   * space — the whole image visible, centered on the graph it underlies).
+   * THE single-sourced fit: B-135's "fit to graph" re-uses this function.
+   *
+   * Extents: the data positions of the layer's library nodes + overlay
+   * waypoints (R4 — live reads, never copies). Containers carry no authored
+   * position (FX1) and are labels, not extents. DEGENERATE (no positioned
+   * node, or a zero-area bbox — one node / all coincident) returns null: the
+   * fit is undefined and the D84 stage-contain fallback renders until an
+   * explicit calibrate writes an arm (B-135).
+   *
+   * R1 note: this is RENDERING math (placement of a decorative surface), not
+   * a distance/direction/duration/cost — no user-displayed or prompt-facing
+   * number originates here; the values B-135's calibrate UI will display
+   * come from the core arm.
+   */
+  private defaultPlacementFor(
+    layerId: string,
+    natural: { w: number; h: number },
+  ): { x: number; y: number; scale: number } | null {
+    const extents = this.layerNodeExtents(layerId);
+    if (extents === null) return null;
+    const w = (extents.maxX - extents.minX) / natural.w;
+    const h = (extents.maxY - extents.minY) / natural.h;
+    if (!Number.isFinite(w) || !Number.isFinite(h) || natural.w <= 0 || natural.h <= 0) return null;
+    return {
+      x: (extents.minX + extents.maxX) / 2,
+      y: (extents.minY + extents.maxY) / 2,
+      scale: Math.min(w, h),
+    };
+  }
+
+  /**
+   * B-134: the layer's node bounding box over data positions — null when
+   * degenerate (no positioned node, or a zero-area bbox).
+   */
+  private layerNodeExtents(layerId: string): { minX: number; minY: number; maxX: number; maxY: number } | null {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    const consider = (pos: { x: number; y: number } | undefined): void => {
+      if (pos === undefined) return;
+      minX = Math.min(minX, pos.x);
+      minY = Math.min(minY, pos.y);
+      maxX = Math.max(maxX, pos.x);
+      maxY = Math.max(maxY, pos.y);
+    };
+    for (const node of this.map()?.nodes ?? []) {
+      if (node.layer === layerId) consider(node.position);
+    }
+    for (const node of this.overlay?.userNodes ?? []) {
+      if (node.layer === layerId) consider(node.position);
+    }
+    if (minX === Infinity || maxX === minX || maxY === minY) return null;
+    return { minX, minY, maxX, maxY };
+  }
+
+  /**
+   * B-134: the compute-and-hold pass — the ONE body every D92 compute site
+   * runs (loadMap, layer-switch, and the img load that realizes the
+   * background-set moment). Skips when the tagged natural is absent or STALE
+   * (its src no longer matches the active layer's background — the pending
+   * load owns that compute). Never persists (D75): the persist is the
+   * background-set moment's business alone (noteBackgroundImageLoaded).
+   */
+  private recomputeHeldDefault(): void {
+    const natural = this.bgNatural;
+    const layerId = this.activeLayer();
+    if (natural === null || layerId === null || natural.src !== this.activeBackground()) return;
+    this.heldDefaultPlacement = this.defaultPlacementFor(layerId, natural);
+  }
+
+  /**
+   * B-134: the viewer's img-load report (the discrete (load) handler). The
+   * natural size lands, the held default recomputes (the load IS the
+   * background-set / loadMap / layer-switch compute moment whenever that is
+   * what changed the src), and — ONLY when this load is the armed
+   * authoring moment — the ONE setLayerBackgroundPlacement write lands
+   * (dirty, D75; a degenerate fit writes NOTHING — the fallback applies
+   * until B-135's calibrate). A C30 refusal here is structurally
+   * unreachable (finite computed numbers on a live layer) but caught —
+   * the held default keeps rendering, never a throw (C32).
+   */
+  noteBackgroundImageLoaded(naturalWidth: number, naturalHeight: number): void {
+    const src = this.activeBackground();
+    if (src === null) return; // the img is gone (a stale event) — nothing to place
+    this.bgNatural = { src, w: naturalWidth, h: naturalHeight };
+    this.recomputeHeldDefault();
+    const layerId = this.activeLayer();
+    if (layerId !== null && this.pendingPlacementLayer === layerId) {
+      this.pendingPlacementLayer = null; // the moment consumed — once, whatever happens below
+      const placement = this.heldDefaultPlacement;
+      if (placement !== null && this.facade !== null) {
+        try {
+          this.facade.setLayerBackgroundPlacement(layerId, placement);
+          this.editorRevision.update((n) => n + 1); // F45/C24: the dock lights (part of the authoring action)
+        } catch {
+          // C32: degrade to the held default's render — never an uncaught throw.
+        }
+      }
+    }
+    this.applyBackgroundTransform();
+  }
+
+  /**
+   * B-134: the render facts the viewer's transform callback consumes — the
+   * LIVE placement (the layer's arm when present, else the held default)
+   * joined with the viewport reads (zoom/pan off cy) and the EXPECTED
+   * natural pair (the src-tagged bgNatural — the load report's truth). null
+   * = the D84 stage-contain fallback applies (no background, degenerate
+   * extents, no compute yet, or unmounted). A pure read at event frequency
+   * (D2 — no signal touched); the arm is read off the LIVE map (R4, never a
+   * copy). The natural pair lets the callback refuse an img whose intrinsic
+   * size is mid-swap: a src change updates naturalWidth/naturalHeight in
+   * SEPARATE decoder steps (found live in Chromium — a 64×64 SVG swap
+   * briefly reported 64×96, the new width with the old height), so an apply
+   * against a torn pair would write a non-aspect-locked box; the mismatch
+   * skips the pass and the load event re-applies against the settled pair.
+   */
+  backgroundRenderState(): {
+    x: number;
+    y: number;
+    scale: number;
+    zoom: number;
+    pan: { x: number; y: number };
+    natural: { w: number; h: number } | null;
+  } | null {
+    if (!this.mounted) return null;
+    const layer = this.map()?.layers.find((l) => l.id === this.activeLayer());
+    const placement = layer?.backgroundPlacement ?? this.heldDefaultPlacement;
+    if (placement === undefined || placement === null) return null;
+    return {
+      x: placement.x,
+      y: placement.y,
+      scale: placement.scale,
+      zoom: this.cy.zoom(),
+      pan: this.cy.pan(),
+      natural: this.bgNatural,
+    };
   }
 
   /**

@@ -148,6 +148,13 @@
   }
 }
 
+// The tme-bg base rule IS the D92 degenerate fallback branch (B-134): with
+// no usable placement (no background, degenerate node extents — zero-area
+// bbox — or no compute yet) the registered callback clears its inline box
+// and this rule renders the D84 stage-contain fit verbatim. The normal D92
+// path applies the model-space transform (placement × live viewport) as
+// inline left/top/width/height — an aspect-exact box, so the object-fit
+// below letterboxes nothing there; pointer-events stays none either way.
 .tme-bg {
   position: absolute;
   inset: 0;
