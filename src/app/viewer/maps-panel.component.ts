@@ -29,6 +29,23 @@
 // panel's R2 discipline keeps the facade instance out of this component
 // and these are pure transforms of detached data, no loaded state.
 //
+// PKG B-139 (§5 M4 line — C25/D41/D97): the FORK family joins the rows —
+// the per-row Fork (the fork-from-picker sequence as ONE user action: the
+// service's `forkFromLibrary` wrapper opens the row then runs the engine's
+// `forkMap` — the chat-attached private copy; C25: the copy NEVER lands as
+// a library row until the explicit save-back) and, while the LOADED map is
+// a fork (`graph.loadedMapIsFork` — the R4 provenance read), the single
+// explicit "Save fork back to library" (D41's non-default action — never
+// bundled into the save/dock flows; structurally absent on a non-fork
+// session: a fork-save control there would be noise). The save-back
+// upserts the fork's OWN id/name (the fork id IS its library id v1 — D97)
+// through the same service wrapper, then the list refreshes and one plain
+// words confirmation renders inline. A re-fork is legal (fork-of-fork,
+// A-022): the row actions carry no special case and the provenance line's
+// parent lookup (below) reads whatever `forkedFrom` the stored row carries.
+// Fork-family refusals render in the panel's error channel (the service's
+// `forkError` joined with the store refusals — C32 words, never throws).
+//
 // R2: the component mutates nothing itself — every map command goes through
 // the library STORE seam (MAP_LIBRARY, the BACKGROUND_STORE precedent — the
 // layer-manager injects its store directly) and every LOADED-state command
@@ -117,6 +134,22 @@ export class MapsPanelComponent {
    * Cleared by the next successful command and the close.
    */
   protected readonly error = signal<string | null>(null);
+
+  /**
+   * B-139: the merged refusal words the error block renders — the panel's
+   * STORE refusals joined with the service's fork-family channel (`forkError`:
+   * facade + save-back-store rejections, the saveError pattern). One visible
+   * block for one family of words; the first non-null wins (a store refusal
+   * and a fork refusal can't be simultaneous).
+   */
+  protected readonly refusal = computed(() => this.error() ?? this.graph.forkError());
+
+  /**
+   * B-139: the save-back's inline success confirmation — plain words
+   * ("Saved to the library"), cleared by the next fork-family action and
+   * the close (the error-signal discipline mirrored for the happy path).
+   */
+  protected readonly savedBackNote = signal<string | null>(null);
 
   /** B-114 (the layer-manager precedent): the narrow form's collapse state — component-local view chrome. */
   protected readonly collapsed = signal(false);
@@ -346,6 +379,54 @@ export class MapsPanelComponent {
   }
 
   /**
+   * B-139: FORK one row — the fork-from-picker sequence as ONE user action
+   * (the packet's lead ruling): the store read hands the map to the
+   * service's `forkFromLibrary` wrapper, which loads it fresh (pin-null —
+   * the fork session starts where every explicit open starts, D40) and runs
+   * the engine's `forkMap()`. The PANEL never touches the facade (R2); the
+   * wrapper owns every refusal and surfaces them through its words channel
+   * — rendered here beside the store errors (C32). The fork is NOT a library
+   * row (C25: the chat-attached private copy) — the list is untouched and
+   * the picker STAYS OPEN (the user picks from the list; the service's
+   * documented re-open makes the inner load's close invisible). Never
+   * refuses-for-being-late in plain sight: anything after this is the
+   * wrapper's words, not UI logic.
+   *
+   * A stale id (the row died under us) degrades exactly like Open (C32).
+   */
+  protected async fork(id: string): Promise<void> {
+    const map = await this.library.get(id);
+    if (map === null) {
+      this.error.set('That map is no longer in the library.');
+      void this.refresh();
+      return;
+    }
+    this.error.set(null);
+    this.savedBackNote.set(null); // the next fork-family action clears the last success words
+    this.graph.forkFromLibrary(map); // the picker re-opens after the fork's inner load — words on refusal
+  }
+
+  /**
+   * B-139: SAVE FORK BACK TO LIBRARY (D97/D41 — the explicit, non-default
+   * action; C25: never bundled into the save/dock flows; rendered ONLY while
+   * the loaded map is a fork). The service wrapper runs
+   * `facade.saveForkToLibrary()` (the save-moment snapshot, the fork's OWN
+   * id/name — the fork id IS its library id v1) and upserts it in the store;
+   * the list refreshes and the words confirmation renders inline. The loaded
+   * session keeps diverging afterwards (D97: the stored row is the save
+   * moment, no facade state moved) — nothing here re-points or re-loads.
+   */
+  protected async saveForkBack(): Promise<void> {
+    this.savedBackNote.set(null); // the next fork-family action clears the last success words
+    const saved = await this.graph.saveForkBackToLibrary();
+    await this.refresh(); // the store re-read serves whatever the upsert did
+    if (saved) {
+      this.error.set(null);
+      this.savedBackNote.set('Saved to the library.');
+    }
+  }
+
+  /**
    * B-137: DUPLICATE one row — `duplicateMapData(source, exclude)` (a deep
    * copy, fresh engine id, element ids preserved, forkedFrom stripped —
    * C25/D41), the stored name presented with a " (copy)" suffix (the
@@ -426,8 +507,10 @@ export class MapsPanelComponent {
   /** The panel's X / Escape close — a pure signal write (R3) + clean row modes. */
   protected close(): void {
     this.graph.mapsPanelOpen.set(false);
+    this.graph.clearForkError(); // B-139: the fork words channel joins the reset
     this.confirmingId.set(null);
     this.error.set(null);
+    this.savedBackNote.set(null); // B-139: the save-back words join the reset
     this.createValue.set('');
     this.pasteValue.set(''); // B-138: the paste importer's state joins the reset
   }

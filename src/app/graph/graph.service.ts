@@ -318,6 +318,21 @@
 // The tapstream handlers register at entry and un-register at exit, so the
 // B-134 invariant above stays true outside the mode.
 //
+// B-139 (§5 Phase 3 M4 — C25/D41/D97): the FORK FAMILY joins the library
+// wrapper family — `forkFromLibrary(map)` (the per-row Fork: the packet's
+// "open X then `forkMap()`" sequence as ONE component action, legal on any
+// row incl. the loaded fork's own row — fork-of-fork, A-022) and
+// `saveForkBackToLibrary()` (the D97 explicit non-default save-back, the
+// fork's own id/name upsert) plus the two R4 reads (`loadedMapIsFork` — the
+// save-back button's structural gate — and `forkError`, the saveError-pattern
+// words channel for every fork-family refusal). THE SEAM: after the engine's
+// `forkMap()` the fork exists only inside the facade (void command; D97's
+// return is the detached save-back snapshot), so the service re-establishes
+// its C24 same-reference hold THROUGH the §9 list — saveForkToLibrary read
+// back → facade.loadMap(copy) → the twin this.loadMap — never
+// `facadeStateOf` (the R4 spirit below holds: the same live reference, one
+// truth; the parent object is never re-held after the detach).
+//
 // R4 (no shadow truth): the service stores the SAME live WorldMapData +
 // ChatMapOverlay references the host handed to the facade (C24) and builds a
 // PROJECTION of the active layer into cy. It never reads facadeStateOf, never
@@ -1308,6 +1323,39 @@ export class GraphService implements OnDestroy {
    */
   readonly loadedMapId = computed(() => this.map()?.id ?? null);
 
+  /**
+   * B-139 (C25/D41): whether the LOADED map is a FORK — the save-back
+   * button's visibility gate, read straight off the held map reference's
+   * `forkedFrom` provenance field (R4: the field the engine set at forkMap;
+   * a library original carries none and the button is structurally ABSENT —
+   * the state here is structural, not a momentary condition, so the F07
+   * disabled-never-hidden rule does not pull it in: a fork-save control in a
+   * non-fork session would be noise). An absent/empty provenance is no fork.
+   * `forkedFrom` never changes in place (forkMap sets it on a FRESH object;
+   * loadMap swaps whole objects), so the map signal alone is the recompute
+   * dependency — no editorRevision tie needed.
+   */
+  readonly loadedMapIsFork = computed<boolean>(() => {
+    const from = this.map()?.forkedFrom;
+    return typeof from === 'string' && from.length > 0;
+  });
+
+  /**
+   * B-139: the fork family's words channel — the facade's C30 refusals of
+   * `forkMap`/`saveForkToLibrary` (verbatim error words, the saveError
+   * pattern: the refusal lives next to the state it describes; the Maps
+   * panel renders it) and the library-store failure of the save-back (the
+   * saveMapToLibrary precedent: a store rejection surfaces through the same
+   * user-visible channel, never an uncaught throw — C32). Both fork commands
+   * clear it at entry, so a retried action never shows yesterday's words.
+   */
+  readonly forkError = signal<string | null>(null);
+
+  /** B-139: the fork channel's clear affordance — the panel's close calls it (the error.set(null) discipline). */
+  clearForkError(): void {
+    this.forkError.set(null);
+  }
+
   /** The latest facade snapshot (R1: every header string originates here). */
   readonly snapshot = signal<MapSnapshot | null>(null);
 
@@ -1951,6 +1999,114 @@ export class GraphService implements OnDestroy {
     facade.loadMap(map, overlay); // R2: the facade owns the map lifecycle
     this.loadMap(map, overlay, facade); // R4: same references, the viewer resets
     this.fitToView(); // the user-command fit (the selectLayer precedent; headless no-op)
+  }
+
+  /**
+   * B-139 (C25/D41, PKG fork UX): FORK one library map — the per-row Fork =
+   * "open X then `forkMap()`", one user action (the lead's R27 sequence: the
+   * chat-attached copy starts from the LIBRARY state; C25's "switches the
+   * chat's reference" is forkMap's in-place overlay re-point). Legal on any
+   * row, including the LOADED fork's own row — a fork-of-fork is A-022's
+   * documented no-special-case. Returns true when the fork session stands;
+   * false on the first refusal, whose words ride `forkError` (never an
+   * uncaught throw — C32).
+   *
+   * THE REFERENCE QUESTION (the fork engine's one §9 seam gap, resolved
+   * WITHOUT reaching around the facade — CORE.md's closing rule; this
+   * service's own law also forbids the `facadeStateOf` diagnostic): after
+   * `forkMap()` the engine serves a PRIVATE structured-clone under the fresh
+   * id and returns nothing (void), while the service's projections,
+   * `loadedMapId`, `loadedMapIsFork` and every later editor command MUST read
+   * the fork, not the stale parent reference. `saveForkToLibrary()` (D97)
+   * hands back the fork AS IT STANDS, detached, and is legal here (the loaded
+   * map just became a fork) — and `loadMap` is §9's OWN reference-doctrine
+   * command (it stores the CALLER's object verbatim, validator pass-through
+   * returns the same reference). So the fork object the service holds is
+   * re-established THROUGH the §9 list: forkMap → saveForkToLibrary (the
+   * read-back) → loadMap(forkCopy) → the twin `this.loadMap` re-point. No
+   * §9 command is invented, no engine semantics re-implemented, no `forked*`
+   * guesses in this file. Byte-equal end state to the held clone (same id,
+   * same saved universes, dirty=false, provenance) at one extra clone+validate
+   * per explicit user action. C25 stands: the parent object is never re-held
+   * after forkMap (the detach), the library row never receives a fork edit,
+   * and the second loadMap re-affirms pin-null walk state byte-identically.
+   *
+   * THE PICKER STAYS OPEN (documented pick): the inner `this.loadMap` closes
+   * `mapsPanelOpen` (its shared reset), and this wrapper re-opens it right
+   * after — same synchronous batch, never a rendered flicker — because the
+   * user picks from the list. The one user-command fit runs once, at the end.
+   * A mid-dance failure (validator-refusing the read-back — practically
+   * impossible: it is the validated parent's exact clone plus two engine-set
+   * fields) leaves the facade serving its own valid fork clone while the
+   * service never re-pointed: the next explicit Open/New/fork re-establishes
+   * references; the words state what happened.
+   *
+   * @returns true on success; false with `forkError` words on any refusal.
+   */
+  forkFromLibrary(map: WorldMapData): boolean {
+    const facade = this.facade;
+    if (facade === null) return false; // no core — the openMapFromLibrary silent degrade
+    this.forkError.set(null); // a retried fork never shows the last attempt's words
+    const overlay: ChatMapOverlay = {
+      mapId: map.id,
+      currentLocationId: null, // D40: the fresh session starts with NO pin — the user sets it
+      travelMode: 'walk',
+      userNodes: [],
+      userEdges: [],
+      blocked: {},
+      nodeBlocked: {},
+    };
+    try {
+      facade.loadMap(map, overlay); // the parent load (reject-before-mutate) — the fork copies the freshly loaded library state
+      facade.forkMap(); // the C25 switch: the engine's private clone + THIS overlay object re-pointed in place
+      const fork = facade.saveForkToLibrary(); // D97: the fork as it stands, detached — the §9 read-back
+      facade.loadMap(fork, overlay); // §9 loadMap = THE reference command (C24): the facade now holds THE CALLER'S object
+      this.loadMap(fork, overlay, facade); // R4: the service holds the same references — the full viewer reset
+      this.fitToView(); // ONE user-command fit for the whole action (the open-path precedent)
+    } catch (error) {
+      this.forkError.set(error instanceof Error ? error.message : `Forking failed: ${String(error)}`);
+      return false;
+    }
+    this.mapsPanelOpen.set(true); // the picker stays open (documented pick above)
+    return true;
+  }
+
+  /**
+   * B-139 (D97 — the D41 explicit, non-default save-back): persist the
+   * LOADED fork's save-moment snapshot into the LIBRARY under the fork's OWN
+   * id/name (the fork id IS its library id v1; `library.save` upserts by it —
+   * a re-save of the same fork replaces its row, nothing else). NOT bundled
+   * into any save/dock flow: this is its own command, offered only while the
+   * loaded map is a fork (the `loadedMapIsFork` gate). The chat's fork keeps
+   * diverging afterwards — the stored row is the save moment (D97), and
+   * `saveForkToLibrary` moves NO facade state (no dirty clear, no saved-plane
+   * move, no re-point). The returned copy is PERSISTENCE DATA (the store
+   * keeps its own clone), never held as a live reference (R4: one truth —
+   * the library is a store). Returns true on success; false on any refusal
+   * with the words in `forkError` (C32).
+   *
+   * @returns true on success; false with `forkError` words on any refusal.
+   */
+  async saveForkBackToLibrary(): Promise<boolean> {
+    const facade = this.facade;
+    if (facade === null) return false; // no core — the structural silence of the openMapFromLibrary degrade
+    this.forkError.set(null); // a retried save never shows the last attempt's words
+    let snapshot: WorldMapData;
+    try {
+      snapshot = facade.saveForkToLibrary(); // D97: the detached save-moment snapshot (the field-precise not-a-fork refusal is structurally dead behind the button gate — still caught: C32)
+    } catch (error) {
+      this.forkError.set(error instanceof Error ? error.message : `Saving the fork back refused: ${String(error)}`);
+      return false;
+    }
+    try {
+      await this.library.save(snapshot); // upsert by the fork's OWN id/name — the D97 host pick
+    } catch (error) {
+      this.forkError.set(
+        error instanceof Error ? error.message : `Saving the fork to the map library failed: ${String(error)}`,
+      );
+      return false;
+    }
+    return true;
   }
 
   /**

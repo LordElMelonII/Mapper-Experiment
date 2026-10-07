@@ -282,6 +282,35 @@
   color: #ffd166;
 }
 
+// B-139: the FORK family's controls — the per-row Fork and the save-back —
+// one distinct teal-language accent (the connect-pick's hue; NOT the gold
+// selection accent and NOT the red destructive key: forking is neither a
+// loaded-commitment nor a destructive act, it is the chat-copies affordance).
+.tme-fork {
+  border-color: rgba(77, 182, 172, 0.75);
+  color: #7fd1c8;
+}
+
+// The save-back's free-standing control sits on its own with the words
+// confirmation beneath it — the C25/D41 non-default action needs no
+// decoration beyond the accent and there is no hover affordance (D53).
+.tme-fork-back {
+  width: 100%;
+  margin-top: 0.625rem;
+  padding-top: 0.625rem;
+  border-top: 1px solid rgba(174, 189, 211, 0.2);
+}
+
+.tme-fork-back .tme-fork {
+  width: 100%; // the labelled control spans the panel — >= 44px both ways (F52)
+}
+
+.tme-fork-saved {
+  margin: 0.25rem 0 0;
+  color: #8fd3b6; // the suggestion chip's quiet informational green
+  font-size: 0.8125rem;
+}
+
 // The destructive action shares the red key (the blocked/delete accent).
 .tme-delete {
   border-color: rgba(201, 86, 78, 0.7);

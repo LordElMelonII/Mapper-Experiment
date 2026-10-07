@@ -98,8 +98,8 @@ const readNodeLabel = (page: Page, id: string): Promise<string | null> =>
     id,
   );
 
-const readLibraryList = (page: Page): Promise<{ id: string; name: string }[]> =>
-  page.evaluate((): Promise<{ id: string; name: string }[]> => {
+const readLibraryList = (page: Page): Promise<{ id: string; name: string; forkedFrom: string | null }[]> =>
+  page.evaluate((): Promise<{ id: string; name: string; forkedFrom: string | null }[]> => {
     const hook = (window as unknown as { __TME_E2E__?: TmeE2EHook }).__TME_E2E__;
     if (hook === undefined) throw new Error(HOOK_ERROR);
     return hook.libraryList();
@@ -197,14 +197,23 @@ const tapPoint = async (page: Page, x: number, y: number): Promise<void> => {
 
 /**
  * Open the Maps panel through the layers nav's Maps affordance (the D82
- * Manage pattern — ONE summon for both worlds, D53/F52). The first
- * activation gets a 2s web-first polling window (the zoneless CD flush
- * lands asynchronously — an immediate DOM read would race it); only a
- * genuine no-open (the D96 dropped-tap class) triggers ONE harmless retry —
- * the second activation fires only if the panel never opened.
+ * Manage pattern — ONE summon for both worlds, D53/F52), IDEMPOTENT for an
+ * already-standing panel. B-139 finding (the fork flow leaves the picker
+ * standing — the documented pick): the old poll resolved its FIRST expect()
+ * probe off the STALE pre-toggle DOM (zoneless CD renders the flip a frame
+ * after the click), so one standing-panel openMaps CLOSED the panel and
+ * skipped the retry — the row activation then waited on an unrendered row
+ * for the whole timeout. THE GATE reads the toggle's rendered aria-pressed
+ * (the same mapsPanelOpen state the @if renders — both flip in one CD, so
+ * the gate never desynchronizes from the DOM): summon only a genuinely
+ * closed panel; a closed-panel summon keeps the original discipline — the
+ * first activation gets a 2s polling window, one harmless retry only for a
+ * genuine no-open (the D96 dropped-tap class).
  */
 const openMaps = async (page: Page): Promise<void> => {
   const panel = page.getByTestId('tme-maps-panel');
+  const toggle = page.getByTestId('tme-maps-toggle');
+  if ((await toggle.getAttribute('aria-pressed')) === 'true') return; // already standing
   await activate(page, 'tme-maps-toggle');
   const opened = await expect(panel)
     .toBeVisible({ timeout: 2_000 })
@@ -687,6 +696,260 @@ test.describe('the map library: import/export family (PKG B-138)', () => {
     );
     await expect(textarea, 'NOT wiped — the author edits their paste').toHaveValue('nonsense');
     expect((await readLibraryList(page)).map((row) => row.name), 'no row appears').toEqual([SEEDED_NAME]);
+
+    expect(bad, 'console clean (housekeeping)').toEqual([]);
+  });
+});
+
+// --- PKG B-139: the fork family -------------------------------------------------
+//
+// Cited IDs (beyond the module header):
+//   C25/D41  — forking copies library → a chat-attached private map and
+//              SWITCHES the chat's reference (the overlay re-point): the fork
+//              NEVER lands as a library row until the explicit save-back, and
+//              a fork edit never reaches the parent row (never-re-sync is
+//              user-visible). The fork session starts clean (D75) and
+//              pin-less (D40) like every explicit open.
+//   D97/D41  — "Save fork back to library" is its own explicit action (never
+//              bundled into the F45 save/dock flows) and moves NO facade
+//              state; it lands the save-MOMENT snapshot under the fork's OWN
+//              id/name while the fork keeps diverging — both halves asserted
+//              user-visibly from the stored row.
+//   F07/rows — the save-back control renders ON the fork session and
+//              structurally ABSENT on a non-fork one (count-zero, never a
+//              disabled husk) — the state is structural.
+//   D75/F45  — the copy IS its saved plane: the dock stays unlit right after
+//              the fork and lights on the fork's own first edit.
+//   C5       — every fork identity is a fresh engine map id ('map-<n>',
+//              never the row's); a fork chain never re-uses ids.
+//   C23      — fork rows share their parent's NAME (the engine copies it
+//              verbatim) and speak the provenance words; rows are therefore
+//              located by name AND provenance line — ids never render.
+//   A-022    — a re-fork (the loaded fork's own row) is legal with no
+//              special case; its saved-back provenance names the IMMEDIATE
+//              parent.
+//   R2/R4    — every command through the service wrappers; the hook seam
+//              reads loaded ids only.
+//   F52/D53  — the fork controls join the >= 44px sweep; touch-alone
+//              activation on the phone project; console-clean cells.
+
+/**
+ * One FORK row — located by the exact NAME span AND the provenance line
+ * 'Forked from <parentName>': a fork row shares its parent's NAME (the
+ * engine copies it verbatim; C23 speaks words only), so the provenance line
+ * is the discriminator against the parent row in strict mode.
+ */
+const forkRowOf = (page: Page, parentName: string) =>
+  page
+    .locator('[data-testid="tme-map-row"]')
+    .filter({
+      has: page.getByTestId('tme-map-provenance').filter({ hasText: `Forked from ${parentName}` }),
+    })
+    .filter({
+      has: page.getByTestId('tme-map-name').filter({ hasText: new RegExp(`^${escapeRe(parentName)}$`) }),
+    });
+
+/** Close the Maps panel when open (a fork leaves it open — the documented pick; never shades a canvas aim). */
+const closeMapsIfOpen = async (page: Page): Promise<void> => {
+  const panel = page.getByTestId('tme-maps-panel');
+  if (await panel.isVisible()) await activate(page, 'tme-maps-panel-close');
+  await expect(panel).toBeHidden();
+};
+
+/** Enter the editor when not already on (repeated loads keep the mode — the pressed state is the idempotence read). */
+const ensureEditor = async (page: Page): Promise<void> => {
+  const toggle = page.getByTestId('tme-editor-toggle');
+  if ((await toggle.getAttribute('aria-pressed')) !== 'true') await activate(page, 'tme-editor-toggle');
+  await expect(toggle, 'the editor is ON (the rename recipe runs in editor mode)').toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+};
+
+/**
+ * The F40 rename recipe: editor ON, tap the node (tapPoint's coverage guard
+ * keeps the aim honest), rename through the property panel, poll the hook.
+ * The Maps panel must be closed before calling (closeMapsIfOpen).
+ */
+const renameEmiya = async (page: Page, incoming: string, next: string): Promise<void> => {
+  await ensureEditor(page);
+  const pos = await readPosition(page, EMIYA_ID);
+  expect(pos, 'engineering: the session projects its nodes').not.toBeNull();
+  const box = await canvasBox(page);
+  await tapPoint(page, box.x + pos!.x, box.y + pos!.y);
+  await expect(page.getByTestId('tme-property-panel')).toBeVisible();
+  const label = page.getByTestId('tme-node-label-input');
+  await expect(label).toHaveValue(incoming);
+  await label.fill(next);
+  await activate(page, 'tme-node-done');
+  await expect.poll(() => readNodeLabel(page, EMIYA_ID), { timeout: 5_000 }).toBe(next);
+};
+
+test.describe('the map library: the fork family (PKG B-139)', () => {
+  test('fork (C25/D41): a clean chat copy — no row, fresh id, no pin; the edit never reaches the parent', async ({
+    page,
+  }) => {
+    const bad = collectConsole(page);
+    await page.goto('/');
+    await expect.poll(() => readLabels(page), { timeout: 5_000 }).toContain(EMIYA_LABEL);
+
+    await openMaps(page);
+    // The row family renders on every row; the save-back is structurally ABSENT
+    // on the non-fork session (count-zero, never a disabled husk — F07/structural).
+    await expect(mapRow(page, SEEDED_NAME).getByTestId('tme-map-fork')).toBeVisible();
+    await expect(
+      page.getByTestId('tme-maps-save-fork'),
+      'not a fork — the save-back does not render',
+    ).toHaveCount(0);
+    await sweepTapTargets(page); // Fork joins the row's >= 44px controls on the non-fork form
+
+    const seededId = (await readLibraryList(page)).find((row) => row.name === SEEDED_NAME)!.id;
+
+    // FORK the seeded row — fresh load (pin-null) then forkMap, ONE user action.
+    await rowActivate(page, SEEDED_NAME, 'tme-map-fork');
+
+    // The picker STAYS OPEN (documented pick — the user picks from the list).
+    await expect(page.getByTestId('tme-maps-panel')).toBeVisible();
+    // C25: the fork NEVER lands as a library row — the store is untouched.
+    expect(
+      (await readLibraryList(page)).map((row) => ({ name: row.name, forkedFrom: row.forkedFrom })),
+      'the fork is chat state, not a row (C25)',
+    ).toEqual([{ name: SEEDED_NAME, forkedFrom: null }]);
+
+    // C25's "switches the chat's reference": the loaded id is a FRESH engine id, never the row's.
+    const forkId = await readLoadedMapId(page);
+    expect(forkId, 'the loaded map is the fork (the hook seam reads the service state)').not.toBe(seededId);
+    expect(forkId, 'a fresh engine-assigned map id (C5)').toMatch(/^map-\d+$/);
+    // D40: the fresh session starts with NO pin.
+    expect(await readNodeHasClass(page, EMIYA_ID, 'tme-pin'), 'the fork session starts pin-null (D40)').toBe(false);
+    // D75/F45: the fork starts CLEAN — the copy IS its saved plane.
+    await expect(page.getByTestId('tme-save-dock'), 'the fork starts clean (D75/F45)').toBeHidden();
+    // The save-back gate renders on the fork session; the copy projects FX1.
+    await expect(page.getByTestId('tme-maps-save-fork')).toBeVisible();
+    await expect.poll(() => readLabels(page), { timeout: 5_000 }).toContain(EMIYA_LABEL);
+    await sweepTapTargets(page); // the save-back control joins the >= 44px form on the fork session
+    await closeMapsIfOpen(page);
+
+    // Edit the fork through the property panel — the fork is editable chat state.
+    await renameEmiya(page, EMIYA_LABEL, 'Emiya Home');
+    await expect(page.getByTestId('tme-save-dock'), 'the fork edit is unsaved (F45)').toBeVisible();
+
+    // Re-open the PARENT: its stored label stands (the C25 detach, user-visible — never re-sync).
+    await openMaps(page);
+    await rowActivate(page, SEEDED_NAME, 'tme-map-open');
+    await expect(page.getByTestId('tme-maps-panel')).toBeHidden();
+    await expect.poll(() => readNodeLabel(page, EMIYA_ID), { timeout: 5_000 }).toBe(EMIYA_LABEL);
+    expect(await readLoadedMapId(page), 'the parent session is back (the fork dropped with it)').toBe(seededId);
+
+    // …and the save-back is structurally gone again on the plain session.
+    await openMaps(page);
+    await expect(page.getByTestId('tme-maps-save-fork')).toHaveCount(0);
+
+    expect(bad, 'console clean through the fork journey (C32)').toEqual([]);
+  });
+
+  test('save fork back (D97): the row carries the save-moment state; the fork keeps diverging', async ({
+    page,
+  }) => {
+    const bad = collectConsole(page);
+    await page.goto('/');
+    await expect.poll(() => readLabels(page), { timeout: 5_000 }).toContain(EMIYA_LABEL);
+    const seededId = (await readLibraryList(page)).find((row) => row.name === SEEDED_NAME)!.id;
+
+    // Fork, then edit the fork BEFORE the save-back — the row must carry the CURRENT state.
+    await openMaps(page);
+    await rowActivate(page, SEEDED_NAME, 'tme-map-fork');
+    const forkId = await readLoadedMapId(page);
+    expect(forkId, 'engineering: the fork session stands (C25)').not.toBe(seededId);
+    await closeMapsIfOpen(page);
+    await renameEmiya(page, EMIYA_LABEL, 'Emiya Home');
+
+    // THE EXPLICIT SAVE-BACK — its own single action (never the dock flow).
+    await openMaps(page);
+    await expect(page.getByTestId('tme-maps-save-fork'), 'the save-back renders on the fork session').toBeVisible();
+    await activate(page, 'tme-maps-save-fork');
+    await expect(page.getByTestId('tme-fork-saved'), 'the inline words confirm (C23)').toHaveText(
+      'Saved to the library.',
+    );
+    // A fork row appeared: same WORDS as the parent (C23), the provenance line rendered.
+    await expect(forkRowOf(page, SEEDED_NAME), 'the saved row is here — name AND provenance').toHaveCount(1);
+    await expect(forkRowOf(page, SEEDED_NAME).getByTestId('tme-map-provenance')).toHaveText(
+      'Forked from Fuyuki & Misaki (FX1)',
+    );
+    const rows = await readLibraryList(page);
+    expect(
+      rows.map((row) => row.forkedFrom),
+      'provenance of the saved row is the parent id (D41/D97)',
+    ).toEqual([null, seededId]);
+    expect(rows[1].id, 'the fork id IS its library id (D97 v1 — the id round-trips)').toBe(forkId);
+    // NOT a load (D97 moves NO facade state): the session stands on the fork, the edit stays unsaved.
+    expect(await readLoadedMapId(page), 'the save-back is not a load (D97)').toBe(forkId);
+    await expect(
+      page.getByTestId('tme-save-dock'),
+      'NO dirty clear — the fork keeps diverging after the save moment (D97)',
+    ).toBeVisible();
+
+    // Re-open the SAVED row: the fork's CURRENT state came along.
+    await openMaps(page);
+    await activateLocator(page, forkRowOf(page, SEEDED_NAME).getByTestId('tme-map-open'));
+    await expect(page.getByTestId('tme-maps-panel')).toBeHidden();
+    await expect.poll(() => readNodeLabel(page, EMIYA_ID), { timeout: 5_000 }).toBe('Emiya Home');
+    expect(await readLoadedMapId(page), 'the row opened is the fork itself (the same id)').toBe(forkId);
+
+    // Edit further, then re-open the SAME row: the save-moment snapshot stands (the D97 diverge, user-visible).
+    await renameEmiya(page, 'Emiya Home', 'Emiya Mansion');
+    await openMaps(page);
+    // The gate rides the library round-trip: the stored row carries its forkedFrom, the button renders.
+    await expect(page.getByTestId('tme-maps-save-fork'), 'the stored fork row is still a fork session').toBeVisible();
+    await activateLocator(page, forkRowOf(page, SEEDED_NAME).getByTestId('tme-map-open'));
+    await expect(page.getByTestId('tme-maps-panel')).toBeHidden();
+    await expect.poll(() => readNodeLabel(page, EMIYA_ID), { timeout: 5_000 }).toBe('Emiya Home');
+
+    expect(bad, 'console clean (housekeeping)').toEqual([]);
+  });
+
+  test('re-fork (A-022): forking the loaded fork row is legal; its saved lineage names the immediate parent', async ({
+    page,
+  }) => {
+    const bad = collectConsole(page);
+    await page.goto('/');
+    await expect.poll(() => readLabels(page), { timeout: 5_000 }).toContain(EMIYA_LABEL);
+    const seededId = (await readLibraryList(page)).find((row) => row.name === SEEDED_NAME)!.id;
+
+    // Fork once and save it back: the fork row exists AND the loaded session IS that row.
+    await openMaps(page);
+    await rowActivate(page, SEEDED_NAME, 'tme-map-fork');
+    const forkF = await readLoadedMapId(page);
+    expect(forkF).not.toBe(seededId);
+    await activate(page, 'tme-maps-save-fork');
+    await expect(page.getByTestId('tme-fork-saved')).toHaveText('Saved to the library.');
+
+    // RE-FORK the loaded fork's own row — fork-of-fork, no special case (A-022).
+    await activateLocator(page, forkRowOf(page, SEEDED_NAME).getByTestId('tme-map-fork'));
+    const forkF2 = await readLoadedMapId(page);
+    expect(forkF2, 'the re-fork is a THIRD identity — a chain never re-uses ids (C5)').not.toBe(forkF);
+    expect(forkF2, 'and never the parent').not.toBe(seededId);
+    expect(forkF2, 'engine-assigned (C5)').toMatch(/^map-\d+$/);
+
+    // Save the re-fork back: the second fork row lands.
+    await activate(page, 'tme-maps-save-fork');
+    await expect(page.getByTestId('tme-fork-saved')).toHaveText('Saved to the library.');
+    const rows = await readLibraryList(page);
+    expect(
+      rows,
+      'library composition: parent, generation, re-fork — forkedFrom names the IMMEDIATE parent (A-022)',
+    ).toEqual([
+      { id: seededId, name: SEEDED_NAME, forkedFrom: null },
+      { id: forkF, name: SEEDED_NAME, forkedFrom: seededId },
+      { id: forkF2, name: SEEDED_NAME, forkedFrom: forkF },
+    ]);
+    // C23: the words ARE the surface (ids never render) — both fork lines read identically.
+    const lines = await page.getByTestId('tme-map-provenance').allTextContents();
+    expect(lines, 'the provenance lines render (C23)').toEqual([
+      'Forked from Fuyuki & Misaki (FX1)',
+      'Forked from Fuyuki & Misaki (FX1)',
+    ]);
+    await expect(forkRowOf(page, SEEDED_NAME), 'both fork rows share the parent name AND words').toHaveCount(2);
 
     expect(bad, 'console clean (housekeeping)').toEqual([]);
   });

@@ -1,27 +1,35 @@
 <!-- PKG B-137 (§5 Phase 3 M4 / D40) — the Maps manager PANEL: the library
-     as a real surface. One row per stored map (Open / Duplicate / Export —
-     B-138's stored-map JSON download — / Delete — the delete's inline
-     confirm names the map, no counts, R1), the D79 New-map row (name →
-     Create — the engine assigns the id, C5; disabled while the trimmed
-     name is empty, C30 honesty), the D40 card-pointer SUGGESTION mark
-     (display-only — suggested, never auto-applied), and the D41
-     provenance line in plain words (parent's name when it is in the
-     list, else "Forked"). The empty library renders the picker-first
-     words + the create affordance (no dead list).
+     as a real surface. One row per stored map (Open / Fork — B-139's
+     fork-from-picker, C25/D41 / Duplicate / Export — B-138's stored-map
+     JSON download — / Delete — the delete's inline confirm names the map,
+     no counts, R1), the D79 New-map row (name → Create — the engine assigns
+     the id, C5; disabled while the trimmed name is empty, C30 honesty), the
+     D40 card-pointer SUGGESTION mark (display-only — suggested, never
+     auto-applied), and the D41 provenance line in plain words (parent's
+     name when it is in the list, else "Forked"). The empty library renders
+     the picker-first words + the create affordance (no dead list).
      B-138: the import family under the rows — one .json file input and
      the "Paste your lookup table" MDS importer (F05/FX3's engine); both
      land under a fresh engine id (C5, the re-id ruling) and never
      auto-load (D40); refusals render the engine's field-precise words
      (C30/C32) and never wipe the author's paste.
+     B-139: the FORK session's save-back — the explicit "Save fork back to
+     library" (D41/D97: never a default, never bundled into save/dock
+     flows) rendered ONLY while the loaded map is a fork (structurally
+     absent otherwise — a fork-save control there would be noise); the
+     action persists the fork's save-moment snapshot under its OWN id/name
+     and the inline words confirm it; the fork keeps diverging afterwards
+     (D97 — the row is the save moment). The error block renders the STORE
+     refusals joined with the service's fork-family words channel (C32).
      SUMMON: the layers nav's Maps affordance (the D82 Manage pattern,
      both worlds); the panel renders ONLY while open (the B-117
      hide-while-closed form) — a wide floater / narrow in-stack sheet;
      the B-114 rail is the narrow form's collapse affordance (wide hides
      it and always shows the body). R2: every command goes through the
-     MAP_LIBRARY store or the service's loaded-map wrappers; the facade
-     is never touched here. C23: plain words everywhere — the authored
-     map names render, ids never do. F52/D53: every control >= 44px,
-     touch-alone, no hover affordance. -->
+     MAP_LIBRARY store, the pure engines, or the service's loaded-map
+     wrappers; the facade is never touched here. C23: plain words
+     everywhere — the authored map names render, ids never do. F52/D53:
+     every control >= 44px, touch-alone, no hover affordance. -->
 @if (open()) {
   <section
     class="tme-maps"
@@ -83,6 +91,28 @@
         </button>
       </div>
 
+      <!-- B-139: the fork session's save-back — the ONE explicit gate (D41:
+           a non-default action, never part of the F45 save/dock flows),
+           rendered only while the loaded map is a fork (the service's R4
+           provenance read; structurally absent otherwise). The fork's
+           save-moment snapshot lands under its OWN id/name (D97, C25's
+           explicit path); the inline words confirm it. -->
+      @if (graph.loadedMapIsFork()) {
+        <div class="tme-fork-back" data-testid="tme-maps-fork-back">
+          <button
+            type="button"
+            class="tme-button tme-fork"
+            data-testid="tme-maps-save-fork"
+            (click)="saveForkBack()"
+          >
+            Save fork back to library
+          </button>
+          @if (savedBackNote(); as note) {
+            <p class="tme-fork-saved" data-testid="tme-fork-saved" role="status">{{ note }}</p>
+          }
+        </div>
+      }
+
       <!-- The empty library: the picker-first words (D40) above the rows —
            no dead list, the create row above is the affordance. -->
       @if (rows().length === 0) {
@@ -137,6 +167,19 @@
                 (click)="openMap(entry.id)"
               >
                 Open
+              </button>
+              <!-- B-139: the per-row Fork — the C25 chat-attached private
+                   copy; it NEVER lands as a library row until the explicit
+                   save-back above (the list stays as-is; a re-fork — forking
+                   the loaded fork's own row — is legal with no special case,
+                   A-022). -->
+              <button
+                type="button"
+                class="tme-button tme-fork"
+                data-testid="tme-map-fork"
+                (click)="fork(entry.id)"
+              >
+                Fork
               </button>
               <button
                 type="button"
@@ -207,9 +250,11 @@
         </div>
       </div>
 
-      <!-- C32: the last store refusal in plain words — user-visibly rendered
-           (never console-only), the layer-manager refusals pattern. -->
-      @if (error(); as message) {
+      <!-- C32: the last refusal in plain words — user-visibly rendered (never
+           console-only), the layer-manager refusals pattern. B-139: the STORE
+           refusals join the service's fork-family words channel (one visible
+           block; the first non-null wins). -->
+      @if (refusal(); as message) {
         <div class="tme-errors" data-testid="tme-maps-error" role="alert" aria-label="The map library refused this">
           <p class="tme-error">{{ message }}</p>
         </div>
