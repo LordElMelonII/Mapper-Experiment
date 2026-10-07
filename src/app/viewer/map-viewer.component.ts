@@ -34,12 +34,13 @@ import type { ChromeRect } from '../graph/graph.service';
 import { ArcPanelComponent } from './arc-panel.component';
 import { EditorRailComponent } from './editor-rail.component';
 import { LayerManagerComponent } from './layer-manager.component';
+import { MapsPanelComponent } from './maps-panel.component';
 import { PropertyPanelComponent } from './property-panel.component';
 import { RoutePanelComponent } from './route-panel.component';
 
 @Component({
   selector: 'tme-map-viewer',
-  imports: [EditorRailComponent, RoutePanelComponent, ArcPanelComponent, PropertyPanelComponent, LayerManagerComponent],
+  imports: [EditorRailComponent, RoutePanelComponent, ArcPanelComponent, PropertyPanelComponent, LayerManagerComponent, MapsPanelComponent],
   templateUrl: './map-viewer.component.html',
   styleUrl: './map-viewer.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

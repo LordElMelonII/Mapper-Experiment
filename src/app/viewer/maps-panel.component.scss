@@ -1,0 +1,315 @@
+// PKG B-137 — component-scoped chrome only (D7: zero global leakage). The
+// layer-manager's D91 surface form: a bottom sheet in the .tme-sheets stack
+// on narrow, a position:fixed FLOATER over the full-width stage on wide
+// (bottom-right default anchor — no remembered position, no maximize; the
+// picker anchors, the user picks). The host hides itself entirely
+// (display:none) whenever closed (the B-117 precedent). Below 700px the
+// B-114 rail: an always-visible >= 44px collapse row whose body hide/show
+// is scoped to the media query; at >= 700px the rail is gone and the body
+// always shows. Content never forces horizontal overflow (D53) and scrolls
+// its own overflow vertically, never the page.
+:host {
+  display: none; // closed: no slot, no chrome, no paint
+  box-sizing: border-box;
+}
+
+:host(.tme-open) {
+  display: flex;
+  flex-direction: column; // the head stays put; the body absorbs squeezes (D91 stack)
+  min-width: 0;
+  min-height: 0;
+  color: #e6ebf2;
+  font:
+    400 0.875rem/1.5 system-ui,
+    -apple-system,
+    sans-serif;
+}
+
+.tme-maps-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem 0;
+}
+
+.tme-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+// The panel's X close — one >= 44px tap target (F52), touch-alone (D53).
+.tme-close {
+  min-width: 44px; // F52
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font:
+    600 1rem/1 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+// B-114 (ruling 1): the sheet rail — one full-width >= 44px tap target
+// (F52), the narrow form's collapse affordance. No hover affordance: the
+// chevron rotation and the body visibility are the signal-driven state
+// (R3); the wide media query below neutralizes the whole rail.
+.tme-sheet-rail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px; // F52: >= 44px tap target
+  padding: 0 0.875rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font:
+    600 1rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+.tme-sheet-chevron {
+  font-size: 1rem;
+  opacity: 0.8;
+}
+
+// Collapsed: the chevron points right (the expand affordance); expanded it
+// points down into the open body. Pure CSS off the state class — no hover.
+.tme-collapsed .tme-sheet-chevron {
+  transform: rotate(-90deg);
+}
+
+// The body wrapper: every control/content the panel renders lives inside
+// it. ALWAYS in the DOM while the panel is open; the padding lives here so
+// the rail spans edge-to-edge (the B-114 structure). D91: the body is the
+// shrinkable member — a stack squeeze scrolls IT, never the host, so the
+// head/rail stay reachable. The B-136 route floor is route-specific: this
+// sheet is a shrinkable sibling like every other.
+.tme-maps-body {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.75rem;
+}
+
+// Narrow only: collapsed hides the body — the sheet folds down to its rail
+// band. Scoped to the media query so the ≥700px world can never hide the
+// body.
+@media (max-width: 699.98px) {
+  .tme-collapsed .tme-maps-body {
+    display: none;
+  }
+}
+
+// Wide (the established breakpoint): the sheet rail is gone and the floater
+// takes over.
+@media (min-width: 700px) {
+  .tme-sheet-rail {
+    display: none;
+  }
+
+  // The floating surface over the full-width stage (bottom-right default
+  // anchor; the stage is the viewport's full height on wide).
+  :host(.tme-open) {
+    position: fixed;
+    bottom: 0.75rem;
+    right: 0.75rem;
+    z-index: 20; // above the map it legitimately overlaps
+    width: min(19rem, 100vw - 1.5rem); // never offscreen-wide (D53)
+    max-height: min(26rem, 100dvh - 1.5rem);
+    border: 1px solid rgba(174, 189, 211, 0.4);
+    border-radius: 8px;
+    background: #14171c; // opaque — the map underneath is occluded, not bled through
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    overflow: hidden; // the BODY scrolls (the head must stay reachable)
+  }
+}
+
+.tme-field-label {
+  display: block;
+  margin: 0.375rem 0 0.25rem;
+  color: #c7d0dd;
+  font-size: 0.8125rem;
+}
+
+// Shared control chrome: full-width-friendly, >= 44px tall (F52), 16px font
+// so iOS Safari never focus-zooms (D53).
+.tme-input {
+  display: block;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 0.25rem 0.625rem;
+  border: 1px solid rgba(174, 189, 211, 0.4);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #e6ebf2;
+  font:
+    400 1rem/1.4 system-ui,
+    -apple-system,
+    sans-serif;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+// The create/confirm rows: the input flexes, the buttons keep their tap
+// size; the row WRAPS so a phone never overflows horizontally (D53).
+.tme-create-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.tme-create-input {
+  flex: 1 1 10rem;
+  min-width: 0; // never propagate content width into the row (D53)
+}
+
+.tme-button {
+  min-width: 44px; // F52: >= 44px tap targets, touch-only parity
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: #c7d0dd;
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+.tme-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+// The Create commit — the established gold primary accent.
+.tme-create {
+  border-color: #ffd166;
+  color: #ffd166;
+}
+
+// One map row: the name line (with the open marker + the suggestion mark),
+// the provenance line, then the action row — all wrap, so three buttons
+// never force horizontal scroll (D53).
+.tme-map-row {
+  margin-top: 0.625rem;
+  padding-top: 0.625rem;
+  border-top: 1px solid rgba(174, 189, 211, 0.2);
+}
+
+.tme-map-name-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tme-map-name {
+  font-weight: 600;
+  overflow-wrap: anywhere; // a long authored name wraps, never overflows (D53)
+}
+
+// The loaded map's row marker — the gold accent language (the layer
+// manager's Active marker twin); names which row is live.
+.tme-active-marker {
+  padding: 0.125rem 0.5rem;
+  border: 1px solid #ffd166;
+  border-radius: 999px;
+  color: #ffd166;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+// D40: the card-pointer SUGGESTION mark — a muted informational chip (a
+// status, never an affordance; nothing auto-loads, D40).
+.tme-map-suggested {
+  padding: 0.125rem 0.5rem;
+  border: 1px solid rgba(143, 211, 182, 0.6);
+  border-radius: 999px;
+  color: #8fd3b6;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.tme-map-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.375rem;
+}
+
+// The Open commit — the gold primary accent (the panel's whole point).
+.tme-open-button {
+  border-color: #ffd166;
+  color: #ffd166;
+}
+
+// The destructive action shares the red key (the blocked/delete accent).
+.tme-delete {
+  border-color: rgba(201, 86, 78, 0.7);
+  color: #e08a84;
+}
+
+// D41 provenance line — muted small print (the portal-mirror language); a
+// status, never an affordance.
+.tme-map-provenance {
+  margin: 0.125rem 0 0;
+  color: #9aa7b8;
+  font-size: 0.8125rem;
+}
+
+// The delete confirm's sentence — warm to read as destructive-adjacent (the
+// impact line's language), the map's NAME in plain words, no counts (R1).
+.tme-map-confirm {
+  margin: 0 0 0.375rem;
+  color: #d9b06c;
+}
+
+// The empty-library words (D40's picker-first state) — muted, above the
+// (absent) rows; the create row is the affordance.
+.tme-maps-empty {
+  margin: 0.625rem 0 0;
+  color: #9aa7b8;
+  font-size: 0.8125rem;
+}
+
+// C32 field-precise refusals — the layer-manager pattern, words only.
+.tme-errors {
+  margin-top: 0.625rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid rgba(201, 86, 78, 0.5);
+  border-radius: 8px;
+  background: rgba(201, 86, 78, 0.12);
+}
+
+.tme-error {
+  margin: 0;
+  color: #e08a84;
+}
+
+// The host's padding band must never eat canvas taps (the B-133 review
+// discipline): the host never intercepts; the visible root section
+// re-enables events for its content.
+:host {
+  pointer-events: none;
+}
+
+.tme-maps {
+  pointer-events: auto; // the visible panel re-enables
+}

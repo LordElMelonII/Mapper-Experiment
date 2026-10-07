@@ -1,0 +1,165 @@
+<!-- PKG B-137 (§5 Phase 3 M4 / D40) — the Maps manager PANEL: the library
+     as a real surface. One row per stored map (Open / Duplicate / Delete —
+     the delete's inline confirm names the map, no counts, R1), the D79
+     New-map row (name → Create — the engine assigns the id, C5; disabled
+     while the trimmed name is empty, C30 honesty), the D40 card-pointer
+     SUGGESTION mark (display-only — suggested, never auto-applied), and
+     the D41 provenance line in plain words (parent's name when it is in
+     the list, else "Forked"). The empty library renders the picker-first
+     words + the create affordance (no dead list).
+     SUMMON: the layers nav's Maps affordance (the D82 Manage pattern,
+     both worlds); the panel renders ONLY while open (the B-117
+     hide-while-closed form) — a wide floater / narrow in-stack sheet;
+     the B-114 rail is the narrow form's collapse affordance (wide hides
+     it and always shows the body). R2: every command goes through the
+     MAP_LIBRARY store or the service's loaded-map wrappers; the facade
+     is never touched here. C23: plain words everywhere — the authored
+     map names render, ids never do. F52/D53: every control >= 44px,
+     touch-alone, no hover affordance. -->
+@if (open()) {
+  <section
+    class="tme-maps"
+    data-testid="tme-maps-panel"
+    aria-label="Manage maps"
+    [class.tme-collapsed]="collapsed()"
+  >
+    <header class="tme-maps-head">
+      <h2 class="tme-title">Maps</h2>
+      <button
+        type="button"
+        class="tme-close"
+        data-testid="tme-maps-panel-close"
+        aria-label="Close map management"
+        (click)="close()"
+      >
+        ×
+      </button>
+    </header>
+
+    <!-- B-114 (ruling 1): the sheet rail — one full-width >= 44px toggle
+         (F52), narrow-only (the media query hides it on wide). -->
+    <button
+      type="button"
+      class="tme-sheet-rail"
+      data-testid="tme-maps-rail"
+      [attr.aria-expanded]="!collapsed()"
+      aria-controls="tme-maps-body"
+      (click)="toggleRail()"
+    >
+      <span class="tme-sheet-title">{{ collapsed() ? 'Show' : 'Hide' }}</span>
+      <span class="tme-sheet-chevron" aria-hidden="true">▾</span>
+    </button>
+
+    <div class="tme-maps-body" id="tme-maps-body" data-testid="tme-maps-body">
+      <!-- The D79 New-map row: name input + Create (the engine assigns the
+           id, C5; the D79 default scale applies — the one-time hint arms on
+           success). Offered in every state — the empty library's "New map"
+           affordance IS this row. -->
+      <label class="tme-field-label" for="tme-maps-create-input">New map name</label>
+      <div class="tme-create-row">
+        <input
+          id="tme-maps-create-input"
+          class="tme-input tme-create-input"
+          type="text"
+          autocomplete="off"
+          data-testid="tme-maps-create-input"
+          [value]="createValue()"
+          (input)="onCreateInput($event)"
+        />
+        <button
+          type="button"
+          class="tme-button tme-create"
+          data-testid="tme-maps-create"
+          [disabled]="!canCreate()"
+          (click)="create()"
+        >
+          Create
+        </button>
+      </div>
+
+      <!-- The empty library: the picker-first words (D40) above the rows —
+           no dead list, the create row above is the affordance. -->
+      @if (rows().length === 0) {
+        <p class="tme-maps-empty" data-testid="tme-maps-empty">
+          No maps yet. Name one above to start.
+        </p>
+      }
+
+      <!-- One row per library map (the store's insertion order). Each row
+           is exactly one of: the view row or the delete-confirm block. -->
+      @for (entry of rows(); track entry.id) {
+        <div class="tme-map-row" data-testid="tme-map-row">
+          @if (confirmingId() === entry.id) {
+            <!-- The inline confirm — the map's NAME in plain words, no
+                 counts (R1: the whole map dies, the sentence says that). -->
+            <p class="tme-map-confirm" data-testid="tme-map-confirm" role="status">
+              {{ deleteLine(entry) }}
+            </p>
+            <div class="tme-create-row">
+              <button
+                type="button"
+                class="tme-button tme-delete"
+                data-testid="tme-map-delete-confirm"
+                (click)="confirmDelete()"
+              >
+                Delete
+              </button>
+              <button type="button" class="tme-button" data-testid="tme-map-delete-cancel" (click)="cancelDelete()">
+                Cancel
+              </button>
+            </div>
+          } @else {
+            <div class="tme-map-name-row">
+              <span class="tme-map-name" data-testid="tme-map-name">{{ entry.name }}</span>
+              @if (graph.loadedMapId() === entry.id) {
+                <span class="tme-active-marker" data-testid="tme-map-active-marker">Open</span>
+              }
+              @if (isSuggested(entry)) {
+                <span class="tme-map-suggested" data-testid="tme-map-suggested">
+                  Suggested by the character card
+                </span>
+              }
+            </div>
+            @if (provenanceLine(entry); as line) {
+              <p class="tme-map-provenance" data-testid="tme-map-provenance">{{ line }}</p>
+            }
+            <div class="tme-map-actions">
+              <button
+                type="button"
+                class="tme-button tme-open-button"
+                data-testid="tme-map-open"
+                (click)="openMap(entry.id)"
+              >
+                Open
+              </button>
+              <button
+                type="button"
+                class="tme-button"
+                data-testid="tme-map-duplicate"
+                (click)="duplicate(entry.id)"
+              >
+                Duplicate
+              </button>
+              <button
+                type="button"
+                class="tme-button tme-delete"
+                data-testid="tme-map-delete"
+                (click)="startDelete(entry.id)"
+              >
+                Delete
+              </button>
+            </div>
+          }
+        </div>
+      }
+
+      <!-- C32: the last store refusal in plain words — user-visibly rendered
+           (never console-only), the layer-manager refusals pattern. -->
+      @if (error(); as message) {
+        <div class="tme-errors" data-testid="tme-maps-error" role="alert" aria-label="The map library refused this">
+          <p class="tme-error">{{ message }}</p>
+        </div>
+      }
+    </div>
+  </section>
+}

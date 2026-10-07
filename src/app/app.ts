@@ -18,15 +18,31 @@
 // The demo map is IN-FILE data following the api.ts shape — validateWorldMap
 // accepts it at loadMap (the D69 display-copy precedent: harness-only
 // display content, the FX fixtures stay untouched, D70).
+// PKG B-137 — THE MAP LIBRARY BOOT (§5 M4/D40): the display map is seeded
+// into the MAP_LIBRARY at boot (an idempotent upsert — the Maps manager
+// panel's list always carries the booted map); `?map=none` boots MAPLESS —
+// no loadMap at all, the GraphService holds its no-map state and the Maps
+// panel AUTO-OPENS (D40's picker-first journey, harness-testable now; the
+// REAL host boots mapless at Phase 4 wiring and keeps its FX1-equivalent
+// flow). `?cardmap=<id>` marks the matching library row "Suggested by the
+// character card" (D40: suggested, NEVER auto-applied — the harness
+// stand-in for the Phase 4 card-pointer read) in BOTH boot paths. The
+// DEFAULT boot path (no param) is otherwise byte-identical to pre-B-137:
+// FX1 or (with `?map=registry-demo`) the registry demo, the same loadMap
+// pair, the curve demo edge, the harness background.
 import { Component, inject } from '@angular/core';
 import { GraphService } from './graph/graph.service';
 import { MapViewerComponent } from './viewer/map-viewer.component';
 import { createFacade } from '../core/facade';
 import type { ChatMapOverlay, MapEdgeData, WorldMapData } from '../core/api';
 import { fuyukiMap } from '../../data/worlds/fuyuki';
+import { MAP_LIBRARY } from './graph/map-library';
 
 /** B-124: the `map` URL param value that boots the registry demo instead of FX1. */
 const REGISTRY_DEMO_PARAM = 'registry-demo';
+
+/** B-137 (D40): the `map` URL param value that boots MAPLESS — the picker-first journey. */
+const MAPLESS_PARAM = 'none';
 
 /**
  * B-111 — the ONE harness-only demo edge (the D69 display-copy precedent:
@@ -259,6 +275,16 @@ interface TmeE2EHook {
   /** B-135 (D92): the ACTIVE layer's default-fit placement through the ONE
    *  shared derivation (defaultPlacementFor), or null when degenerate. */
   defaultPlacement(): { x: number; y: number; scale: number } | null;
+  /** B-137: the map library's rows as light summaries (id/name/forkedFrom —
+   *  the Maps panel's list state), or [] on a store failure. Read-only
+   *  (R2/R4); the ids are assertion keys, never rendered words (C23). */
+  libraryList(): Promise<{ id: string; name: string; forkedFrom: string | null }[]>;
+  /** B-137: whether THIS boot took the mapless path (?map=none — D40). */
+  bootMapless(): boolean;
+  /** B-137: the card-pointer suggestion's map id (?cardmap=), or null. */
+  cardSuggestedMapId(): string | null;
+  /** B-137: the loaded map's id, or null when mapless (the mapless/delete states). */
+  loadedMapId(): string | null;
 }
 
 @Component({
@@ -269,43 +295,79 @@ interface TmeE2EHook {
 })
 export class App {
   private readonly graphService = inject(GraphService);
+  private readonly library = inject(MAP_LIBRARY);
+
+  /** B-137: whether this boot took the mapless path — the e2e hook's read. */
+  private bootWasMapless = false;
 
   constructor() {
     const facade = createFacade();
+    const params = new URLSearchParams(window.location.search);
+    const mapParam = params.get('map');
 
-    // B-124: `?map=registry-demo` boots the harness-only registry demo map
-    // INSTEAD of FX1 (see the header comment) — the DEFAULT boot path (no
-    // param, any other value) stays byte-identical: fuyukiDisplayMap().
-    const demoRequested =
-      new URLSearchParams(window.location.search).get('map') === REGISTRY_DEMO_PARAM;
-    const displayMap = demoRequested ? registryDemoMap() : fuyukiDisplayMap();
+    if (mapParam === MAPLESS_PARAM) {
+      // B-137 (D40): the MAPLESS boot — no loadMap call at all; the service
+      // holds its no-map state and the Maps panel AUTO-OPENS (the
+      // picker-first journey). The facade is attached WITHOUT a map so the
+      // panel's Open/New flows load through it later. The library is still
+      // seeded (a STORE write, never a load — the real host's picker stands
+      // over previously-saved maps; the harness stand-in seeds the demo
+      // world so the mapless journey has something to open).
+      this.bootWasMapless = true;
+      this.graphService.attachFacade(facade);
+      this.graphService.mapsPanelOpen.set(true);
+      this.library.save(fuyukiDisplayMap()).catch(() =>
+        console.warn('[TravelMapper] map library seed failed'),
+      );
+    } else {
+      // B-124: `?map=registry-demo` boots the harness-only registry demo map
+      // INSTEAD of FX1 (see the header comment) — the DEFAULT boot path (no
+      // param, any other value) stays byte-identical: fuyukiDisplayMap().
+      const demoRequested = mapParam === REGISTRY_DEMO_PARAM;
+      const displayMap = demoRequested ? registryDemoMap() : fuyukiDisplayMap();
 
-    // A fresh chat overlay (the state C persists per chat, Phase 4): pin on
-    // the map's start leaf, walking, no user nodes/edges/blocks. The demo's
-    // overlay rides its own map id and pin (the mode universe it validates
-    // against is the demo registry's — D78).
-    const overlay: ChatMapOverlay = demoRequested
-      ? {
-          mapId: 'vale-coast-registry-demo',
-          currentLocationId: 'vale-gate',
-          travelMode: 'walk',
-          userNodes: [],
-          userEdges: [],
-          blocked: {},
-          nodeBlocked: {},
-        }
-      : {
-          mapId: 'fuyuki-misaki',
-          currentLocationId: 'emiya-residence',
-          travelMode: 'walk',
-          userNodes: [],
-          userEdges: [],
-          blocked: {},
-          nodeBlocked: {},
-        };
+      // A fresh chat overlay (the state C persists per chat, Phase 4): pin on
+      // the map's start leaf, walking, no user nodes/edges/blocks. The demo's
+      // overlay rides its own map id and pin (the mode universe it validates
+      // against is the demo registry's — D78).
+      const overlay: ChatMapOverlay = demoRequested
+        ? {
+            mapId: 'vale-coast-registry-demo',
+            currentLocationId: 'vale-gate',
+            travelMode: 'walk',
+            userNodes: [],
+            userEdges: [],
+            blocked: {},
+            nodeBlocked: {},
+          }
+        : {
+            mapId: 'fuyuki-misaki',
+            currentLocationId: 'emiya-residence',
+            travelMode: 'walk',
+            userNodes: [],
+            userEdges: [],
+            blocked: {},
+            nodeBlocked: {},
+          };
 
-    facade.loadMap(displayMap, overlay); // R2: the facade owns the map lifecycle
-    this.graphService.loadMap(displayMap, overlay, facade); // R4: same references
+      facade.loadMap(displayMap, overlay); // R2: the facade owns the map lifecycle
+      this.graphService.loadMap(displayMap, overlay, facade); // R4: same references
+
+      // B-137 (§5 M4): the boot map seeds the library — an idempotent upsert
+      // (the store clones; the stored row is the boot state). A store
+      // failure degrades to ONE warn — the harness map still runs (C32).
+      this.library.save(displayMap).catch(() =>
+        console.warn('[TravelMapper] map library seed failed'),
+      );
+    }
+
+    // B-137 (D40): the card-pointer SUGGESTION (harness stand-in) — marks a
+    // library row in the Maps panel, never auto-applies, works in BOTH boot
+    // paths. The real host read lands at Phase 4.
+    const cardMapId = params.get('cardmap');
+    if (cardMapId !== null && cardMapId.length > 0) {
+      this.graphService.cardSuggestedMapId.set(cardMapId);
+    }
 
     this.installE2EHook();
   }
@@ -350,6 +412,20 @@ export class App {
       calibrateMode: () => this.graphService.testCalibrateMode(),
       backgroundPlacement: () => this.graphService.testActiveLayerPlacement(),
       defaultPlacement: () => this.graphService.testDefaultPlacement(),
+      libraryList: async () => {
+        try {
+          return (await this.library.list()).map((entry) => ({
+            id: entry.id,
+            name: entry.name,
+            forkedFrom: entry.forkedFrom,
+          }));
+        } catch {
+          return []; // the store refused — the spec's row expectations fail honestly (C32 spirit)
+        }
+      },
+      bootMapless: () => this.bootWasMapless,
+      cardSuggestedMapId: () => this.graphService.cardSuggestedMapId(),
+      loadedMapId: () => this.graphService.loadedMapId(),
     };
   }
 }

@@ -26,6 +26,7 @@
     data-testid="tme-editor-toggle"
     [class.tme-active]="graph.editorMode()"
     [attr.aria-pressed]="graph.editorMode() ? 'true' : 'false'"
+    [disabled]="!graph.hasMap()"
     (click)="toggleEditor()"
   >
     {{ graph.editorMode() ? 'Editing' : 'Edit' }}
@@ -98,6 +99,24 @@
       (click)="toggleLayerManager()"
     >
       Manage
+    </button>
+
+    <!-- B-137 (§5 M4/D40): the Maps panel's affordance — the D82 Manage
+         pattern exactly (a nav sibling, present in BOTH worlds; the phone
+         bottom-rail regime stays untouched — no bar re-wrap in editor
+         mode, no standing chrome anywhere). Pressed state mirrors the
+         signal (R3), plain word (C23), >= 44px (F52). The mapless state
+         keeps it reachable: the nav renders with no layer buttons and
+         Manage/Maps remain (the picker is never stranded, D40). -->
+    <button
+      type="button"
+      class="tme-layer-button tme-maps-nav"
+      data-testid="tme-maps-toggle"
+      [class.tme-active]="graph.mapsPanelOpen()"
+      [attr.aria-pressed]="graph.mapsPanelOpen() ? 'true' : 'false'"
+      (click)="toggleMapsPanel()"
+    >
+      Maps
     </button>
   </nav>
 

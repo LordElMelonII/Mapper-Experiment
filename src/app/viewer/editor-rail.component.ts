@@ -90,6 +90,15 @@ export class EditorRailComponent {
   }
 
   /**
+   * B-137 (D40): the Maps panel's summon — the layers nav's Maps affordance
+   * (the D82 Manage pattern: a nav sibling, present in BOTH worlds) through
+   * the service's single write path (R2/R3).
+   */
+  protected toggleMapsPanel(): void {
+    this.graph.toggleMapsPanel();
+  }
+
+  /**
    * B-132 (D90/D93): the per-layer background dim slider's tap/drag path —
    * the service's single write path (R2/R3: one facade-bound method, the
    * toggleLayerManager pattern). The input event is a discrete committed

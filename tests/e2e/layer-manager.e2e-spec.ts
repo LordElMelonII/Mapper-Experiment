@@ -462,9 +462,13 @@ const collectConsole = (page: Page): string[] => {
 /** One sheet row, addressed by its authored layer NAME (C23 — never an id). */
 const layerRow = (page: Page, name: string) => page.locator('.tme-layer-row', { hasText: name });
 
-/** The nav's layer-button labels in DOM order (array order — the one truth). */
+/** The nav's LAYER-button labels in DOM order (array order — the one truth).
+ *  B-137: the nav also carries the Maps affordance (the Manage twin) — excluded
+ *  like Manage: this helper reads the map's layer buttons only. */
 const navLayerNames = (page: Page): Promise<string[]> =>
-  page.locator('nav.tme-layers .tme-layer-button:not(.tme-manage)').allInnerTexts();
+  page
+    .locator('nav.tme-layers .tme-layer-button:not(.tme-manage):not(.tme-maps-nav)')
+    .allInnerTexts();
 
 test.describe('the layer-manager sheet, the Layer dropdown and Detach (PKG B-126, D82/D83/F54)', () => {
   test.beforeEach(async ({ page }) => {

@@ -223,6 +223,25 @@
   color: #ffd166;
 }
 
+// B-137 (D40): the Maps panel's affordance — the D82 Manage pattern: a nav
+// SIBLING of Manage, present in BOTH worlds (the panel is the mapless
+// state's primary surface, so the phone keeps it reachable — the nav
+// renders Manage/Maps even with no map). Same dashed border language as
+// Manage (it OPENS a management surface, it does not switch layers); the
+// compact padding keeps the four-button nav on ONE row at the 375px
+// measured band (the B-129 arithmetic — no bar re-wrap in editor mode, the
+// panel-drag cells' clamp headroom preserved); min-width holds the 44px
+// F52 floor. The pressed state mirrors mapsPanelOpen (the gold accent).
+.tme-layer-button.tme-maps-nav {
+  padding: 0 0.375rem;
+  border-style: dashed;
+}
+
+.tme-layer-button.tme-maps-nav.tme-active {
+  border-color: #ffd166;
+  color: #ffd166;
+}
+
 // B-132 (D90/D93/F56): the per-layer background DIM — label + native range
 // input + numeric readout in one row. SLOT: a HOST SIBLING under the body —
 // the wide column stretches it full width directly under the layers nav;

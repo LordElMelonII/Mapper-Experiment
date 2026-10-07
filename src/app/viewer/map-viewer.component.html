@@ -86,7 +86,7 @@
           @if (graph.saveError(); as err) {
             <span class="tme-save-error" data-testid="tme-save-error">{{ err }}</span>
           }
-          <button type="button" class="tme-save" data-testid="tme-save" (click)="graph.saveMap()">Save</button>
+          <button type="button" class="tme-save" data-testid="tme-save" (click)="graph.saveMapToLibrary()">Save</button>
         </aside>
       }
     </header>
@@ -217,6 +217,29 @@
       </div>
     }
 
+    <!-- B-137 (D79): the one-time calibrate HINT — after a NEW map is
+         created (and only then): plain words (C23) stating the D79 default
+         scale and the explicit-action rule; informational, never blocking
+         (D10/D30 spirit). One >= 44px Dismiss tap target (F52); dismissal
+         is per-map, session-memory (the service's signal). Hidden while the
+         calibrate MODE band owns this top-center slot (the two never
+         compete — calibrating a placement is not calibrateScale, so the
+         hint can still be up; the band returns it after the mode ends). -->
+    @if (graph.calibrateHint() !== null && !graph.calibrateMode()) {
+      <aside class="tme-hint" data-testid="tme-calibrate-hint" role="status" aria-label="Scale hint">
+        <span class="tme-hint-text">{{ graph.calibrateHint() }}</span>
+        <button
+          type="button"
+          class="tme-hint-dismiss"
+          data-testid="tme-calibrate-hint-dismiss"
+          aria-label="Dismiss the scale hint"
+          (click)="graph.dismissCalibrateHint()"
+        >
+          ×
+        </button>
+      </aside>
+    }
+
     <!-- B-133 (D91): the four PANEL SURFACES — overlays over this stage.
          NARROW (the default): .tme-sheets is the bottom-sheet STACK anchored
          to the stage's bottom edge (absolute, pointer-events none on the
@@ -254,6 +277,12 @@
            affordance's surface; the component hides its host entirely while
            closed (the B-117 precedent), so closed it is not even painted. -->
       <tme-layer-manager class="tme-layer-manager" />
+
+      <!-- B-137 (§5 M4/D40): the Maps manager panel — the library surface
+           (open/new/duplicate/delete), the mapless boot's auto-opened
+           picker. Same hide-while-closed discipline; DOM order = stack
+           paint order. -->
+      <tme-maps-panel class="tme-maps-panel" />
     </div>
   </div>
 

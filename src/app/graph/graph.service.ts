@@ -338,7 +338,8 @@ import type {
   NodeSingular,
   StylesheetStyle,
 } from 'cytoscape';
-import { Injectable, OnDestroy, computed, effect, linkedSignal, signal } from '@angular/core';
+import { Injectable, OnDestroy, computed, effect, inject, linkedSignal, signal } from '@angular/core';
+import { MAP_LIBRARY } from './map-library';
 import type {
   ChatMapOverlay,
   LayerBackground,
@@ -821,6 +822,14 @@ const CONTAINER_KINDS: ReadonlySet<NodeKind> = new Set<NodeKind>([
 export const DEFAULT_BLOCK_REASON = 'Closed';
 
 /**
+ * B-137 (C23): the D79 hint's plain words — the D79 default scale stated
+ * (1 px = 1 unit, distance-kind), the explicit-action rule (C13/D44)
+ * spoken as guidance, never a block (D10/D30 spirit: informational).
+ */
+const CALIBRATE_HINT =
+  'New map: 1 px = 1 unit. Draw a route and calibrate its scale when you know real distances.';
+
+/**
  * B-131: the blocked-node marker's display offset from its host node, in
  * model units — the shared badge-anchor convention of layer-elements.ts
  * (BADGE_OFFSET, both axes; that module is the pinned bare-Node seam, so
@@ -921,6 +930,15 @@ export class GraphService implements OnDestroy {
   private overlay: ChatMapOverlay | null = null;
   private facade: MapFacade | null = null;
   private mounted = false;
+
+  /**
+   * B-137: the map LIBRARY — the save dock's store write seam (the dock's
+   * Save persists the current map through library.save AFTER the facade's
+   * saveMap). The harness runs the in-memory impl (session-local by
+   * design), the host runs the C packet's localforage one (the
+   * BACKGROUND_STORE precedent, B-130).
+   */
+  private readonly library = inject(MAP_LIBRARY);
 
   /**
    * B-113 (ruling 1): the label-cull threshold — the fit zoom ×
@@ -1201,7 +1219,12 @@ export class GraphService implements OnDestroy {
    */
   readonly unsavedChanges = computed<boolean>(() => {
     void this.editorRevision(); // dependency: place/move/save/load re-read (F45)
-    return this.facade?.hasUnsavedChanges() ?? false;
+    // B-137: the F45 bar describes the LOADED map's dirty state — with no
+    // map loaded (the mapless boot, the delete-loaded-map flow) there is
+    // nothing to save, and a dock lit for a deleted map would be the C30
+    // dishonesty. The facade keeps the last map's state internally (R2: no
+    // unload command exists), so the viewer's mapless state gates the read.
+    return this.map() !== null && (this.facade?.hasUnsavedChanges() ?? false);
   });
 
   /**
@@ -1238,6 +1261,52 @@ export class GraphService implements OnDestroy {
    * opening/closing it resizes nothing.
    */
   readonly layerManagerOpen = signal(false);
+
+  /**
+   * B-137 (§5 M4/D40): the Maps manager panel's open state — the layer-
+   * manager's structural twin (frontend viewer chrome, in-memory only; the
+   * facade carries no command for it). Written by the rail's Maps toggle
+   * (toggleMapsPanel), the panel's Escape/X close, the mapless boot's
+   * auto-open (D40's picker-first journey — the App sets it), and a fresh
+   * loadMap closes it (the layerManagerOpen reset precedent — opening a
+   * map is the panel's whole point, so the panel gets out of the way).
+   * Going MAPLESS (unloadMap) deliberately does NOT close it: the delete-
+   * loaded-map flow leaves the user in the picker (the empty state + the
+   * panel open is the D40 mapless state).
+   */
+  readonly mapsPanelOpen = signal(false);
+
+  /** B-137: the rail's Maps summon — the single toggle write path (R3, the toggleLayerManager pattern). */
+  toggleMapsPanel(): void {
+    this.mapsPanelOpen.update((open) => !open);
+  }
+
+  /**
+   * B-137 (D40): the character card's map-pointer SUGGESTION (harness
+   * stand-in — the real host read lands at Phase 4): the library row id the
+   * `?cardmap=` boot param marks. Display-only state: the Maps panel renders
+   * a "Suggested by the character card" line on the matching row and
+   * NOTHING auto-loads (the user's explicit pick is the only loader, D40).
+   * The id never renders (C23) — the panel matches by id and speaks words.
+   */
+  readonly cardSuggestedMapId = signal<string | null>(null);
+
+  /**
+   * B-137: whether a map is currently loaded — the honest gate for map-only
+   * affordances (the rail's editor toggle renders DISABLED while mapless:
+   * an editor session over an empty backdrop would place nothing — the F07
+   * dead-control reasoning, disabled never hidden). An R4 read of the map
+   * signal, nothing more.
+   */
+  readonly hasMap = computed(() => this.map() !== null);
+
+  /**
+   * B-137: the loaded map's id, or null when mapless — the Maps panel's
+   * delete flow compares it against the deleted row (the loaded map's row
+   * going away takes the viewer mapless). An R4 read (C23: ids never
+   * render — the panel compares, the words render).
+   */
+  readonly loadedMapId = computed(() => this.map()?.id ?? null);
 
   /** The latest facade snapshot (R1: every header string originates here). */
   readonly snapshot = signal<MapSnapshot | null>(null);
@@ -1808,6 +1877,7 @@ export class GraphService implements OnDestroy {
     this.edgeSelection.set(null);
     this.clearDrawPick(); // B-122: a pending pick is the same class of stale state — cleared with the selections
     this.layerManagerOpen.set(false); // B-126: a fresh map starts unmanaged — the sheet closes with the selections
+    this.mapsPanelOpen.set(false); // B-137: a fresh map closes the picker — the map is the point (D40)
     // B-116 (D75): a fresh load carries no unsaved editor edits (the facade
     // clears its dirty flag in loadMap) — recompute the F45 bar and drop any
     // stale save refusal from the previous session.
@@ -1835,6 +1905,178 @@ export class GraphService implements OnDestroy {
     // harness loads before mount(), so mount()'s fit covers the first view.
     // NOTE: a loadMap-while-MOUNTED (the Phase 4 map switch) will need its
     // own explicit fit decision then — out of scope here.
+  }
+
+  /**
+   * B-137 (D40): attach the facade WITHOUT a map — the harness MAPLESS boot
+   * (`?map=none`) creates the facade but never calls loadMap; the Maps
+   * panel's Open/New flows load through it later (openMapFromLibrary). The
+   * same object the App created — one facade, one truth (R4); only the map
+   * lifecycle is deferred. Unreachable from the real host boot (it always
+   * has a map or defers to the picker at Phase 4 wiring).
+   */
+  attachFacade(facade: MapFacade): void {
+    this.facade = facade;
+  }
+
+  /**
+   * B-137 (§5 M4): OPEN one library map — the panel's per-row command. The
+   * overlay is FRESH per load (the app.ts boot shape): mapId = the map's
+   * id, `currentLocationId: null` — a loaded map starts with NO PIN (D40's
+   * explicit pick: the user sets the pin; the C27 degraded snapshot is the
+   * honest first state), walking, empty universes. The CALLER owns the
+   * copy discipline: the library's get() resolves an independent object
+   * (the displayMap doctrine — the facade gets its own; the store keeps
+   * its own), so handing it straight through is safe (no aliasing with the
+   * stored row). The facade validates (reject-before-mutate — a refused
+   * load leaves the prior state untouched) and then this.loadMap resets the
+   * viewer exactly as every load does (selections, drafts, panels close).
+   * The ONE fit afterwards is a USER-command fit (the selectLayer class —
+   * D10: a user command is a legitimate fit trigger; the headless no-op is
+   * free): a picker-opened map must present fitted, not at the stale
+   * viewport of whatever was on screen before.
+   */
+  openMapFromLibrary(map: WorldMapData): void {
+    const facade = this.facade;
+    if (facade === null) return; // no core to load into — degrade (C32 spirit; unreachable via the panel)
+    const overlay: ChatMapOverlay = {
+      mapId: map.id,
+      currentLocationId: null, // D40: a loaded map starts with NO pin — the user sets it
+      travelMode: 'walk',
+      userNodes: [],
+      userEdges: [],
+      blocked: {},
+      nodeBlocked: {},
+    };
+    facade.loadMap(map, overlay); // R2: the facade owns the map lifecycle
+    this.loadMap(map, overlay, facade); // R4: same references, the viewer resets
+    this.fitToView(); // the user-command fit (the selectLayer precedent; headless no-op)
+  }
+
+  /**
+   * B-137 (D40): go MAPLESS — the no-map state of the mapless boot, reached
+   * at runtime when the Maps panel deletes the LOADED map's row. The
+   * viewer's whole map-dependent state resets (the loadMap reset class):
+   * references dropped, selections and drafts cleared, editor mode exited
+   * (an editor session over an empty backdrop is an invisible affordance —
+   * placing has no layer to land in), snapshot null (the header degrades to
+   * empty strings, C32), the canvas emptied (rebuildElements' null-map
+   * guard returns EARLY — the stale projection would keep painting), the
+   * background transform cleared (the img unmounts with activeBackground).
+   * The facade is KEPT attached: it holds no user-visible truth while the
+   * viewer is mapless (the dock's unsavedChanges gate reads hasMap), and
+   * the next Open/New replaces its state wholesale (reject-before-mutate's
+   * clean-slate template). The Maps panel is deliberately NOT closed — the
+   * user is in it; the empty-library/picker state is where they stand.
+   */
+  unloadMap(): void {
+    this.exitCalibrate(false); // a calibrate session over a deleted map dies with it (the guard effect's class)
+    this.map.set(null);
+    this.overlay = null;
+    this.travelMode.set('walk');
+    this.selection.set(null);
+    this.edgeSelection.set(null);
+    this.clearDrawPick();
+    this.exitEditor(); // mapless has nothing to edit — the honest reset
+    this.unsavedIds.clear();
+    this.editorRevision.update((n) => n + 1);
+    this.saveError.set(null);
+    this.activeLayer.set(null);
+    this.snapshot.set(null);
+    this.cy.batch(() => {
+      this.cy.elements().remove(); // the null-map rebuild guard returns early — clear by hand
+    });
+    this.pendingPlacementLayer = null;
+    this.recomputeHeldDefault();
+    this.applyBackgroundTransform();
+  }
+
+  /**
+   * B-137 (§5 M4): the save dock's Save — the facade's explicit save (the
+   * saved plane moves, C24 untouched) FOLLOWED BY the library store write
+   * of the current map (the store keeps its own copy — the harness impl
+   * clones on save, so the stored row is the saved state, never a live
+   * alias). A facade C30 refusal short-circuits (saveError already
+   * surfaced it; nothing to store); a STORE failure surfaces through the
+   * same user-visible saveError channel — never an uncaught throw (C32),
+   * and the map stays dirty (the dock keeps its state). No map loaded is a
+   * no-op (C30 honesty — structurally unreachable from the dock, whose
+   * dirty gate requires a loaded facade, but the guard keeps the command
+   * honest for any caller).
+   */
+  async saveMapToLibrary(): Promise<void> {
+    const map = this.map();
+    if (map === null) return; // no map — nothing to save (C30 honesty)
+    this.saveMap(); // the facade's explicit save — refusals land in saveError
+    if (this.saveError() !== null) return; // the facade refused — nothing to store
+    try {
+      await this.library.save(map);
+    } catch (error) {
+      this.saveError.set(
+        error instanceof Error ? error.message : `Saving to the map library failed: ${String(error)}`,
+      );
+    }
+  }
+
+  // --- B-137 (D79): the one-time calibrate hint --------------------------------
+
+  /**
+   * B-137 (D79): the map ids created THIS SESSION through the panel's
+   * New-map flow (markFreshlyCreatedMap) and not yet calibrated out. The
+   * hint shows only while the LOADED map is in this set — boot-seeded,
+   * library-opened, and duplicated maps never show it (only a NEW map
+   * carries the D79 default scale the hint speaks about). Session-memory
+   * is fine for v1 (the packet's ruling).
+   */
+  private readonly freshlyCreatedMapIds = signal<ReadonlySet<string>>(new Set());
+
+  /** B-137 (D79): the per-map, per-session dismissal record (the signal re-renders the hint, R3). */
+  private readonly calibrateHintDismissedIds = signal<ReadonlySet<string>>(new Set());
+
+  /**
+   * B-137 (D79): the hint's state — the plain words while the LOADED map
+   * was freshly created this session and is neither dismissed nor
+   * calibrated, else null. A computed over discrete signals only (D2): the
+   * map signal (a load re-reads), the fresh set (create arms it;
+   * clearCalibrateHintForLoadedMap removes the id on a successful
+   * calibrateScale — THAT signal write is the calibrate recompute trigger),
+   * and the dismissed set (a dismiss writes).
+   */
+  readonly calibrateHint = computed<string | null>(() => {
+    const map = this.map();
+    if (map === null) return null;
+    if (!this.freshlyCreatedMapIds().has(map.id)) return null;
+    if (this.calibrateHintDismissedIds().has(map.id)) return null;
+    return CALIBRATE_HINT;
+  });
+
+  /** B-137: arm the hint for a just-created map (the panel's New flow, before it opens the map). */
+  markFreshlyCreatedMap(mapId: string): void {
+    this.freshlyCreatedMapIds.update((ids) => new Set(ids).add(mapId));
+  }
+
+  /** B-137: the hint's Dismiss — one discrete tap (R3), per-map, session-memory (D79). */
+  dismissCalibrateHint(): void {
+    const mapId = this.map()?.id;
+    if (mapId === undefined) return;
+    this.calibrateHintDismissedIds.update((ids) => new Set(ids).add(mapId));
+  }
+
+  /**
+   * B-137 (D79): calibrating clears the hint — the user has done the thing
+   * it suggested. ANY calibrateScale command qualifies; measureArc is the
+   * service's one calibrateScale passthrough, so the clear lives at its
+   * success site (a refusal changes nothing — no calibration happened).
+   */
+  private clearCalibrateHintForLoadedMap(): void {
+    const mapId = this.map()?.id;
+    if (mapId === undefined) return;
+    this.freshlyCreatedMapIds.update((ids) => {
+      if (!ids.has(mapId)) return ids; // no write when absent — no spurious recompute
+      const next = new Set(ids);
+      next.delete(mapId);
+      return next;
+    });
   }
 
   /** D3: attach the headless instance to a DOM host and size it. */
@@ -2524,6 +2766,7 @@ export class GraphService implements OnDestroy {
     } catch (error) {
       return nodeEditRefusal(error);
     }
+    this.clearCalibrateHintForLoadedMap(); // B-137 (D79): calibrating clears the hint
     this.editorRevision.update((n) => n + 1); // F45: the dock lights; the readout re-renders (in-place scale write, C24)
     return null;
   }
