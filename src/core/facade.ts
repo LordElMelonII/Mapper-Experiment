@@ -352,13 +352,15 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
     // endpoint yields the non-finite sentinel (C2's ∞ discipline — it never
     // enters the result, C17). The ORIGIN is never stepped into (dijkstra
     // seeds it as settled), so the C34 origin exemption falls out by
-    // construction. The exclusion is silent, like a blocked arc's ∞ — the
-    // unreachable-reason discrimination below is untouched. dijkstra.ts
-    // itself is unchanged (D94: the semantics ride the caller's weightOf).
-    const run = (currency: CostCurrency) =>
+    // construction. dijkstra.ts itself is unchanged (D94: the semantics ride
+    // the caller's weightOf). The optional second parameter lifts ONE node's
+    // block: the C34/D94 unreachable-reason discrimination below re-runs the
+    // priced computation per blocked candidate to find the sever brute-force
+    // (the D59 probe stays cost-blind; attribution happens HERE, at the seam).
+    const run = (currency: CostCurrency, ignoreNodeBlock?: string) =>
       shortestPath(nodeIds, eff.edges, (edge, traversedFrom) => {
         const into = edge.source === traversedFrom ? edge.target : edge.source; // C6: the endpoint being entered
-        if (overlay.nodeBlocked[into] !== undefined) return Infinity; // the internal sentinel — never in any output (C2/C17)
+        if (into !== ignoreNodeBlock && overlay.nodeBlocked[into] !== undefined) return Infinity; // the internal sentinel — never in any output (C2/C17)
         return priceIn(edge, currency).cost;
       }, from, to);
     let currency: CostCurrency;
@@ -389,11 +391,60 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       // C17: translate unreachability into a human reason. Was the graph
       // disconnected in principle, or did blocks/mode restrictions sever it?
       // Brute-force probe (D59): a second plain run at weight 1 per edge —
-      // ignoring blocked/disallowed costs entirely (C2). The probe ignores
-      // node blocks too (C34): an intermediate node-block sever is SILENT
-      // here, exactly like a blocked arc's ∞ — the route dies with the
-      // existing unreachable wording, never naming the intermediate block.
+      // ignoring blocked/disallowed costs entirely (C2). The probe is
+      // cost-blind BY DESIGN: it tests raw connectivity, so the C34 node-block
+      // sentinel is as invisible to it as a blocked arc's ∞ — which exclusion
+      // actually severed the route is decided below, at this seam.
       const connected = shortestPath(nodeIds, eff.edges, () => 1, from, to).ok;
+      // C34/D94: "routing to or through it returns unreachable with the block
+      // named". A connected-but-unpriced failure is a COST sever — a blocked
+      // arc, a mode/currency filter, or a blocked intermediate node; the arc
+      // wording below is truthful only for the first two. So the node-block
+      // sever is found brute-force (the D59 precedent mirrored): re-run the
+      // PRICED computation in the same currency with ONE candidate's block
+      // lifted; the first id whose unblocking restores a route is the sever,
+      // named in the destination seat's exact wording (the authored label +
+      // the authored reason, verbatim — C23/R1). The ORIGIN is exempt by
+      // construction (C34 — the sentinel only fires for ENTERED nodes, so an
+      // origin-side block can never sever), and the destination seat is
+      // impossible here (the early refusal above already returned).
+      if (connected) {
+        for (const [id, why] of Object.entries(overlay.nodeBlocked)) {
+          if (id !== from && id !== to && run(currency, id).ok) {
+            return {
+              ok: false,
+              total: 0,
+              legs: [],
+              unit, // D72: the last attempted run's label; no cost is presented (C17/F24)
+              reason: `'${labelOf(id)}' is blocked: ${why}`,
+            };
+          }
+        }
+        // Multiple simultaneous severs: no SINGLE unblocking restores the
+        // route, yet C34 still demands a named block. Name the first blocked
+        // non-endpoint that genuinely stands between the endpoints — reachable
+        // from the origin without passing the destination, and able to reach
+        // the destination without passing the origin (weight-1 probes over a
+        // universe with the endpoint excluded; dijkstra drops arcs whose
+        // endpoints leave the universe). Only when NO blocked node lies
+        // between do the loops fall through to the arc wording below — the
+        // one seat where it is the true sentence (the pure arc/mode sever).
+        for (const [id, why] of Object.entries(overlay.nodeBlocked)) {
+          if (id === from || id === to) continue;
+          const between =
+            shortestPath(nodeIds.filter((n) => n !== to), eff.edges, () => 1, from, id).ok &&
+            shortestPath(nodeIds.filter((n) => n !== from), eff.edges, () => 1, id, to).ok;
+          if (between) {
+            return {
+              ok: false,
+              total: 0,
+              legs: [],
+              unit,
+              reason: `'${labelOf(id)}' is blocked: ${why}`,
+            };
+          }
+        }
+      }
       return {
         ok: false,
         total: 0,
@@ -976,6 +1027,17 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       overlay.userEdges = overlay.userEdges.filter((e) => e.source !== id && e.target !== id);
       for (const e of [...dying, ...dyingUser]) delete overlay.blocked[e.id];
       delete overlay.nodeBlocked[id]; // A-018 follow-up (D94/F50): the node-block mirror of the edge cleanup — a surviving entry would fail validateOverlay's node-existence check at the next load
+      // M5-gate fix (F50/D75, §8.6(o) "un-undoable removals move it too"): the
+      // saved-plane universes shrink with the removal — the removeLayer /
+      // detachNode seam mirrored. Otherwise the stale savedNodeIds /
+      // savedEdgeIds would admit setNodeBlocked / setBlocked binds to deleted
+      // ids (the add-path gate reads the SAVED plane, A-014), and
+      // validateOverlay would refuse the WHOLE overlay at the next loadMap —
+      // the F50 brick (a chat key referencing data the SAVED map lacks). The
+      // user edges die in the CHAT plane only; their ids were never
+      // saved-plane members, so only the library cascade shrinks here.
+      state.savedNodeIds.delete(id);
+      for (const e of dying) state.savedEdgeIds.delete(e.id);
       state.dirty = true;
     },
 
@@ -992,6 +1054,11 @@ export function createFacade(engine?: { compile?: TemplateCompiler }): MapFacade
       validateWorldMap(clone);
       map.edges = map.edges.filter((e) => e.id !== id);
       delete overlay.blocked[id]; // a chat block on a removed edge dies with it (F50)
+      // M5-gate fix (F50/D75, §8.6(o)): the saved-edge universe shrinks with
+      // the un-undoable removal — otherwise setBlocked would admit a bind to
+      // the deleted id and the next loadMap would refuse the whole overlay
+      // (the removeNode / removeLayer seam mirrored).
+      state.savedEdgeIds.delete(id);
       state.dirty = true;
     },
 

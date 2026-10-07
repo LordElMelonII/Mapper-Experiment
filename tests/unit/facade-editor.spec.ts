@@ -341,6 +341,61 @@ describe('removeEdge — single-plane, library only (D75)', () => {
   });
 });
 
+// --- The saved-plane shrink (M5-gate fix, F50/D75, §8.6(o)) --------------------------------------
+
+describe('removals shrink the saved-plane universes (M5-gate fix, F50/D75/§8.6(o))', () => {
+  it('removeNode: a post-removal setNodeBlocked on the deleted id refuses field-precisely (C30, the A-014 gate)', () => {
+    const { f, map, overlay } = load(fuyuki());
+    f.removeNode('harbor');
+    expect(facadeStateOf(f).savedNodeIds.has('harbor')).toBe(false); // the shrink (the removeLayer seam mirrored)
+    expect(() => f.setNodeBlocked('harbor', 'Flooded')).toThrow(
+      `[TravelMapper] setNodeBlocked: unknown node id 'harbor' (unsaved — save the map first)`,
+    );
+    expect(overlay.nodeBlocked).toEqual({}); // the bind never landed
+    expectStillValid(map, overlay);
+  });
+
+  it('removeEdge: a post-removal setBlocked on the deleted id refuses field-precisely (C30, the A-014 gate)', () => {
+    const { f, map, overlay } = load(fuyuki());
+    f.removeEdge('arc-fuyuki-station-harbor');
+    expect(facadeStateOf(f).savedEdgeIds.has('arc-fuyuki-station-harbor')).toBe(false); // the shrink
+    expect(() => f.setBlocked('arc-fuyuki-station-harbor', 'Pier closed')).toThrow(
+      `[TravelMapper] setBlocked: unknown edge id 'arc-fuyuki-station-harbor' (unsaved — save the map first)`,
+    );
+    expect(overlay.blocked).toEqual({});
+    expectStillValid(map, overlay);
+  });
+
+  it("removeNode's cascade shrinks the DYING library edges' ids too (F50)", () => {
+    const { f, map, overlay } = load(fuyuki());
+    f.removeNode('fuyuki-station'); // every arc touching the hub dies with it
+    expect(facadeStateOf(f).savedNodeIds.has('fuyuki-station')).toBe(false);
+    expect(facadeStateOf(f).savedEdgeIds.has('arc-emiya-residence-fuyuki-station')).toBe(false);
+    expect(facadeStateOf(f).savedEdgeIds.has('arc-fuyuki-station-harbor')).toBe(false);
+    expect(() => f.setBlocked('arc-fuyuki-station-harbor', 'why')).toThrow(/unsaved/); // the dying edge cannot be bound either
+    expectStillValid(map, overlay);
+  });
+
+  it('the F50 brick probe, green: removals, refused binds, then a fresh loadMap accepts the overlay (D75 outcome clause)', () => {
+    const map = fuyuki();
+    const overlay = overlayFor(map);
+    const f = createFacade();
+    f.loadMap(map, overlay);
+    f.materialize();
+    f.removeNode('harbor');
+    f.removeEdge('arc-fuyuki-bridge-fuyuki-station'); // survives harbor's death — a plain edge removal
+    // The pre-fix brick path: these binds were ADMITTED here (the stale saved
+    // universes passed the A-014 gate) and validateOverlay then refused the
+    // WHOLE overlay at the next loadMap. Post-fix they refuse at the gate.
+    expect(() => f.setNodeBlocked('harbor', 'Flooded')).toThrow(/unsaved/);
+    expect(() => f.setBlocked('arc-fuyuki-bridge-fuyuki-station', 'Landslide')).toThrow(/unsaved/);
+    expect(overlay.nodeBlocked).toEqual({});
+    expect(overlay.blocked).toEqual({});
+    const fresh = createFacade();
+    expect(() => fresh.loadMap(map, overlay)).not.toThrow(); // the next chat load refuses NOTHING (F50/D75)
+  });
+});
+
 // --- dirty / stale / save semantics (F45, C8, C29, D75) -----------------------------------------
 
 describe('dirty/stale/save semantics (F45, C8, C29, D75)', () => {

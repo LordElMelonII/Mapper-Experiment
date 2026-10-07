@@ -38,6 +38,24 @@ const loadFuyuki = () => {
   return { f, map, overlay };
 };
 
+// Generic loader for synthetic maps (the loadFuyuki shape, pin-less — the
+// synthetic fixtures name no pin-eligible node).
+const load = (map: WorldMapData) => {
+  const overlay: ChatMapOverlay = {
+    mapId: map.id,
+    currentLocationId: null,
+    travelMode: 'walk',
+    userNodes: [],
+    userEdges: [],
+    blocked: {},
+    nodeBlocked: {},
+  };
+  const f = createFacade();
+  f.loadMap(map, overlay);
+  f.materialize();
+  return { f, map, overlay };
+};
+
 // --- setNodeBlocked: the D94 mirror of setBlocked (D94/F55, C8) ---------------------------
 
 describe('setNodeBlocked — chat-scoped node blocks mirroring setBlocked (D94/F55)', () => {
@@ -136,14 +154,18 @@ describe('C34 routing — blocked nodes are impassable destinations and intermed
     expect(JSON.stringify(r)).not.toContain('Infinity'); // C17
   });
 
-  it('a blocked INTERMEDIATE at a cut vertex ⇒ unreachable with the SILENT existing wording (C34, C17 — the blocked-arc ∞ mirror)', () => {
+  it('a blocked INTERMEDIATE at a cut vertex ⇒ unreachable with the block NAMED — label + authored reason (C34/D94, the M5-gate fix)', () => {
     const { f } = loadFuyuki();
     f.setNodeBlocked('fuyuki-station', 'severed');
     const r = f.findRoute('emiya-residence', 'misaki-town'); // Misaki Town hangs off the station alone
     expect(r.ok).toBe(false);
     expect(r.legs).toEqual([]);
-    expect(r.reason).toMatch(/blocked or disallowed/); // the exclusion is silent — never naming the intermediate block
-    expect(r.reason).not.toContain('Fuyuki Station');
+    // C34 verbatim: "routing to or through it returns unreachable with the
+    // block named". A-018 pinned the old SILENT wording here; the M5 gate
+    // ruled that wording defective (factually false when no arc is blocked)
+    // and A-020 fixed the facade — the through-case reuses the destination
+    // seat's exact wording shape (the authored label + the authored reason).
+    expect(r.reason).toBe("'Fuyuki Station' is blocked: severed");
     expect(JSON.stringify(r)).not.toContain('Infinity'); // C17
   });
 
@@ -172,6 +194,73 @@ describe('C34 routing — blocked nodes are impassable destinations and intermed
     expect(snap.destinations.map((d) => d.label)).not.toContain('Misaki Town'); // the forced-currency run returns ok:false ⇒ dropped
     expect(snap.destinations.map((d) => d.label)).toContain('Fuyuki Station'); // the unblocked hub stays
     expect(snap.blockedNodes).toEqual([{ label: 'Misaki Town', reason: 'ward seals the town' }]); // the blocked listing (C2 spirit)
+  });
+});
+
+// --- The through-case reason NAMES the block (C34/D94, the M5-gate fix A-020) ----------------
+
+describe('C34 through-case — the unreachable reason NAMES the intermediate block (C34/D94, M5-gate fix)', () => {
+  // The D59 brute-force probe is cost-blind, so "priced run failed + probe
+  // connected" used to fall to the arc wording even when every arc was live —
+  // factually false and unnamed (the M5 gate's FINDING 1). The facade now
+  // re-runs the priced computation per blocked candidate with that ONE block
+  // lifted; the first unblocking that restores a route is the sever, named in
+  // the destination seat's exact wording (the authored label + reason, C23/R1).
+  const corridor = (): WorldMapData => ({
+    schemaVersion: 2,
+    id: 'mini',
+    name: 'Mini',
+    layers: [{ id: 'L', name: 'Layer' }],
+    scale: { unitPerPx: 1, unitLabel: 'min', unitKind: 'time' },
+    nodes: [
+      { id: 'A', label: 'Alpha', kind: 'location', layer: 'L', position: { x: 0, y: 0 } },
+      { id: 'C', label: 'Checkpoint', kind: 'waypoint', layer: 'L', position: { x: 10, y: 0 } },
+      { id: 'B', label: 'Beta', kind: 'location', layer: 'L', position: { x: 20, y: 0 } },
+    ],
+    edges: [
+      { id: 'e1', source: 'A', target: 'C', modes: { walk: { allowed: true, authoredMinutes: 5 } } },
+      { id: 'e2', source: 'C', target: 'B', modes: { walk: { allowed: true, authoredMinutes: 5 } } },
+    ],
+  });
+
+  it('minimal 3-node corridor: the reason names the block in the destination seat’s exact wording shape (C34, C23, C17)', () => {
+    const { f } = load(corridor());
+    f.setNodeBlocked('C', 'Guard post');
+    const r = f.findRoute('A', 'B');
+    expect(r.ok).toBe(false);
+    expect(r.legs).toEqual([]);
+    expect(r.reason).toBe("'Checkpoint' is blocked: Guard post"); // authored label + authored reason, verbatim (C23/R1)
+    expect(r.unit).toBe('min'); // D72: the last attempted run's label
+    expect(JSON.stringify(r)).not.toContain('Infinity'); // C17
+  });
+
+  it('multi-sever corridor: no SINGLE unblocking restores the route, the fallback still names a blocked node — never the arc wording (C34/D94)', () => {
+    const map = corridor();
+    map.id = 'twin';
+    map.name = 'Twin';
+    map.nodes.push({ id: 'C2', label: 'Mid Two', kind: 'waypoint', layer: 'L', position: { x: 20, y: 0 } });
+    map.edges[1] = { id: 'e2', source: 'C', target: 'C2', modes: { walk: { allowed: true, authoredMinutes: 5 } } };
+    map.edges.push({ id: 'e3', source: 'C2', target: 'B', modes: { walk: { allowed: true, authoredMinutes: 5 } } });
+    const { f } = load(map);
+    f.setNodeBlocked('C', 'checkpoint one'); // insertion order: C first
+    f.setNodeBlocked('C2', 'checkpoint two');
+    const r = f.findRoute('A', 'B');
+    expect(r.ok).toBe(false);
+    expect(r.legs).toEqual([]);
+    expect(r.reason).toContain('Checkpoint'); // names a blocked node standing between (C34)
+    expect(r.reason).toContain('checkpoint one');
+    expect(r.reason).not.toBe('every candidate arc is blocked or disallowed for this mode'); // never the false arc wording
+    expect(JSON.stringify(r)).not.toContain('Infinity'); // C17
+  });
+
+  it('an ORIGIN-side block never severs and is never named: the intermediate sever is the one named (C34 origin exemption)', () => {
+    const { f } = load(corridor());
+    f.setNodeBlocked('A', 'under siege'); // the origin — exempt by construction (never entered)
+    f.setNodeBlocked('C', 'Guard post');
+    const r = f.findRoute('A', 'B');
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe("'Checkpoint' is blocked: Guard post"); // the ORIGIN's block is never the sever (C34)
+    expect(r.reason).not.toContain('Alpha');
   });
 });
 
