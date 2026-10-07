@@ -145,6 +145,78 @@
       </p>
     }
 
+    <!-- B-135 (D93/F56): the CALIBRATE MODE surface — the stage-top band
+         (the draw-arc banner precedent for a stage-level mode state; a
+         compact overlay band, not a canvas-blocking scrim: the drag IS the
+         calibrate gesture and must reach the canvas below). Badge line in
+         plain words (C23); the controls row is the mode's whole affordance
+         set: the aspect-locked scale STEPPER (− / +, one multiplicative
+         ×1.25 step per committed tap — the readout renders the image size
+         as a percentage of the D92 default fit, presentation arithmetic
+         over the core arm, the 1−dim styling's class; hidden honestly when
+         the default is degenerate), Fit to graph (the ONE shared default
+         derivation; disabled when the extents are degenerate — the F07
+         dead-control reasoning), and Done/Cancel (Done flushes an in-flight
+         draft; Cancel discards only that — committed gestures stand, F46).
+         Every control >= 44px, touch-alone (F52/D53); the band is an
+         absolute overlay — it never joins the stage's layout flow (the
+         save-dock/commit-neutral discipline, D91). -->
+    @if (graph.calibrateMode()) {
+      <div class="tme-calibrate" data-testid="tme-calibrate" role="group" aria-label="Calibrate the background image">
+        <p class="tme-calibrate-badge" data-testid="tme-calibrate-badge" role="status">
+          Calibrating — drag the map to move the image
+        </p>
+        <div class="tme-calibrate-bar">
+          @if (calibrateScalePercent(); as percent) {
+            <span class="tme-calibrate-scale" data-testid="tme-calibrate-scale" aria-label="Image size">{{ percent }}%</span>
+          }
+          <button
+            type="button"
+            class="tme-calibrate-button"
+            data-testid="tme-calibrate-scale-down"
+            aria-label="Shrink the background image"
+            (click)="graph.calibrateScaleStep(1 / 1.25)"
+          >
+            −
+          </button>
+          <button
+            type="button"
+            class="tme-calibrate-button"
+            data-testid="tme-calibrate-scale-up"
+            aria-label="Enlarge the background image"
+            (click)="graph.calibrateScaleStep(1.25)"
+          >
+            +
+          </button>
+          <button
+            type="button"
+            class="tme-calibrate-button"
+            data-testid="tme-calibrate-fit"
+            [disabled]="!graph.activeDefaultPlacement()"
+            (click)="graph.calibrateFitToGraph()"
+          >
+            Fit to graph
+          </button>
+          <button
+            type="button"
+            class="tme-calibrate-button tme-calibrate-primary"
+            data-testid="tme-calibrate-done"
+            (click)="graph.calibrateDone()"
+          >
+            Done
+          </button>
+          <button
+            type="button"
+            class="tme-calibrate-button"
+            data-testid="tme-calibrate-cancel"
+            (click)="graph.calibrateCancel()"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    }
+
     <!-- B-133 (D91): the four PANEL SURFACES — overlays over this stage.
          NARROW (the default): .tme-sheets is the bottom-sheet STACK anchored
          to the stage's bottom edge (absolute, pointer-events none on the

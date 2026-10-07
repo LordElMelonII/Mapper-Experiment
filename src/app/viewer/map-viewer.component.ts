@@ -16,7 +16,8 @@
 // toggle, the tool group, the layer nav, the D91 Route toggle and the save
 // dock live on the editor rail (a region sibling — first child on wide, last
 // child on narrow); the stage keeps only the header, the breadcrumb, the
-// selection chip and the draw-arc feedback banner (D86's absorb list excludes
+// selection chip, the draw-arc feedback banner and (B-135, D93) the calibrate
+// mode band — the stage-level mode surfaces (D86's absorb list excludes
 // them), and the clamp's measured chrome set is the RAIL rect + the
 // breadcrumb + the chip.
 import {
@@ -170,6 +171,28 @@ export class MapViewerComponent implements AfterViewInit, OnDestroy {
   protected noteBackgroundLoaded(event: Event): void {
     const img = event.target as HTMLImageElement;
     this.graph.noteBackgroundImageLoaded(img.naturalWidth, img.naturalHeight);
+  }
+
+  /**
+   * B-135 (D93): the calibrate band's scale readout — the image size as a
+   * percentage of the D92 default-fit scale, so "100%" means exactly the
+   * fit-to-graph baseline (Fit always returns the readout there, and the
+   * stepper's steps read as size changes). Presentation arithmetic over the
+   * core arm (graph.activeLayerPlacement) and the ONE shared default
+   * (graph.activeDefaultPlacement) — the `1 − dim` styling's class: neither
+   * input is a distance/direction/duration/cost and nothing here feeds a
+   * prompt (R1 holds; the displayed ratio is chrome for the stepper).
+   * Null — the readout hides — when the mode is off or the default is
+   * degenerate (the stepper still works absolutely). Template-called with
+   * the service's editorRevision reads inside (C24 — the canSetUrl
+   * precedent), so every committed step re-renders it.
+   */
+  protected calibrateScalePercent(): number | null {
+    if (!this.graph.calibrateMode()) return null;
+    const current = this.graph.activeLayerPlacement();
+    const def = this.graph.activeDefaultPlacement();
+    if (current === null || def === null || def.scale <= 0) return null;
+    return Math.round((current.scale / def.scale) * 100);
   }
 
   /**

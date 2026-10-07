@@ -290,6 +290,33 @@
 // and B-134's `pan` (the same class — the tme-bg transform per event); the
 // tapstart/tapdrag/tapend
 // stream is never registered, so dragging costs zero change detection.
+// B-135 (§5 Phase 3.5 M5 — D93/D92/D75/D91/F07/F56): the calibrate MODE —
+// the explicit authoring surface for `backgroundPlacement`, entered from the
+// layer-manager's background section and rendered by the viewer as a
+// stage-top band (the draw-arc banner precedent). While it is on, the mode
+// OWNS the canvas gestures (every existing tap/portal handler gates on it —
+// a tap selects and places nothing, the tap-vs-drag discipline): a drag
+// translates the placement CENTER in model space (screen delta / live zoom,
+// both axes — the same arithmetic B-134's transform inverts; a drag starting
+// on a node still calibrates — nodes are read-only: autoungrabify), the
+// scale stepper multiplies the ONE aspect-locked scale per committed tap,
+// and Fit-to-graph writes B-134's single-sourced `defaultPlacementFor`
+// result. The gesture applies LIVE through a draft placement the B-134
+// render reads ahead of the arm (a plain field — no signal writes at drag
+// frequency, D2); each COMMITTED gesture (drag end, scale step, fit tap) is
+// ONE `setActiveLayerPlacement` write (the setLayerBackgroundDim precedent:
+// refusal-free structural bounds, editorRevision bump, dock lights — D75)
+// re-read through editorRevision (C24). D91 zero-motion binds: nothing here
+// fits or resizes — the IMAGE moves in model space, the camera stays (pan
+// and zoom are user-input-disabled for the session). Calibration NEVER
+// touches node coordinates, distances or costs (D93 — the only writer is
+// the placement facade command, and nothing but it). Degenerate extents
+// (the D84 fallback rendering) still calibrate: the first gesture
+// synthesizes the fallback's implied model placement (the canvas-center
+// contain fit over the live viewport) and the committed write replaces the
+// fallback with a real arm; Fit-to-graph is disabled honestly there (F07).
+// The tapstream handlers register at entry and un-register at exit, so the
+// B-134 invariant above stays true outside the mode.
 //
 // R4 (no shadow truth): the service stores the SAME live WorldMapData +
 // ChatMapOverlay references the host handed to the facade (C24) and builds a
@@ -1493,6 +1520,11 @@ export class GraphService implements OnDestroy {
       // the sanctioned path. The selector guarantees a node target
       // (EventObject.target is typed any).
       const node = event.target as NodeSingular;
+      // B-135 (D93): calibrate owns EVERY canvas gesture while it is on — a
+      // tap selects nothing and places nothing (the tap-vs-drag discipline;
+      // the drag handlers below own movement). The gate sits above every
+      // other mode, connect included.
+      if (this.calibrateMode()) return;
       // B-118: connect mode owns every node tap — a pickable leaf toggles the
       // pick set; a container, a parent, a badge or the source itself is
       // ignored with banner feedback (C1/§6.2: never an arc into a compound
@@ -1561,6 +1593,8 @@ export class GraphService implements OnDestroy {
       this.selection.set({ id: node.id(), label: String(node.data('label') ?? '') });
     });
     this.cy.on('tap', 'edge', (event) => {
+      // B-135 (D93): calibrate owns the gesture — no selection (see the node gate).
+      if (this.calibrateMode()) return;
       // B-118: while connecting an arc tap is neither a pick nor a selection —
       // it must not hand the panel from the connect banner to the arc panel.
       if (this.connectMode()) return;
@@ -1587,6 +1621,9 @@ export class GraphService implements OnDestroy {
       // gesture, two effects, no hidden modes) and places NOTHING: view mode
       // is purely navigational (D76).
       if (event.target === this.cy) {
+        // B-135 (D93): calibrate owns the gesture — a tap places nothing and
+        // clears nothing (see the node gate).
+        if (this.calibrateMode()) return;
         // B-118: while connecting a background tap neither places a node nor
         // dismisses the selection — both would orphan the mode mid-pick (the
         // placement would select a NEW node; the dismissal would close the
@@ -1617,6 +1654,12 @@ export class GraphService implements OnDestroy {
       // signal (D2: high-frequency drag events never touch Angular state —
       // this is a DISCRETE release event; the writes it triggers below are
       // signal writes through the sanctioned paths).
+      //
+      // B-135 (D93): calibrate makes nodes ungrabbable for the session (the
+      // entry's autoungrabify — nodes are read-only), so `free` cannot fire;
+      // the gate is the belt (never a node-coordinate write while
+      // calibrating — "never touches node coordinates", D93).
+      if (this.calibrateMode()) return;
       //
       // B-116 (D75/F45, replacing the M1 view-local seam): dragging a node is
       // an EDITOR affordance whose release PERSISTS the new position —
@@ -1668,6 +1711,9 @@ export class GraphService implements OnDestroy {
     // portal badges carry no `arcId`), so the gesture is the ONLY surface.
     // A discrete double-activation writes signals only through selectLayer (D2).
     this.cy.on('dblclick dbltap', 'node.tme-portal-badge', (event) => {
+      // B-135 (D93): calibrate owns the gesture — a double-activation never
+      // switches layers mid-calibration (the session is bound to one layer).
+      if (this.calibrateMode()) return;
       this.enterPortal(event.target as NodeSingular);
     });
 
@@ -1713,6 +1759,29 @@ export class GraphService implements OnDestroy {
     effect(() => {
       void this.activeBackground(); // dependency: the src changed
       this.backgroundFailed.set(false);
+    });
+
+    // B-135 (D93): the calibrate session's exit guard (the connectMode guard
+    // precedent — the mode is a projection of the substrate it presumes).
+    // The session is bound to ONE (layer, background src) pair, snapshotted
+    // at entry: a layer switch, a loadMap, a background set/remove (the D93
+    // fresh-start — the thing being calibrated is gone) or a failed load
+    // (the C32 degrade) ends it CANCEL-flavored (an uncommitted drag draft
+    // is discarded; committed gestures stand — there is no undo to run,
+    // F46). Every read is a discrete-write signal, so the effect runs per
+    // discrete event only (D2); exitCalibrate writes a signal this effect
+    // reads, so it re-runs once more and finds the guard false — a stable
+    // single pass.
+    effect(() => {
+      if (!this.calibrateMode()) return;
+      if (
+        this.map() === null ||
+        this.activeLayer() !== this.calibrateLayerId ||
+        this.activeBackground() !== this.calibrateBackgroundSrc ||
+        this.backgroundFailed()
+      ) {
+        this.exitCalibrate(false);
+      }
     });
   }
 
@@ -2808,8 +2877,18 @@ export class GraphService implements OnDestroy {
    * between two layers sharing one URL never re-fires the load) from a STALE
    * one (the src swapped; the load event will re-report). null until the
    * first load.
+   *
+   * B-135: a SIGNAL now — the load is a DISCRETE event (one write per img
+   * load, D2-legal), and the calibrate gates (canCalibrate,
+   * activeDefaultPlacement) must RE-RENDER when it lands: a layer switch
+   * writes its last signal BEFORE the new img decodes, so without the signal
+   * the entry button's disabled binding could never observe the arrival
+   * (found live in the degenerate-extents e2e cell — the stale binding kept
+   * a loadable background uncalibratable). The high-frequency consumers
+   * (backgroundRenderState at zoom/pan frequency) only ever READ it — a
+   * signal read outside a reactive context is a plain read, no subscription.
    */
-  private bgNatural: { src: string; w: number; h: number } | null = null;
+  private readonly bgNatural = signal<{ src: string; w: number; h: number } | null>(null);
 
   /**
    * B-134 (D92): the computed-and-held default placement for the ACTIVE
@@ -2930,7 +3009,7 @@ export class GraphService implements OnDestroy {
    * background-set moment's business alone (noteBackgroundImageLoaded).
    */
   private recomputeHeldDefault(): void {
-    const natural = this.bgNatural;
+    const natural = this.bgNatural();
     const layerId = this.activeLayer();
     if (natural === null || layerId === null || natural.src !== this.activeBackground()) return;
     this.heldDefaultPlacement = this.defaultPlacementFor(layerId, natural);
@@ -2950,7 +3029,7 @@ export class GraphService implements OnDestroy {
   noteBackgroundImageLoaded(naturalWidth: number, naturalHeight: number): void {
     const src = this.activeBackground();
     if (src === null) return; // the img is gone (a stale event) — nothing to place
-    this.bgNatural = { src, w: naturalWidth, h: naturalHeight };
+    this.bgNatural.set({ src, w: naturalWidth, h: naturalHeight }); // B-135: a signal write (discrete — one per load)
     this.recomputeHeldDefault();
     const layerId = this.activeLayer();
     if (layerId !== null && this.pendingPlacementLayer === layerId) {
@@ -2993,7 +3072,11 @@ export class GraphService implements OnDestroy {
   } | null {
     if (!this.mounted) return null;
     const layer = this.map()?.layers.find((l) => l.id === this.activeLayer());
-    const placement = layer?.backgroundPlacement ?? this.heldDefaultPlacement;
+    // B-135 (D93): an in-flight calibrate drag's draft renders ahead of the
+    // arm — the live preview IS the gesture (the committed write lands at
+    // drag end). The draft is a plain field written at event frequency, so
+    // this read stays signal-free (D2 — the cullZoom precedent).
+    const placement = this.calibrateDraft ?? layer?.backgroundPlacement ?? this.heldDefaultPlacement;
     if (placement === undefined || placement === null) return null;
     return {
       x: placement.x,
@@ -3001,7 +3084,348 @@ export class GraphService implements OnDestroy {
       scale: placement.scale,
       zoom: this.cy.zoom(),
       pan: this.cy.pan(),
-      natural: this.bgNatural,
+      natural: this.bgNatural(), // B-135: plain read at event frequency (no reactive context)
+    };
+  }
+
+  // --- Background calibrate (PKG B-135, §5 Phase 3.5 M5 — D93/D92/D75/D91/F07/F56)
+
+  /**
+   * B-135 (D93/F56): the calibrate MODE — the explicit authoring surface for
+   * `LayerData.backgroundPlacement`. While it is on, the mode owns the
+   * canvas gestures (every tap handler gates on this signal — a tap selects
+   * and places nothing) and the render follows the in-flight drag draft
+   * (backgroundRenderState). Entered ONLY through enterCalibrate (the
+   * manager sheet's gated entry — a background-less or failed layer cannot
+   * enter, F07: disabled, not hidden); exited by Done/Cancel (the stage
+   * band) or the constructor's guard effect (the substrate moved — a layer
+   * switch, a loadMap, a background set/remove, a failed load). Frontend
+   * authoring state over MAP data: the placement itself persists only
+   * through the facade command (R2 — setActiveLayerPlacement below).
+   */
+  readonly calibrateMode = signal(false);
+
+  /**
+   * B-135: the layer id the session calibrates — snapshotted at entry, so
+   * the guard effect can end the session the moment the active layer moves
+   * (a calibrate session is bound to one layer's image). A plain field: the
+   * guard reads it alongside tracked signals only (D2).
+   */
+  private calibrateLayerId: string | null = null;
+
+  /**
+   * B-135: the background src the session calibrates — the same snapshot
+   * discipline as calibrateLayerId; the D93 fresh-start (a new source resets
+   * the placement) and a Remove both change it and both end the session.
+   */
+  private calibrateBackgroundSrc: string | null = null;
+
+  /**
+   * B-135 (D2): the in-flight drag's placement — written at `tapdrag`
+   * frequency, rendered directly by backgroundRenderState (no signal write,
+   * no change detection — the cullZoom/panelPosition discipline), cleared at
+   * drag end (the committed write takes over) and at every mode exit.
+   */
+  private calibrateDraft: { x: number; y: number; scale: number } | null = null;
+
+  /**
+   * B-135: the live drag gesture — the tapstart's rendered anchor and the
+   * base placement it drags from. A plain field (D2), read only by the
+   * tapstream handlers below.
+   */
+  private calibrateDrag: { startX: number; startY: number; base: { x: number; y: number; scale: number } } | null =
+    null;
+
+  /**
+   * B-135 (F07/C24): whether the layer-manager row `layerId` may enter
+   * calibrate — the entry gate, rendered as a DISABLED button (never hidden)
+   * when false. True only when the row IS the active layer (the stage mode
+   * calibrates the active layer's rendered image), that layer carries a
+   * background reference, its load has not failed (the C32 degrade hides
+   * the img — there is nothing to calibrate against), and the img's
+   * src-tagged natural size is CURRENT (the gesture base needs it; the
+   * currency check is noteBackgroundImageLoaded's own discipline).
+   * Template-called method with the editorRevision read — the canSetUrl
+   * precedent (C24: every gate re-reads after a background command).
+   */
+  canCalibrate(layerId: string): boolean {
+    void this.editorRevision(); // dependency: a background command re-reads (C24)
+    const natural = this.bgNatural();
+    return (
+      this.map() !== null &&
+      layerId === this.activeLayer() &&
+      this.activeLayerHasBackground() &&
+      !this.backgroundFailed() &&
+      natural !== null &&
+      natural.src === this.activeBackground()
+    );
+  }
+
+  /**
+   * B-135 (R4/C24): the ACTIVE layer's live placement — the persisted arm
+   * when present, else the held D92 default (B-134's compute-and-hold), else
+   * null (the degenerate fallback renders). The calibrate band's scale
+   * readout reads this (an R4 live read, never a copy — the activeLayerDim
+   * precedent). editorRevision is the recompute dependency (C24: the
+   * in-place layer swap every placement write performs).
+   */
+  activeLayerPlacement(): { x: number; y: number; scale: number } | null {
+    void this.editorRevision(); // C24: the in-place layer swap re-reads
+    const layer = this.map()?.layers.find((l) => l.id === this.activeLayer());
+    return layer?.backgroundPlacement ?? this.heldDefaultPlacement;
+  }
+
+  /**
+   * B-135 (D92 — THE single-sourced fit, exposed): the ACTIVE layer's D92
+   * default placement, through B-134's ONE derivation (`defaultPlacementFor`
+   * — never a second fit computation) over the current src-tagged natural
+   * size. Null when degenerate (no/one/coincident positioned node — the
+   * F07 dead-control reasoning disables Fit-to-graph honestly) or the
+   * natural is absent/stale. Template-called (the fit button's gate, the
+   * scale readout's denominator) and the e2e seam's body
+   * (testDefaultPlacement).
+   */
+  activeDefaultPlacement(): { x: number; y: number; scale: number } | null {
+    void this.editorRevision(); // C24: the reactive dep for template-called reads
+    const layerId = this.activeLayer();
+    const natural = this.bgNatural(); // B-135: the load's arrival re-renders the gates
+    if (layerId === null || natural === null || natural.src !== this.activeBackground()) return null;
+    return this.defaultPlacementFor(layerId, natural);
+  }
+
+  /**
+   * B-135 (D93/F07): enter calibrate from the manager sheet's entry. The
+   * gate is canCalibrate (belt — the button is disabled when false); the
+   * session snapshots its (layer, src) pair for the guard effect, closes
+   * the manager sheet (the stage band takes over — the sheet would cover
+   * the phone's drag area; a panel close resizes nothing, D91), and takes
+   * the canvas: panning and zooming are user-disabled for the session (D91
+   * zero-motion made absolute — the camera STAYS; the drag math reads the
+   * live zoom at gesture time, and a pinch's two-finger tapdrag stream
+   * would otherwise drift the image), nodes are ungrabbable (D93 — nodes
+   * are read-only during calibration), and the tapstream registers (a
+   * DISCRETE-GESTURE-class binding: it begins/ends with the mode, so the
+   * B-134 never-registered invariant stays true outside it). Answers false
+   * when the gate refused (nothing changed).
+   */
+  enterCalibrate(): boolean {
+    if (this.calibrateMode()) return true; // idempotent re-entry
+    const layerId = this.activeLayer();
+    if (!this.mounted || layerId === null || !this.canCalibrate(layerId)) return false;
+    this.calibrateLayerId = layerId;
+    this.calibrateBackgroundSrc = this.activeBackground();
+    this.calibrateDraft = null;
+    this.calibrateDrag = null;
+    this.calibrateMode.set(true);
+    this.cy.userPanningEnabled(false); // D91: the camera stays for the session
+    this.cy.userZoomingEnabled(false);
+    this.cy.autoungrabify(true); // D93: nodes are read-only while calibrating
+    this.cy.on('tapstart', this.calibrateDragStart);
+    this.cy.on('tapdrag', this.calibrateDragMove);
+    this.cy.on('tapend', this.calibrateDragEnd);
+    this.layerManagerOpen.set(false); // the stage band replaces the sheet
+    return true;
+  }
+
+  /** B-135 (C23 plain word): Done — flush any in-flight draft, then exit. */
+  calibrateDone(): void {
+    this.exitCalibrate(true);
+  }
+
+  /**
+   * B-135: Cancel — discard any UNCOMMITTED drag draft and exit. Committed
+   * gestures (drag ends, scale steps, fit taps) stand in both exits: each
+   * already persisted through the facade (D75) and there is no undo to run
+   * (F46) — Cancel's honest meaning is "stop calibrating; the unfinished
+   * drag never happened".
+   */
+  calibrateCancel(): void {
+    this.exitCalibrate(false);
+  }
+
+  /**
+   * B-135: the shared exit — un-register the tapstream, restore the canvas
+   * interaction state (pan/zoom always re-enable — the constructor config;
+   * grabbify mirrors the editor mode), drop the gesture state, and re-apply
+   * the transform so the render falls back from the draft to the arm/held
+   * facts. `flushDraft` (Done) commits an in-flight draft first — the same
+   * ONE-write discipline as any committed gesture.
+   */
+  private exitCalibrate(flushDraft: boolean): void {
+    if (!this.calibrateMode()) return;
+    this.calibrateMode.set(false);
+    this.cy.off('tapstart', this.calibrateDragStart);
+    this.cy.off('tapdrag', this.calibrateDragMove);
+    this.cy.off('tapend', this.calibrateDragEnd);
+    this.cy.userPanningEnabled(true);
+    this.cy.userZoomingEnabled(true);
+    this.cy.autoungrabify(!this.editorMode()); // the enterEditor/exitEditor mirror
+    const draft = this.calibrateDraft;
+    this.calibrateDraft = null;
+    this.calibrateDrag = null;
+    if (flushDraft && draft !== null) this.setActiveLayerPlacement(draft);
+    this.applyBackgroundTransform(); // the draft's render reverts to the arm/held facts
+  }
+
+  /**
+   * B-135 (R2 — the placement write path, the setActiveLayerDim precedent):
+   * the ONLY calibrate mutation, wrapping facade.setLayerBackgroundPlacement
+   * for the ACTIVE layer. NO refusal channel — the zoom-trio/dim reasoning:
+   * the caller structurally cannot produce a refusable value (finite model
+   * numbers on a live layer — drag deltas over the live zoom, a
+   * multiplicative step of a positive scale, or the finite default-fit
+   * result), and the active layer always exists when this can fire (the
+   * mode's guard owns layer identity). The facade's C30 gate remains the
+   * structural backstop and is caught — never an uncaught throw (C32).
+   * The post-sequence is the editorRevision bump ALONE: the dock lights
+   * (F45/D75 — a committed gesture is map data), the reads re-read (C24);
+   * no rebuild and no B-121 entry (the background is not a cy projection
+   * element — the B-130 background-set discipline).
+   */
+  setActiveLayerPlacement(placement: { x: number; y: number; scale: number }): void {
+    const facade = this.facade;
+    const layerId = this.activeLayer();
+    if (facade === null || layerId === null) return; // degrade before loadMap (C32 spirit)
+    try {
+      facade.setLayerBackgroundPlacement(layerId, placement);
+    } catch {
+      return; // structurally unreachable from the calibrate surface — degrade (C32)
+    }
+    this.editorRevision.update((n) => n + 1); // F45/C24: the dock lights; the reads re-read
+  }
+
+  /**
+   * B-135 (D93): the scale step — ONE multiplicative step on the ONE
+   * aspect-locked scale (model units per image pixel), committed per tap
+   * (a discrete gesture, D75). The center is untouched: the image grows and
+   * shrinks about its own center. The base is the live placement (draft
+   * included — a step between drag gestures composes), or the synthesized
+   * fallback base when the degenerate fallback renders (the committed write
+   * replaces the fallback with a real arm — the packet's calibrate-write
+   * clause). The step factor rides the ZOOM_STEP convention (×1.25, its
+   * exact reciprocal) — a UI factor, not a displayed number (the B-127
+   * precedent).
+   */
+  calibrateScaleStep(factor: number): void {
+    if (!this.calibrateMode()) return;
+    const base = this.currentCalibrateBase();
+    if (base === null) return; // no natural to scale against (C32 spirit)
+    this.setActiveLayerPlacement({ x: base.x, y: base.y, scale: base.scale * factor });
+    this.applyBackgroundTransform(); // discrete pass: the new arm renders now
+  }
+
+  /**
+   * B-135 (D92/D93): Fit to graph — ONE tap, ONE write of B-134's
+   * single-sourced default (`activeDefaultPlacement`, the same
+   * defaultPlacementFor body every D92 compute site runs — never a second
+   * derivation). A null default (degenerate extents) is the disabled
+   * control's guard — the F07 dead-control reasoning made code (the button
+   * is disabled; this degrades too).
+   */
+  calibrateFitToGraph(): void {
+    if (!this.calibrateMode()) return;
+    const placement = this.activeDefaultPlacement();
+    if (placement === null) return;
+    this.calibrateDraft = null; // a fit replaces any in-flight draft wholesale
+    this.setActiveLayerPlacement(placement);
+    this.applyBackgroundTransform();
+  }
+
+  /**
+   * B-135 (D2 — the tapstream handlers, arrow fields so on/off pair): the
+   * drag translates the placement CENTER in model space. tapstart records
+   * the rendered anchor and the base placement; tapdrag applies
+   * `base + screenDelta / liveZoom` to the DRAFT (the live preview — no
+   * signal write, the render follows per event through
+   * applyBackgroundTransform); tapend commits ONCE through
+   * setActiveLayerPlacement when the gesture actually moved (a TAP — no
+   * movement — never writes: the draft stays null). Verified against the
+   * installed runtime: the tapstream fires for background- and element-
+   * anchored gestures alike (triggerEvents targets the core when no element
+   * is under the pointer — cytoscape.esm.mjs:25740), independent of the
+   * panning/zooming enables (the emission precedes the gesture effects,
+   * cytoscape.esm.mjs:26109/26178) — so disabling the camera does not mute
+   * the input stream.
+   */
+  private calibrateDragStart = (event: { renderedPosition: { x: number; y: number } }): void => {
+    if (!this.calibrateMode() || !this.mounted || this.calibrateDrag !== null) return;
+    const base = this.currentCalibrateBase();
+    if (base === null) return; // no natural yet (C32 spirit)
+    this.calibrateDrag = { startX: event.renderedPosition.x, startY: event.renderedPosition.y, base };
+  };
+
+  private calibrateDragMove = (event: { renderedPosition: { x: number; y: number } }): void => {
+    const drag = this.calibrateDrag;
+    if (drag === null) return;
+    const delta = this.screenDeltaToModel(
+      event.renderedPosition.x - drag.startX,
+      event.renderedPosition.y - drag.startY,
+    );
+    this.calibrateDraft = {
+      x: drag.base.x + delta.x,
+      y: drag.base.y + delta.y,
+      scale: drag.base.scale,
+    };
+    this.applyBackgroundTransform(); // the live preview, event-driven (D2)
+  };
+
+  private calibrateDragEnd = (): void => {
+    const draft = this.calibrateDraft;
+    this.calibrateDrag = null; // the gesture is over whatever happened
+    if (draft === null) return; // a tap (no movement) — places nothing, writes nothing
+    this.calibrateDraft = null;
+    this.setActiveLayerPlacement(draft); // ONE write per committed gesture (D75/C24)
+    this.applyBackgroundTransform();
+  };
+
+  /**
+   * B-135 (D93 gesture arithmetic — UI plumbing, not a user-displayed
+   * number): a screen-px delta becomes a model-space delta through the LIVE
+   * zoom — the same arithmetic B-134's transform inverts
+   * (screen = pan + model × zoom).
+   */
+  private screenDeltaToModel(dx: number, dy: number): { x: number; y: number } {
+    const z = this.cy.zoom();
+    return { x: dx / z, y: dy / z };
+  }
+
+  /**
+   * B-135: the placement a gesture starts from — the draft (a step between
+   * drags), else the live placement (the arm / held D92 default, through the
+   * ONE read), else the DEGENERATE fallback's implied model placement (the
+   * D84 stage-contain shape's model image: the canvas-center contain fit
+   * over the live viewport). The fallback synthesis is what lets a calibrate
+   * write replace the fallback with a real arm (the packet's clause); null
+   * only when no natural size is known (the gesture degrades to a no-op,
+   * C32 spirit).
+   */
+  private currentCalibrateBase(): { x: number; y: number; scale: number } | null {
+    if (this.calibrateDraft !== null) return this.calibrateDraft;
+    const placement = this.activeLayerPlacement();
+    if (placement !== null) return placement;
+    return this.fallbackPlacementBase();
+  }
+
+  /**
+   * B-135: the degenerate fallback's implied model placement — where and at
+   * what scale the D84 stage-contain shape would sit if it WERE a
+   * placement: the canvas center in model coordinates, the contain fit
+   * divided by the live zoom. Rendering math over the live viewport and the
+   * src-tagged natural (the B-134 R1 class — plumbing for the gesture, no
+   * user-displayed number originates here).
+   */
+  private fallbackPlacementBase(): { x: number; y: number; scale: number } | null {
+    const natural = this.bgNatural(); // plain read at gesture time (no reactive context)
+    if (!this.mounted || natural === null || natural.w <= 0 || natural.h <= 0) return null;
+    const z = this.cy.zoom();
+    const w = this.cy.width();
+    const h = this.cy.height();
+    if (!(z > 0) || w <= 0 || h <= 0) return null;
+    const pan = this.cy.pan();
+    return {
+      x: (w / 2 - pan.x) / z,
+      y: (h / 2 - pan.y) / z,
+      scale: Math.min(w / natural.w, h / natural.h) / z,
     };
   }
 
@@ -4027,6 +4451,37 @@ export class GraphService implements OnDestroy {
    */
   testModeRows(): { id: string; label: string }[] {
     return this.modeRows().map((row) => ({ id: row.id, label: row.label }));
+  }
+
+  /**
+   * B-135: whether the calibrate mode is currently on — the mode-state seam
+   * (the testConnectMode precedent). Read-only (R2/R4 hold).
+   */
+  testCalibrateMode(): boolean {
+    return this.calibrateMode();
+  }
+
+  /**
+   * B-135: the ACTIVE layer's PERSISTED placement arm — the live map read
+   * (R4, never a copy), null when the arm is absent (the held D92 default is
+   * deliberately NOT folded in: the spec distinguishes "committed" from
+   * "computed-and-held"). The committed-gesture assertion seam. Read-only
+   * (R2/R4 hold).
+   */
+  testActiveLayerPlacement(): { x: number; y: number; scale: number } | null {
+    const layer = this.map()?.layers.find((l) => l.id === this.activeLayer());
+    return layer?.backgroundPlacement ?? null;
+  }
+
+  /**
+   * B-135 (D92 — the shared-seam read): the ACTIVE layer's default-fit
+   * placement through activeDefaultPlacement (B-134's defaultPlacementFor —
+   * the ONE derivation), so a fit-to-graph cell asserts the written value
+   * against the same function the write used. Null when degenerate/absent.
+   * Read-only (R2/R4 hold).
+   */
+  testDefaultPlacement(): { x: number; y: number; scale: number } | null {
+    return this.activeDefaultPlacement();
   }
 
   /**

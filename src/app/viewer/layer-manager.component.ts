@@ -13,6 +13,12 @@
 // trimmed input AND for a no-change URL — C30 honesty, the canCreate
 // pattern), and Remove (setLayerBackground null; rendered only when a
 // background exists). Replace = set again — one image per layer.
+// B-135 (D93/F07): the background entry also carries CALIBRATE — the
+// placement authoring mode's only doorway, through the service's gated
+// enterCalibrate (the service closes this sheet on entry; the stage band
+// takes over). The button is disabled — never hidden — while the row
+// cannot calibrate (canCalibrate: not the active layer, no background, a
+// failed load, a stale natural).
 //
 // R2: the component mutates nothing itself — every command goes through the
 // service's layer wrappers (upsertLayer / removeLayer / reorderLayers /
@@ -594,6 +600,23 @@ export class LayerManagerComponent {
       return;
     }
     this.refusals.set([]);
+  }
+
+  /**
+   * B-135 (D93/F07): the row's Calibrate entry — the mode's ONLY doorway,
+   * through the service's gated write path (R2/R3: enterCalibrate owns the
+   * gate, the session snapshot and the canvas takeover, and closes this
+   * sheet itself — the stage band replaces it). The button is DISABLED —
+   * never hidden — while the row cannot calibrate (the service's
+   * canCalibrate: not the active layer, no background, a failed load, or a
+   * stale natural — the F07 dead-control reasoning).
+   */
+  protected canCalibrate(layerId: string): boolean {
+    return this.graph.canCalibrate(layerId);
+  }
+
+  protected enterCalibrate(): void {
+    this.graph.enterCalibrate();
   }
 
   /** The sheet's X / Escape close — a pure signal write (R3). */

@@ -251,6 +251,14 @@ interface TmeE2EHook {
   /** B-128 (D85): one portal badge's label (the target layer's name) by its
    *  wire node's id, or null when not projected (unwired / other layer). */
   portalBadgeText(nodeId: string): string | null;
+  /** B-135: whether the calibrate mode is currently on (the mode-state seam). */
+  calibrateMode(): boolean;
+  /** B-135: the ACTIVE layer's PERSISTED placement arm, or null (the
+   *  committed-gesture seam — the held default is deliberately excluded). */
+  backgroundPlacement(): { x: number; y: number; scale: number } | null;
+  /** B-135 (D92): the ACTIVE layer's default-fit placement through the ONE
+   *  shared derivation (defaultPlacementFor), or null when degenerate. */
+  defaultPlacement(): { x: number; y: number; scale: number } | null;
 }
 
 @Component({
@@ -339,6 +347,9 @@ export class App {
       stylesheetSelectors: () => this.graphService.testStylesheetSelectors(),
       breadcrumbChain: () => this.graphService.testBreadcrumbChain(),
       portalBadgeText: (nodeId: string) => this.graphService.testPortalBadgeText(nodeId),
+      calibrateMode: () => this.graphService.testCalibrateMode(),
+      backgroundPlacement: () => this.graphService.testActiveLayerPlacement(),
+      defaultPlacement: () => this.graphService.testDefaultPlacement(),
     };
   }
 }

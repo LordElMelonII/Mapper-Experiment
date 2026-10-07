@@ -9,11 +9,14 @@
      the current state in words, the Upload label (store ⇒ { assetId }),
      the URL input + Set (⇒ { url }; disabled while empty or a no-change),
      and Remove (⇒ null; only when a background exists). One image per
-     layer: replace = set again. R1: the confirm's three counts are the
-     ENGINE's layerRemovalImpact in plain words (C23). R2: every command
-     goes through GraphService's wrappers. F52/D53: every control >= 44px,
-     touch-alone, no hover affordance; the rail (B-114 pattern) is the
-     narrow form's collapse affordance — wide hides it and always shows
+     layer: replace = set again. B-135 (D93/F07): the background entry also
+     carries CALIBRATE — the placement authoring mode's only doorway;
+     disabled (never hidden) while the row cannot calibrate; entry closes
+     the sheet (the stage band replaces it). R1: the confirm's three counts
+     are the ENGINE's layerRemovalImpact in plain words (C23). R2: every
+     command goes through GraphService's wrappers. F52/D53: every control
+     >= 44px, touch-alone, no hover affordance; the rail (B-114 pattern) is
+     the narrow form's collapse affordance — wide hides it and always shows
      the body. -->
 @if (open()) {
   <section
@@ -245,6 +248,24 @@
                     Remove
                   </button>
                 }
+                <!-- B-135 (D93/F07): the Calibrate entry — the placement
+                     authoring mode's ONLY doorway (the mode is the stage
+                     band that takes over on entry; the sheet closes with
+                     it). DISABLED — never hidden — while the row cannot
+                     calibrate (the service's canCalibrate gate: not the
+                     active layer, no background, a failed load, a stale
+                     natural — the F07 dead-control reasoning). >= 44px,
+                     plain word (C23/F52/D53). -->
+                <button
+                  type="button"
+                  class="tme-button tme-bg-calibrate"
+                  data-testid="tme-layer-bg-calibrate"
+                  [disabled]="!canCalibrate(layer.id)"
+                  [attr.aria-label]="'Calibrate the background of ' + layer.name"
+                  (click)="enterCalibrate()"
+                >
+                  Calibrate
+                </button>
               </div>
             </div>
             @if (rows().length === 1) {
