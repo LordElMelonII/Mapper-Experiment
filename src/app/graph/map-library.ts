@@ -47,7 +47,7 @@ export interface LibraryEntry {
  * degrades in words, never a throw).
  */
 export interface MapLibrary {
-  /** Every stored map as a light row (insertion order — a render input, not truth). */
+  /** Every stored map as a light row (the impl's order contract — the harness: insertion order, the Phase 4 host: name-sorted; a render input, not truth). */
   list(): Promise<readonly LibraryEntry[]>;
   /** One full map — an independent copy (the contract note above) — or null when unknown. */
   get(id: string): Promise<WorldMapData | null>;

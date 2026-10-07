@@ -124,7 +124,8 @@ export class MapsPanelComponent {
   /**
    * The library rows — refreshed on every open (the constructor effect) and
    * after every store command. Signal-held (R3); list order is the store's
-   * insertion order (a render input, not truth).
+   * order contract (the harness impl: insertion order; the Phase 4 host:
+   * name-sorted — C-003; a render input, not truth either way).
    */
   protected readonly rows = signal<readonly LibraryEntry[]>([]);
 
