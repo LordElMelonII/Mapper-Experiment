@@ -87,6 +87,8 @@ interface ClampFrame {
   readonly chromeBottom: number;
   readonly width: number;
   readonly headerHeight: number;
+  /** The WHOLE panel's measured height (B-136: the bottom arm contains the body too). */
+  readonly panelHeight: number;
 }
 
 /** B-133: a live drag — the frame plus the pointer's start and the last applied position. */
@@ -231,7 +233,7 @@ export class ArcPanelComponent {
     if (!event.isPrimary) return;
     if (this.graph.edgeSelection() === null || this.drag !== null) return;
     const rect = this.host.nativeElement.getBoundingClientRect();
-    const frame = this.readFrame(rect.width);
+    const frame = this.readFrame(rect.width, rect.height);
     if (frame === null) return; // no stage to clamp into — no drag (C32 spirit)
     this.drag = {
       ...frame,
@@ -272,7 +274,7 @@ export class ArcPanelComponent {
   };
 
   /** B-133: snapshot the clamp geometry (the route-panel readFrame pattern). */
-  private readFrame(width: number): ClampFrame | null {
+  private readFrame(width: number, height?: number): ClampFrame | null {
     const stage =
       this.host.nativeElement.closest('.tme-viewer')?.querySelector('.tme-stage') ?? null;
     if (stage === null) return null;
@@ -299,17 +301,29 @@ export class ArcPanelComponent {
       chromeBottom,
       width,
       headerHeight,
+      panelHeight: height ?? this.host.nativeElement.getBoundingClientRect().height,
     };
   }
 
-  /** B-133: the stage-bounds clamp (the B-119 arithmetic, route-panel twin). */
+  /**
+   * B-133: the stage-bounds clamp (the B-119 arithmetic, route-panel twin).
+   * B-136 (repair 1): the bottom arm contains the WHOLE panel (the old arm
+   * guarded only the header — the body hung past the stage's bottom edge,
+   * probe-proven on the property/route twins of this identical arithmetic);
+   * when a tiny stage inverts the bands the header-reachable clamp still
+   * wins (the only clamp that must always hold, so it caps maxY from above).
+   */
   private clampFloat(x: number, y: number, frame: ClampFrame): { x: number; y: number } {
     const clampedX = Math.min(Math.max(x, frame.stageLeft), frame.stageRight - frame.width);
     const minY =
       clampedX + frame.width > frame.chromeLeft
         ? frame.chromeBottom + CHROME_CLEAR_GAP_PX
         : frame.stageTop;
-    const clampedY = Math.min(Math.max(y, minY), frame.stageBottom - frame.headerHeight);
+    const maxY = Math.min(
+      Math.max(minY, frame.stageBottom - frame.panelHeight), // whole panel inside the stage (B-136)
+      frame.stageBottom - frame.headerHeight, // header reachable — wins when the bands invert
+    );
+    const clampedY = Math.min(Math.max(y, minY), maxY);
     return { x: clampedX, y: clampedY };
   }
 

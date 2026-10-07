@@ -62,6 +62,8 @@ interface ClampFrame {
   readonly chromeBottom: number;
   readonly width: number;
   readonly headerHeight: number;
+  /** The WHOLE panel's measured height (B-136: the bottom arm contains the body too). */
+  readonly panelHeight: number;
 }
 
 /** B-133: a live drag — the frame plus the pointer's start and the last applied position. */
@@ -204,7 +206,7 @@ export class RoutePanelComponent {
     if (!event.isPrimary) return; // one pointer owns the drag
     if (!this.graph.routePanelOpen() || this.drag !== null) return;
     const rect = this.host.nativeElement.getBoundingClientRect();
-    const frame = this.readFrame(rect.width);
+    const frame = this.readFrame(rect.width, rect.height);
     if (frame === null) return; // no stage to clamp into — no drag (C32 spirit)
     this.drag = {
       ...frame,
@@ -261,7 +263,7 @@ export class RoutePanelComponent {
    * and the width to clamp against (the live measured width). Null when no
    * stage is reachable (C32 spirit).
    */
-  private readFrame(width: number): ClampFrame | null {
+  private readFrame(width: number, height?: number): ClampFrame | null {
     const stage =
       this.host.nativeElement.closest('.tme-viewer')?.querySelector('.tme-stage') ?? null;
     if (stage === null) return null;
@@ -288,6 +290,7 @@ export class RoutePanelComponent {
       chromeBottom,
       width,
       headerHeight,
+      panelHeight: height ?? this.host.nativeElement.getBoundingClientRect().height,
     };
   }
 
@@ -295,10 +298,14 @@ export class RoutePanelComponent {
    * The stage-bounds clamp (the B-119 arithmetic): the panel stays inside the
    * stage and never covers the top chrome band — while its right edge reaches
    * into the band's horizontal span it is clamped BELOW the band; fully left
-   * of the band it may rise to the stage top — and the header stays reachable
-   * (maxY keeps it above the stage bottom). Plain containment — NOT F46's
-   * fenced canvas snapping. Pure arithmetic over the snapshot frame — safe at
-   * pointermove frequency (D2).
+   * of the band it may rise to the stage top. B-136 (repair 1): the bottom
+   * arm contains the WHOLE panel (the old arm guarded only the header — the
+   * body hung past the stage's bottom edge, probe-proven live on this panel
+   * at the desktop gate viewport); when a tiny stage inverts the bands the
+   * header-reachable clamp still wins (the only clamp that must always hold,
+   * so it caps maxY from above). Plain containment — NOT F46's fenced canvas
+   * snapping. Pure arithmetic over the snapshot frame — safe at pointermove
+   * frequency (D2).
    */
   private clampFloat(x: number, y: number, frame: ClampFrame): { x: number; y: number } {
     const clampedX = Math.min(Math.max(x, frame.stageLeft), frame.stageRight - frame.width);
@@ -306,7 +313,11 @@ export class RoutePanelComponent {
       clampedX + frame.width > frame.chromeLeft
         ? frame.chromeBottom + CHROME_CLEAR_GAP_PX
         : frame.stageTop;
-    const clampedY = Math.min(Math.max(y, minY), frame.stageBottom - frame.headerHeight);
+    const maxY = Math.min(
+      Math.max(minY, frame.stageBottom - frame.panelHeight), // whole panel inside the stage (B-136)
+      frame.stageBottom - frame.headerHeight, // header reachable — wins when the bands invert
+    );
+    const clampedY = Math.min(Math.max(y, minY), maxY);
     return { x: clampedX, y: clampedY };
   }
 

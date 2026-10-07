@@ -104,6 +104,34 @@ const tapNode = async (page: Page, id: string): Promise<void> => {
 const noHorizontalScroll = async (page: Page): Promise<number> =>
   page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
+/**
+ * The narrow route summon's rendered state (B-136): the route HOST's height
+ * (the flex member the stack squeezes) and whether the rail's center is
+ * tap-reachable (elementFromPoint at the rail's center must answer the rail
+ * or a descendant). Boxes are read IN-PAGE — the sheet stack rides layout
+ * that locator.boundingBox() can misread (the quick-connect precedent).
+ */
+interface RouteStrip {
+  hostH: number;
+  railH: number;
+  centerIsRail: boolean;
+}
+
+const readRouteStrip = (page: Page): Promise<RouteStrip> =>
+  page.evaluate((): RouteStrip => {
+    const host = document.querySelector('tme-route-panel');
+    const rail = document.querySelector('[data-testid="tme-sheet-rail"]');
+    if (host === null || rail === null) throw new Error('route sheet not rendered');
+    const hb = host.getBoundingClientRect();
+    const rb = rail.getBoundingClientRect();
+    const hit = document.elementFromPoint(rb.left + rb.width / 2, rb.top + rb.height / 2);
+    return {
+      hostH: hb.height,
+      railH: rb.height,
+      centerIsRail: hit !== null && (hit === rail || rail.contains(hit)),
+    };
+  });
+
 test.describe('the route panel as a narrow-width sheet (PKG B-114)', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
@@ -272,5 +300,115 @@ test.describe('the route panel as a narrow-width sheet (PKG B-114)', () => {
     // And the desktop sidebar flow is untouched: a node tap renders the route.
     await tapNode(page, STATION_ID);
     await expect(page.getByTestId('tme-total')).toHaveText('50 min');
+  });
+});
+
+// tests/e2e B-136 — the D91-regime repair 2 (EXECUTION-PLAN §8.6(t) finding 1,
+// R27 ruling 3): a maximized+scrolled property sheet used to flex-shrink the
+// route sheet's standing summon strip below 44px (probe: the route HOST at
+// 16.5px, the rail's center hit-blocked by the sheet's content — the "~16px
+// summon sliver"). The repaired stack floors the route host at the summon's
+// 44px F52 height (B-114 ruling 1's always-visible rail) at every stack fill
+// level. Cells assert the repaired BEHAVIOR (strip height, center
+// reachability), not the SCSS; both projects per D53/F52.
+test.describe('the route summon floor under a maximized sheet (PKG B-136, D91 repair 2)', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByTestId('tme-canvas')).toBeVisible();
+    await expect.poll(() => readPosition(page, 'emiya-residence')).not.toBeNull();
+  });
+
+  test('phone: the summon strip keeps its 44px floor under a maximized+scrolled property sheet', async ({
+    page,
+  }) => {
+    test.skip(!isPhone(), 'the sheet stack belongs to the narrow viewport (D53); the wide summon is the cell below');
+
+    // Editor mode + one canvas node tap, coverage-guarded (the B-133c
+    // discipline: the aim is re-derived fresh off the seam and must hit the
+    // CANVAS — a covered aim fails with the geometry instead of tapping a
+    // panel). At idle only the 44px route strip rides the stage bottom.
+    await activate(page, 'tme-editor-toggle');
+    await expect(page.getByTestId('tme-editor-toggle')).toHaveAttribute('aria-pressed', 'true');
+    await settle(page);
+    const pos = await readPosition(page, STATION_ID);
+    if (pos === null) throw new Error(`${STATION_ID} not rendered`);
+    const canvas = await canvasBox(page);
+    const aim = { x: canvas.x + pos.x, y: canvas.y + pos.y };
+    const aimClear = await page.evaluate(
+      ([px, py]) => document.elementFromPoint(px, py)?.closest('.tme-canvas') !== null,
+      [aim.x, aim.y] as const,
+    );
+    if (!aimClear) {
+      throw new Error(
+        `B-136 aim (${Math.round(aim.x)},${Math.round(aim.y)}) is covered — the node tap would hit a panel`,
+      );
+    }
+    await tapPoint(page, aim.x, aim.y);
+    await expect(page.getByTestId('tme-property-panel')).toBeVisible();
+
+    // The property sheet opens as the maximized in-stack sheet; in editor
+    // mode a library-node selection belongs to the property panel, so the
+    // route sheet stands COLLAPSED — the summon strip is the finding's
+    // subject exactly as it stands (B-117/D53's mutual exclusion).
+    await expect(page.getByTestId('tme-sheet-rail')).toHaveAttribute('aria-expanded', 'false');
+
+    // The floor: the route HOST keeps the rail's full 44px box and the
+    // strip's center is tap-reachable (pre-repair the stack squeezed the
+    // host to ~16px and the sheet's content blocked the center tap).
+    const strip = await readRouteStrip(page);
+    expect(
+      strip.hostH,
+      'B-136: the summon strip keeps >= 44px under the maximized sheet (F52/B-114 ruling 1)',
+    ).toBeGreaterThanOrEqual(44);
+    expect(strip.railH, 'B-136: the rail box itself is >= 44px (F52)').toBeGreaterThanOrEqual(44);
+    expect(strip.centerIsRail, 'B-136: the strip center is tap-reachable').toBe(true);
+
+    // Every stack fill level: grow the maximized sheet (three alias rows —
+    // draft-only, nothing commits) and scroll it to its bottom; the floor
+    // holds and the summon stays a full tap target.
+    for (let i = 0; i < 3; i++) {
+      await activate(page, 'tme-alias-add');
+    }
+    await page.evaluate(() => {
+      const host = document.querySelector('tme-property-panel');
+      if (host !== null) host.scrollTop = host.scrollHeight;
+    });
+    await settle(page);
+    const grown = await readRouteStrip(page);
+    expect(
+      grown.hostH,
+      'B-136: the summon strip keeps >= 44px under the grown+scrolled sheet',
+    ).toBeGreaterThanOrEqual(44);
+    expect(grown.centerIsRail, 'B-136: the strip center stays tap-reachable').toBe(true);
+  });
+
+  test('desktop: the Route summon on the rail stays reachable beside the maximized property panel', async ({
+    page,
+  }) => {
+    test.skip(isPhone(), 'the wide summon lives on the rail column (≥700px, D53); the narrow strip is the cell above');
+
+    // The property panel opens MAXIMIZED (the bottom-right overlay); the
+    // route summon is the rail's Route toggle — a rail-column control the
+    // stage-clamped floater can never cover. The narrow floor's wide-world
+    // mirror: the summon stays a full >= 44px reachable target panel-up.
+    await activate(page, 'tme-editor-toggle');
+    await expect(page.getByTestId('tme-editor-toggle')).toHaveAttribute('aria-pressed', 'true');
+    await tapNode(page, STATION_ID);
+    await expect(page.getByTestId('tme-property-panel')).toBeVisible();
+
+    const toggle = page.getByTestId('tme-route-toggle');
+    await expect(toggle).toBeVisible();
+    const box = await toggle.boundingBox();
+    if (box === null) throw new Error('route toggle not visible');
+    expect(box.height, 'route summon height >= 44px (F52)').toBeGreaterThanOrEqual(44);
+    expect(box.width, 'route summon width >= 44px (F52)').toBeGreaterThanOrEqual(44);
+    const reachable = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="tme-route-toggle"]');
+      if (el === null) return false;
+      const r = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return hit !== null && (hit === el || el.contains(hit));
+    });
+    expect(reachable, 'the route summon stays tap-reachable beside the maximized panel').toBe(true);
   });
 });

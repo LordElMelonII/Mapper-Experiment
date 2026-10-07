@@ -402,19 +402,28 @@ test.describe('property panel regime: floating, remembered, maximized-by-default
       expect(floating?.position).toBe('fixed');
       if (floating === null) throw new Error('panel not floating after Restore');
 
-      // Drag left+down by the header (the clamp normalizes overshoot; the
-      // vertical move is the unclamped, always-honest proof of motion).
+      // Drag left+down by the header (the clamp normalizes overshoot; since
+      // B-136's whole-panel bottom arm the vertical move may be clamp-
+      // truncated on short stages — that truncation IS the repaired
+      // behavior, so the motion assert is directional, not magnitudinal).
       await dragPanel(p, -160, 150);
       const dragged = await readPanelState(p);
       if (dragged === null) throw new Error('panel closed by the drag');
       expect(dragged.position).toBe('fixed');
-      expect(dragged.y, 'the drag moved the panel down (D2: committed state)').toBeGreaterThanOrEqual(
-        floating.y + 100,
+      expect(dragged.y, 'the drag moved the panel down (D2: committed state)').toBeGreaterThan(
+        floating.y,
       );
       expect(dragged.x, 'the drag moved the panel toward the left edge').toBeLessThan(floating.x);
       const stage = await readStageBox(p);
       expect(dragged.x).toBeGreaterThanOrEqual(stage.x); // plain containment (F46-safe)
       expect(dragged.y).toBeGreaterThanOrEqual(stage.y);
+      // B-136 (repair 1): the WHOLE panel stays inside the stage — the old
+      // bottom arm guarded only the header, letting the body hang past the
+      // stage's bottom edge (probe-proven 258px on both layouts).
+      expect(
+        dragged.y + dragged.h,
+        'B-136: the panel bottom stays inside the stage',
+      ).toBeLessThanOrEqual(stage.y + stage.height + 0.5);
       expect(await chromeReachable(p), 'chrome reachable after the drag').toBe(true);
 
       // Remembered: close (the chip dismisses the selection — the draft is
@@ -459,6 +468,54 @@ test.describe('property panel regime: floating, remembered, maximized-by-default
     };
     if (isPhone()) await withPhoneChromiumPage(dragRememberRedock);
     else await dragRememberRedock(page);
+  });
+
+  test('a hard down-drag parks the floating panel with its WHOLE body inside the stage (B-136 repair 1/D91)', async ({
+    page,
+  }) => {
+    const hardDownDragContained = async (p: Page): Promise<void> => {
+      const bad: string[] = [];
+      watchConsole(p, bad);
+
+      await openPanelFor(p, EMIYA_ID);
+      await activate(regimeButton(p)); // Restore → floating at the default spot
+      await settle(p);
+
+      // A drag far past any stage bottom: the repaired clamp must park the
+      // panel with its WHOLE box inside the stage (the old arm guarded only
+      // the header — the body hung past the stage's bottom edge, probe-proven
+      // at 258px over the rail band on both layouts).
+      await dragPanel(p, 0, 700);
+      const dragged = await readPanelState(p);
+      if (dragged === null) throw new Error('panel closed by the drag');
+      expect(dragged.position).toBe('fixed');
+      const stage = await readStageBox(p);
+      expect(dragged.y, 'B-136: the panel top inside the stage').toBeGreaterThanOrEqual(stage.y);
+      expect(
+        dragged.y + dragged.h,
+        'B-136: the WHOLE panel inside the stage (bottom)',
+      ).toBeLessThanOrEqual(stage.y + stage.height + 0.5);
+      expect(dragged.x, 'B-136: the panel left inside the stage').toBeGreaterThanOrEqual(stage.x);
+      expect(
+        dragged.x + dragged.w,
+        'B-136: the panel right inside the stage',
+      ).toBeLessThanOrEqual(stage.x + stage.width + 0.5);
+
+      // The standing chrome a past-the-bottom floater used to park over —
+      // the editor toggle (rail chrome on both layouts) stays reachable.
+      const toggleReachable = await p.evaluate(() => {
+        const el = document.querySelector('[data-testid="tme-editor-toggle"]');
+        if (el === null) return false;
+        const r = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return hit !== null && (hit === el || el.contains(hit));
+      });
+      expect(toggleReachable, 'rail chrome reachable under the parked floater').toBe(true);
+
+      expect(bad, 'no console errors/warnings/pageerrors in the B-136 cell').toEqual([]);
+    };
+    if (isPhone()) await withPhoneChromiumPage(hardDownDragContained);
+    else await hardDownDragContained(page);
   });
 
   test('editor entry maximizes by default; the position stays remembered across the editor toggle (Q29 §8 item 3)', async ({

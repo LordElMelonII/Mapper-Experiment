@@ -120,6 +120,12 @@ const BLOCKABLE_KINDS: ReadonlySet<NodeKind> = new Set<NodeKind>(['location', 'h
 
 /** The floating panel's width cap — 18rem in px (SCSS mirror). */
 const FLOAT_WIDTH_PX = 288; // 18rem
+/**
+ * The floating panel's height cap — 22rem in px (SCSS mirror, B-136): Restore
+ * clamps the WHOLE floating panel against it while the panel is still
+ * maximized and unmeasurable (the width mirror's exact precedent).
+ */
+const FLOAT_MAX_HEIGHT_PX = 352; // 22rem
 /** Never-dragged default: inset from the stage's top-left (the chrome-rhythm 0.75rem). */
 const FLOAT_DEFAULT_INSET_PX = 12;
 /** Clear gap below the top-right chrome stack when clamped under it. */
@@ -144,6 +150,13 @@ interface ClampFrame {
   readonly chromeBottom: number;
   readonly width: number;
   readonly headerHeight: number;
+  /**
+   * The WHOLE panel's measured height (B-136): the bottom clamp arm contains
+   * the panel's body too, not just its header. Restore passes the floating
+   * form's cap (FLOAT_MAX_HEIGHT_PX) — the panel is unmeasurable at the
+   * floating size while still maximized (the width mirror's precedent).
+   */
+  readonly panelHeight: number;
 }
 
 /** B-119: a live drag — the frame plus the pointer's start and the last applied position. */
@@ -747,7 +760,7 @@ export class PropertyPanelComponent {
       this.graph.panelFloating.set(false);
       return;
     }
-    const frame = this.readFrame(FLOAT_WIDTH_PX);
+    const frame = this.readFrame(FLOAT_WIDTH_PX, FLOAT_MAX_HEIGHT_PX);
     const remembered = this.graph.panelPosition();
     if (frame !== null) {
       const base =
@@ -777,7 +790,7 @@ export class PropertyPanelComponent {
     // old dock's semantics: no drag until Restore).
     if (!this.open() || !this.graph.panelFloating() || this.drag !== null) return;
     const rect = this.host.nativeElement.getBoundingClientRect();
-    const frame = this.readFrame(rect.width);
+    const frame = this.readFrame(rect.width, rect.height);
     if (frame === null) return; // no stage to clamp into — no drag (C32 spirit)
     this.drag = {
       ...frame,
@@ -833,11 +846,15 @@ export class PropertyPanelComponent {
    * and, since B-133, the breadcrumb bar — both conditional, both optional;
    * B-127 fallout note: the editor toggle and the save dock migrated onto
    * the editor RAIL, a sibling outside the stage, so the band is
-   * stage-overlay chrome only), the header height, and the width to clamp
-   * against (the live measured width while dragging, the SCSS maximum at
-   * Restore time). Null when no stage is reachable (C32 spirit).
+   * stage-overlay chrome only), the header height, the WHOLE panel height
+   * (B-136: the bottom clamp arm contains the body too), and the width to
+   * clamp against (the live measured width while dragging, the SCSS maximum
+   * at Restore time). `height` overrides the measured panel height where the
+   * floating size is unmeasurable (Restore clamps against the FLOATING cap
+   * while still maximized — the width mirror's precedent). Null when no
+   * stage is reachable (C32 spirit).
    */
-  private readFrame(width: number): ClampFrame | null {
+  private readFrame(width: number, height?: number): ClampFrame | null {
     const stage =
       this.host.nativeElement.closest('.tme-viewer')?.querySelector('.tme-stage') ?? null;
     if (stage === null) return null;
@@ -864,6 +881,7 @@ export class PropertyPanelComponent {
       chromeBottom,
       width,
       headerHeight,
+      panelHeight: height ?? this.host.nativeElement.getBoundingClientRect().height,
     };
   }
 
@@ -871,12 +889,14 @@ export class PropertyPanelComponent {
    * The stage-bounds clamp (B-119/Q29): the panel stays inside the stage, it
    * never covers the top-right chrome stack — while its right edge reaches
    * into the stack's horizontal band it is clamped BELOW the stack; fully
-   * left of the band it may rise to the stage top ("below/left of it") — and
-   * the header stays reachable (maxY keeps it above the stage bottom: the
-   * only clamp that must always hold, so it wins when a tiny stage inverts
-   * the band). Plain containment — NOT F46's fenced canvas snapping (no
-   * targets, no edges, no magnetism). Pure arithmetic over the snapshot
-   * frame — safe at pointermove frequency (D2).
+   * left of the band it may rise to the stage top ("below/left of it").
+   * B-136 (repair 1): the bottom arm contains the WHOLE panel (the old arm
+   * guarded only the header — the body hung past the stage's bottom edge,
+   * probe-proven at 258px on both layouts); when a tiny stage inverts the
+   * bands the header-reachable clamp still wins (the only clamp that must
+   * always hold, so it caps maxY from above). Plain containment — NOT F46's
+   * fenced canvas snapping (no targets, no edges, no magnetism). Pure
+   * arithmetic over the snapshot frame — safe at pointermove frequency (D2).
    */
   private clampFloat(x: number, y: number, frame: ClampFrame): { x: number; y: number } {
     const clampedX = Math.min(Math.max(x, frame.stageLeft), frame.stageRight - frame.width);
@@ -884,7 +904,11 @@ export class PropertyPanelComponent {
       clampedX + frame.width > frame.chromeLeft
         ? frame.chromeBottom + CHROME_CLEAR_GAP_PX
         : frame.stageTop;
-    const clampedY = Math.min(Math.max(y, minY), frame.stageBottom - frame.headerHeight);
+    const maxY = Math.min(
+      Math.max(minY, frame.stageBottom - frame.panelHeight), // whole panel inside the stage (B-136)
+      frame.stageBottom - frame.headerHeight, // header reachable — wins when the bands invert
+    );
+    const clampedY = Math.min(Math.max(y, minY), maxY);
     return { x: clampedX, y: clampedY };
   }
 

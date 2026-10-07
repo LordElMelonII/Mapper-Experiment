@@ -89,6 +89,11 @@
   justify-content: flex-end;
   max-height: 70%;
   pointer-events: none;
+  // B-136 (D91-regime repair 2): the route sheet's collapsed rail is the
+  // stack's standing summon (B-114 ruling 1) — its 44px F52 height, declared
+  // ONCE here and consumed by the floor rule below, is the one band a
+  // maximized sibling sheet may never squeeze away.
+  --tme-route-floor: 44px;
 }
 
 .tme-sheets > * {
@@ -101,6 +106,24 @@
   min-height: 0;
   min-width: 0;
   max-width: 100%;
+}
+
+// B-136 (D91-regime repair 2): the route sheet STOPS SHRINKING at the floor —
+// a maximized+scrolled property sheet used to flex-shrink the route host
+// below 44px (probe: 16.5px) so the rail's box overflowed into the sibling
+// sheet's band and its center became untappable (the ~16px summon sliver).
+// min-height joins the flex shrink math: the route host floors at 44px at
+// every stack fill level, the shrinkable siblings absorb the squeeze (their
+// bodies scroll — the standing D53 rule), and the standing summon stays a
+// full ≥44px tap target. The B-136 floor-preserving-cap shape in its
+// smallest arithmetic: with the floor held here, every other sheet's
+// effective cap is the stack's 70% minus the reserved 44px. Narrow only —
+// wide dissolves the stack (display: contents) and the route floater owns
+// its own geometry (its max-height arithmetic is untouched).
+@media (max-width: 699.98px) {
+  .tme-sheets > tme-route-panel {
+    min-height: var(--tme-route-floor);
+  }
 }
 
 @media (min-width: 700px) {
