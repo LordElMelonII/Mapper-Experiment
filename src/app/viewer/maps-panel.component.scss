@@ -18,7 +18,7 @@
   flex-direction: column; // the head stays put; the body absorbs squeezes (D91 stack)
   min-width: 0;
   min-height: 0;
-  color: #e6ebf2;
+  color: var(--tme-text);
   font:
     400 0.875rem/1.5 system-ui,
     -apple-system,
@@ -47,7 +47,7 @@
   border: 1px solid rgba(230, 235, 242, 0.35);
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.85);
-  color: #c7d0dd;
+  color: var(--tme-text-secondary);
   font:
     600 1rem/1 system-ui,
     -apple-system,
@@ -131,7 +131,7 @@
     max-height: min(26rem, 100dvh - 1.5rem);
     border: 1px solid rgba(174, 189, 211, 0.4);
     border-radius: 8px;
-    background: #14171c; // opaque — the map underneath is occluded, not bled through
+    background: var(--tme-plate); // opaque — the map underneath is occluded, not bled through
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
     overflow: hidden; // the BODY scrolls (the head must stay reachable)
   }
@@ -140,7 +140,7 @@
 .tme-field-label {
   display: block;
   margin: 0.375rem 0 0.25rem;
-  color: #c7d0dd;
+  color: var(--tme-text-secondary);
   font-size: 0.8125rem;
 }
 
@@ -154,7 +154,7 @@
   border: 1px solid rgba(174, 189, 211, 0.4);
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.85);
-  color: #e6ebf2;
+  color: var(--tme-text);
   font:
     400 1rem/1.4 system-ui,
     -apple-system,
@@ -183,7 +183,7 @@
   border: 1px solid rgba(230, 235, 242, 0.35);
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.85);
-  color: #c7d0dd;
+  color: var(--tme-text-secondary);
   font:
     600 0.875rem/1.2 system-ui,
     -apple-system,
@@ -199,8 +199,8 @@
 
 // The Create commit — the established gold primary accent.
 .tme-create {
-  border-color: #ffd166;
-  color: #ffd166;
+  border-color: var(--tme-accent-gold);
+  color: var(--tme-accent-gold);
 }
 
 // One map row: the name line (with the open marker + the suggestion mark),
@@ -228,9 +228,9 @@
 // manager's Active marker twin); names which row is live.
 .tme-active-marker {
   padding: 0.125rem 0.5rem;
-  border: 1px solid #ffd166;
+  border: 1px solid var(--tme-accent-gold);
   border-radius: 999px;
-  color: #ffd166;
+  color: var(--tme-accent-gold);
   font-size: 0.75rem;
   font-weight: 600;
 }
@@ -241,7 +241,7 @@
   padding: 0.125rem 0.5rem;
   border: 1px solid rgba(143, 211, 182, 0.6);
   border-radius: 999px;
-  color: #8fd3b6;
+  color: var(--tme-accent-pass);
   font-size: 0.75rem;
   font-weight: 600;
 }
@@ -278,8 +278,8 @@
 
 // The Open commit — the gold primary accent (the panel's whole point).
 .tme-open-button {
-  border-color: #ffd166;
-  color: #ffd166;
+  border-color: var(--tme-accent-gold);
+  color: var(--tme-accent-gold);
 }
 
 // B-139: the FORK family's controls — the per-row Fork and the save-back —
@@ -288,7 +288,7 @@
 // loaded-commitment nor a destructive act, it is the chat-copies affordance).
 .tme-fork {
   border-color: rgba(77, 182, 172, 0.75);
-  color: #7fd1c8;
+  color: var(--tme-accent-teal-light);
 }
 
 // The save-back's free-standing control sits on its own with the words
@@ -307,21 +307,21 @@
 
 .tme-fork-saved {
   margin: 0.25rem 0 0;
-  color: #8fd3b6; // the suggestion chip's quiet informational green
+  color: var(--tme-accent-pass); // the suggestion chip's quiet informational green
   font-size: 0.8125rem;
 }
 
 // The destructive action shares the red key (the blocked/delete accent).
 .tme-delete {
   border-color: rgba(201, 86, 78, 0.7);
-  color: #e08a84;
+  color: var(--tme-accent-warn);
 }
 
 // D41 provenance line — muted small print (the portal-mirror language); a
 // status, never an affordance.
 .tme-map-provenance {
   margin: 0.125rem 0 0;
-  color: #9aa7b8;
+  color: var(--tme-text-muted);
   font-size: 0.8125rem;
 }
 
@@ -329,14 +329,14 @@
 // impact line's language), the map's NAME in plain words, no counts (R1).
 .tme-map-confirm {
   margin: 0 0 0.375rem;
-  color: #d9b06c;
+  color: var(--tme-node-hub-light);
 }
 
 // The empty-library words (D40's picker-first state) — muted, above the
 // (absent) rows; the create row is the affordance.
 .tme-maps-empty {
   margin: 0.625rem 0 0;
-  color: #9aa7b8;
+  color: var(--tme-text-muted);
   font-size: 0.8125rem;
 }
 
@@ -351,7 +351,7 @@
 
 .tme-error {
   margin: 0;
-  color: #e08a84;
+  color: var(--tme-accent-warn);
   white-space: pre-line; // B-138: collected field-precise issues render one line each (C30)
 }
 

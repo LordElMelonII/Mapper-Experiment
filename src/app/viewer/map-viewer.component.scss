@@ -22,7 +22,7 @@
   width: 100%;
   height: 100%;
   min-height: 0;
-  background: #14171c;
+  background: var(--tme-ground);
 }
 
 // B-127 (D86): the rail column's width, single-sourced as a custom property
@@ -48,7 +48,7 @@
   min-height: 0;
   min-width: 0;
   overflow: hidden; // never horizontal scroll at phone width (D53)
-  background: #14171c;
+  background: var(--tme-ground);
 }
 
 // B-127 (D86/F53): the rail region — DOM-last, so the narrow default is the
@@ -208,7 +208,7 @@
   gap: 0.25rem 0.75rem;
   padding: 0.5rem 0.75rem;
   pointer-events: none; // the header never blocks canvas gestures (D53)
-  color: #e6ebf2;
+  color: var(--tme-text);
   font:
     600 0.875rem/1.4 system-ui,
     -apple-system,
@@ -240,7 +240,7 @@
   border: 1px solid rgba(230, 235, 242, 0.35);
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.9);
-  color: #e6ebf2;
+  color: var(--tme-text);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 
@@ -248,7 +248,7 @@
 // line), never console-only.
 .tme-save-error {
   flex-basis: 100%;
-  color: #c9564e;
+  color: var(--tme-accent-warn-strong);
 }
 
 // The Save button — the dock's commit control, >= 44px (F52), gold to read
@@ -257,10 +257,10 @@
   min-width: 44px; // F52: >= 44px tap target
   min-height: 44px;
   padding: 0 0.875rem;
-  border: 1px solid #ffd166;
+  border: 1px solid var(--tme-accent-gold);
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.85);
-  color: #ffd166;
+  color: var(--tme-accent-gold);
   font: inherit;
   cursor: pointer;
   touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
@@ -289,7 +289,7 @@
   padding: 0 0.5rem;
   border: none;
   background: none;
-  color: #ffd166; // the gold accents: the path is the viewer's wayfinding language
+  color: var(--tme-accent-gold); // the gold accents: the path is the viewer's wayfinding language
   font:
     600 0.875rem/1.2 system-ui,
     -apple-system,
@@ -300,12 +300,12 @@
 
 span.tme-crumb-active {
   cursor: default; // the active crumb renders non-interactive (aria-current)
-  color: #e6ebf2;
+  color: var(--tme-text);
 }
 
 .tme-crumb-sep {
   opacity: 0.55;
-  color: #e6ebf2;
+  color: var(--tme-text);
 }
 
 // B-103: selection chip — signal-bound (visible only while a node is
@@ -324,10 +324,10 @@ span.tme-crumb-active {
   max-width: calc(100% - 1.5rem); // never force horizontal scroll (D53)
   min-height: 44px; // F52: >= 44px tap target
   padding: 0 0.875rem;
-  border: 1px solid #ffd166;
+  border: 1px solid var(--tme-accent-gold);
   border-radius: 999px;
   background: rgba(20, 23, 28, 0.9);
-  color: #ffd166;
+  color: var(--tme-accent-gold);
   font:
     600 0.875rem/1.2 system-ui,
     -apple-system,
@@ -359,7 +359,7 @@ span.tme-crumb-active {
   border: 1px solid rgba(201, 86, 78, 0.6); // the refusal reads warm (the blocked accent's hue)
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.9);
-  color: #e6ebf2;
+  color: var(--tme-text);
   font:
     600 0.875rem/1.3 system-ui,
     -apple-system,
@@ -399,10 +399,10 @@ span.tme-crumb-active {
 .tme-calibrate-badge {
   margin: 0;
   padding: 0.25rem 0.75rem;
-  border: 1px solid #ffd166;
+  border: 1px solid var(--tme-accent-gold);
   border-radius: 999px;
   background: rgba(20, 23, 28, 0.9);
-  color: #ffd166;
+  color: var(--tme-accent-gold);
   font:
     600 0.8125rem/1.3 system-ui,
     -apple-system,
@@ -428,7 +428,7 @@ span.tme-crumb-active {
 // not a control.
 .tme-calibrate-scale {
   min-width: 3rem;
-  color: #c7d0dd;
+  color: var(--tme-text-secondary);
   font:
     600 0.875rem/1.2 system-ui,
     -apple-system,
@@ -446,7 +446,7 @@ span.tme-crumb-active {
   border: 1px solid rgba(230, 235, 242, 0.35);
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.85);
-  color: #c7d0dd;
+  color: var(--tme-text-secondary);
   font:
     600 0.875rem/1.2 system-ui,
     -apple-system,
@@ -461,8 +461,8 @@ span.tme-crumb-active {
 }
 
 .tme-calibrate-primary {
-  border-color: #ffd166;
-  color: #ffd166;
+  border-color: var(--tme-accent-gold);
+  color: var(--tme-accent-gold);
 }
 
 // B-137 (D79): the one-time calibrate HINT — the stage-top overlay (the
@@ -488,7 +488,7 @@ span.tme-crumb-active {
 }
 
 .tme-hint-text {
-  color: #c7d0dd;
+  color: var(--tme-text-secondary);
   font:
     600 0.8125rem/1.3 system-ui,
     -apple-system,
@@ -504,7 +504,7 @@ span.tme-crumb-active {
   border: 1px solid rgba(230, 235, 242, 0.35);
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.85);
-  color: #c7d0dd;
+  color: var(--tme-text-secondary);
   font:
     600 1rem/1 system-ui,
     -apple-system,

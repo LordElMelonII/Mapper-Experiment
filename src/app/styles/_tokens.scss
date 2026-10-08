@@ -1,0 +1,61 @@
+// PKG B-140 (R0, docs/ui-restyle/REPAIRS.md) — the --tme-* design token
+// catalog. This file is consumed ONCE, at the harness root: app.scss @use's
+// it so the root component's host publishes every property, and the panels
+// (all DOM descendants) read them by custom-property inheritance — component
+// authors consume `var(--tme-*)`, never a raw hex (R0's acceptance audit).
+// Zero global selector leakage (D7): these are declarations scoped to the
+// harness host, carried by inheritance, never rules that style descendants.
+//
+// Every value below is byte-identical to the pre-B-140 literal it replaces
+// (R0's zero-behavior-change constraint). The cytoscape canvas plane
+// (GRAPH_STYLESHEET, D7 plain data) mirrors the canvas-relevant subset in
+// src/app/graph/canvas-tokens.ts — the TS side's single source — and the
+// shared names are pinned by tests/unit/app/tokens-sync.spec.ts (the drift
+// pin: every name that appears on both planes must carry the same value).
+//
+// Consumed today: ground/plate/hairline, the text tiers, the accent roles,
+// the node-kind taxonomy colors. Cataloged for the R29+ direction restyles,
+// deliberately NOT consumed at usage sites in this packet: the radius steps
+// and the 44px control rhythm (F52) — R0's constraint keeps layout
+// re-sectioning out of scope, and css-list radius values pass the audit.
+//
+// These two names are RESERVED and must never be re-defined below (they are
+// geometry, published elsewhere): --tme-rail-w, --tme-route-floor.
+
+:host {
+  // --- Ground & plate -------------------------------------------------------
+  --tme-ground: #14171c;        // the page and stage ground
+  --tme-plate: #14171c;         // the opaque floater/sheet plate over the map
+  --tme-hairline: #aebdd3;      // the hairline hue (DOM controls use its alpha ladder; the canvas node borders the full value)
+
+  // --- Text tiers -------------------------------------------------------------
+  --tme-text: #e6ebf2;              // brightest — titles, body copy, user content
+  --tme-text-secondary: #c7d0dd;    // mid tier — labels, chrome, quiet copy
+  --tme-text-muted: #9aa7b8;        // small print and status lines (the DOM muted tier)
+  --tme-canvas-text-muted: #8fa0b5; // the canvas plane's fourth tier (badges, plain edges)
+
+  // --- Accent roles ---------------------------------------------------------
+  --tme-accent-gold: #ffd166;         // the primary commit/selection/active accent
+  --tme-accent-teal: #4db6ac;         // the connect/pick accent
+  --tme-accent-teal-light: #7fd1c8;   // the fork family's lighter teal (maps panel)
+  --tme-accent-warn: #e08a84;         // the warm destructive/block key (text)
+  --tme-accent-warn-strong: #c9564e;  // the strong blocked/save-failure red (both planes)
+  --tme-accent-pass: #8fd3b6;         // the quiet informational green (both planes)
+
+  // --- Node-kind taxonomy (the canvas kind hues + their lighter panel variants)
+  --tme-node-location: #4f81b5;
+  --tme-node-hub: #b0813f;
+  --tme-node-hub-light: #d9b06c;
+  --tme-node-waypoint: #8064b8;
+  --tme-node-waypoint-light: #b39ddb;
+
+  // --- Canvas-plane misc (rendered by the canvas, not the DOM) ---------------
+  --tme-canvas-node-bg: #56637a;      // the default node body
+  --tme-canvas-badge-border: #1d232b; // the pin's dark border
+  --tme-canvas-draft-paper: #f4f1e8;  // the unsaved-draft hue (D77, one language across both element kinds)
+
+  // --- Radius steps + the 44px control rhythm (F52) — cataloged, unconsumed --
+  --tme-radius-sm: 8px;     // the control radius
+  --tme-radius-pill: 999px; // the marker/chip pill radius
+  --tme-tap-min: 44px;      // the F52 tap-target floor
+}

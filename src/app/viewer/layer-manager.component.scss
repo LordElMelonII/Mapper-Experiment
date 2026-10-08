@@ -20,7 +20,7 @@
   flex-direction: column; // the head stays put; the body absorbs squeezes (D91 stack)
   min-width: 0;
   min-height: 0;
-  color: #e6ebf2;
+  color: var(--tme-text);
   font:
     400 0.875rem/1.5 system-ui,
     -apple-system,
@@ -44,7 +44,7 @@
   border: 1px solid rgba(230, 235, 242, 0.35);
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.85);
-  color: #c7d0dd;
+  color: var(--tme-text-secondary);
   font:
     600 0.875rem/1.2 system-ui,
     -apple-system,
@@ -75,7 +75,7 @@
   border: 1px solid rgba(230, 235, 242, 0.35);
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.85);
-  color: #c7d0dd;
+  color: var(--tme-text-secondary);
   font:
     600 1rem/1 system-ui,
     -apple-system,
@@ -159,7 +159,7 @@
     max-height: min(26rem, 100dvh - 1.5rem);
     border: 1px solid rgba(174, 189, 211, 0.4);
     border-radius: 8px;
-    background: #14171c; // opaque — the map underneath is occluded, not bled through
+    background: var(--tme-plate); // opaque — the map underneath is occluded, not bled through
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
     overflow: hidden; // the BODY scrolls (the head must stay reachable)
   }
@@ -201,7 +201,7 @@
 .tme-field-label {
   display: block;
   margin: 0.375rem 0 0.25rem;
-  color: #c7d0dd;
+  color: var(--tme-text-secondary);
   font-size: 0.8125rem;
 }
 
@@ -215,7 +215,7 @@
   border: 1px solid rgba(174, 189, 211, 0.4);
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.85);
-  color: #e6ebf2;
+  color: var(--tme-text);
   font:
     400 1rem/1.4 system-ui,
     -apple-system,
@@ -244,7 +244,7 @@
   border: 1px solid rgba(230, 235, 242, 0.35);
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.85);
-  color: #c7d0dd;
+  color: var(--tme-text-secondary);
   font:
     600 0.875rem/1.2 system-ui,
     -apple-system,
@@ -261,8 +261,8 @@
 // The Add/Save commits — the established gold primary accent.
 .tme-add,
 .tme-save {
-  border-color: #ffd166;
-  color: #ffd166;
+  border-color: var(--tme-accent-gold);
+  color: var(--tme-accent-gold);
 }
 
 // One layer row: the name line (with the active marker), then the action
@@ -288,9 +288,9 @@
 // this only names which row is live (the gold accent language).
 .tme-active-marker {
   padding: 0.125rem 0.5rem;
-  border: 1px solid #ffd166;
+  border: 1px solid var(--tme-accent-gold);
   border-radius: 999px;
-  color: #ffd166;
+  color: var(--tme-accent-gold);
   font-size: 0.75rem;
   font-weight: 600;
 }
@@ -306,7 +306,7 @@
 // The destructive actions share the red key (the blocked/delete accent).
 .tme-delete {
   border-color: rgba(201, 86, 78, 0.7);
-  color: #e08a84;
+  color: var(--tme-accent-warn);
 }
 
 // Ruling 3: the last-layer fence's reason in words — honest, muted, not an
@@ -314,7 +314,7 @@
 .tme-fence {
   display: block;
   margin-top: 0.375rem;
-  color: #9aa7b8;
+  color: var(--tme-text-muted);
   font-size: 0.8125rem;
 }
 
@@ -323,7 +323,7 @@
 // print (the fence line's language); a status, never an affordance.
 .tme-layer-portal {
   margin: 0.125rem 0 0;
-  color: #9aa7b8;
+  color: var(--tme-text-muted);
   font-size: 0.8125rem;
 }
 
@@ -338,7 +338,7 @@
 // URL wraps inside the sheet instead of overflowing it (D53).
 .tme-layer-bg-state {
   margin: 0.125rem 0 0.25rem;
-  color: #9aa7b8;
+  color: var(--tme-text-muted);
   font-size: 0.8125rem;
   overflow-wrap: anywhere;
 }
@@ -383,7 +383,7 @@
 // words (R1/C23), warm to read as destructive-adjacent (not an error).
 .tme-impact {
   margin: 0 0 0.375rem;
-  color: #d9b06c;
+  color: var(--tme-node-hub-light);
 }
 
 // C30 field-precise refusals — the B-117 pattern, one line per issue: the
@@ -402,11 +402,11 @@
   align-items: baseline;
   gap: 0 0.375rem;
   margin: 0;
-  color: #e08a84;
+  color: var(--tme-accent-warn);
 }
 
 .tme-error-path {
-  color: #9aa7b8;
+  color: var(--tme-text-muted);
   font-size: 0.75rem;
 }
 

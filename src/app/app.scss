@@ -1,8 +1,15 @@
 // PKG B-102 — harness shell: viewer fills the viewport, no page scroll.
+// PKG B-140 (R0, docs/ui-restyle/REPAIRS.md): the --tme-* token catalog is
+// consumed ONCE, here — @use-ing src/app/styles/_tokens.scss emits its
+// custom-property declarations onto THIS component's host, and every panel
+// (a DOM descendant) reads the tokens by inheritance; this ground rule
+// consumes `--tme-ground` as the pattern the other SCSS files follow.
+@use './styles/tokens';
+
 :host {
   display: block;
   height: 100dvh;
-  background: #14171c;
+  background: var(--tme-ground);
 }
 
 .tme-harness {

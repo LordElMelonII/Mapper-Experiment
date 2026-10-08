@@ -19,7 +19,7 @@
   min-width: 0; // never propagate content width into the stack (D53)
   min-height: 0;
   box-sizing: border-box;
-  color: #e6ebf2;
+  color: var(--tme-text);
   font:
     400 0.875rem/1.5 system-ui,
     -apple-system,
@@ -122,7 +122,7 @@
     max-height: min(26rem, 100dvh - 1.5rem);
     border: 1px solid rgba(174, 189, 211, 0.4);
     border-radius: 8px;
-    background: #14171c; // opaque — the map underneath is occluded, not bled through
+    background: var(--tme-plate); // opaque — the map underneath is occluded, not bled through
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
     overflow: hidden; // the BODY scrolls (the head must stay reachable)
   }
@@ -190,7 +190,7 @@
   border: 1px solid rgba(230, 235, 242, 0.35);
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.85);
-  color: #c7d0dd;
+  color: var(--tme-text-secondary);
   font:
     600 0.875rem/1.2 system-ui,
     -apple-system,
@@ -219,7 +219,7 @@
 
 .tme-state {
   margin: 0 0 0.75rem;
-  color: #c7d0dd;
+  color: var(--tme-text-secondary);
 }
 
 // C18: one row per leg, order preserved.
@@ -229,14 +229,14 @@
   margin: 0 0 0.5rem;
   padding: 0;
   list-style: none;
-  color: #c7d0dd;
+  color: var(--tme-text-secondary);
 }
 
 // C15/D72: the unit appears exactly once — on the total line, accented.
 .tme-total {
   margin: 0 0 0.75rem;
   font-weight: 700;
-  color: #ffd166;
+  color: var(--tme-accent-gold);
 }
 
 // B-110 (ruling 1): the Waypoint management section — component-scoped
@@ -247,7 +247,7 @@
 .tme-waypoint {
   margin: 0 0 0.75rem;
   padding: 0.625rem;
-  border: 1px solid rgba(128, 100, 184, 0.5); // the waypoint's canvas key (#8064b8)
+  border: 1px solid rgba(128, 100, 184, 0.5); // the waypoint's canvas key (--tme-node-waypoint)
   border-radius: 8px;
 }
 
@@ -255,13 +255,13 @@
   margin: 0 0 0.375rem;
   font-size: 0.875rem;
   font-weight: 600;
-  color: #b39ddb;
+  color: var(--tme-node-waypoint-light);
 }
 
 .tme-field-label {
   display: block;
   margin: 0 0 0.25rem;
-  color: #c7d0dd;
+  color: var(--tme-text-secondary);
   font-size: 0.8125rem;
 }
 
@@ -275,7 +275,7 @@
   border: 1px solid rgba(174, 189, 211, 0.4);
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.85);
-  color: #e6ebf2;
+  color: var(--tme-text);
   // 16px: iOS Safari never focus-zooms a >= 16px input font (D53 — a focus
   // zoom would scroll the host page and break the no-horizontal-scroll bar).
   font:
@@ -299,7 +299,7 @@
   border: 1px solid rgba(230, 235, 242, 0.35);
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.85);
-  color: #c7d0dd;
+  color: var(--tme-text-secondary);
   font:
     600 0.875rem/1.2 system-ui,
     -apple-system,
@@ -322,7 +322,7 @@
 // the canvas's blocked arcs, at rest.
 .tme-remove-button {
   border-color: rgba(201, 86, 78, 0.7);
-  color: #e08a84;
+  color: var(--tme-accent-warn);
 }
 
 // B-124: the mode switch — the map's mode universe as rows (no hardcoded
@@ -348,7 +348,7 @@
   border: 1px solid rgba(230, 235, 242, 0.35);
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.85);
-  color: #c7d0dd;
+  color: var(--tme-text-secondary);
   font:
     600 0.875rem/1.2 system-ui,
     -apple-system,
@@ -359,15 +359,15 @@
 }
 
 .tme-mode.tme-active {
-  border-color: #ffd166;
-  color: #ffd166;
+  border-color: var(--tme-accent-gold);
+  color: var(--tme-accent-gold);
 }
 
 // B-124 (C30/C32): the switch's degrade-path refusal — user-visible (the
 // arcBlockRefusal pattern), styled with the established alert-red key.
 .tme-mode-refusal {
   margin: -0.375rem 0 0.75rem;
-  color: #e08a84;
+  color: var(--tme-accent-warn);
 }
 
 // C2: blocked arcs are never hidden — mirrored here as panel rows with their
@@ -376,7 +376,7 @@
   margin: 0 0 0.25rem;
   font-size: 0.875rem;
   font-weight: 600;
-  color: #e08a84;
+  color: var(--tme-accent-warn);
 }
 
 .tme-blocked-item {
@@ -384,7 +384,7 @@
   flex-wrap: wrap;
   gap: 0 0.375rem;
   margin: 0;
-  color: #c7d0dd;
+  color: var(--tme-text-secondary);
 }
 
 .tme-blocked-sep {
@@ -392,7 +392,7 @@
 }
 
 .tme-blocked-reason {
-  color: #9aa7b8;
+  color: var(--tme-text-muted);
 }
 
 // B-133 review fix (lead, D91): the host's padding band is hit-testable but

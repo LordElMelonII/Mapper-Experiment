@@ -15,7 +15,7 @@
   padding: 0.75rem;
   overflow-y: auto;
   overscroll-behavior: contain;
-  color: #e6ebf2;
+  color: var(--tme-text);
   font:
     400 0.875rem/1.5 system-ui,
     -apple-system,
@@ -45,7 +45,7 @@
   border: 1px solid rgba(230, 235, 242, 0.35);
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.85);
-  color: #c7d0dd;
+  color: var(--tme-text-secondary);
   font:
     600 0.875rem/1.2 system-ui,
     -apple-system,
@@ -69,7 +69,7 @@
     padding: 0; // the head/body own their padding now
     border: 1px solid rgba(174, 189, 211, 0.4);
     border-radius: 8px;
-    background: #14171c; // opaque — the map underneath is occluded, not bled through
+    background: var(--tme-plate); // opaque — the map underneath is occluded, not bled through
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
     overflow: hidden; // the BODY scrolls (the head must stay reachable)
   }
@@ -148,7 +148,7 @@
   padding: 0.125rem 0.5rem;
   border: 1px solid rgba(174, 189, 211, 0.4);
   border-radius: 999px;
-  color: #c7d0dd;
+  color: var(--tme-text-secondary);
 }
 
 // C2: the blocked row — the red key matches the canvas's dashed tme-blocked
@@ -163,22 +163,22 @@
 
 .tme-blocked-tag {
   font-weight: 700;
-  color: #e08a84;
+  color: var(--tme-accent-warn);
 }
 
 .tme-blocked-reason {
-  color: #9aa7b8;
+  color: var(--tme-text-muted);
 }
 
 .tme-open {
   margin: 0 0 0.625rem;
-  color: #9aa7b8;
+  color: var(--tme-text-muted);
 }
 
 .tme-field-label {
   display: block;
   margin: 0 0 0.25rem;
-  color: #c7d0dd;
+  color: var(--tme-text-secondary);
   font-size: 0.8125rem;
 }
 
@@ -192,7 +192,7 @@
   border: 1px solid rgba(174, 189, 211, 0.4);
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.85);
-  color: #e6ebf2;
+  color: var(--tme-text);
   // 16px: iOS Safari never focus-zooms a >= 16px input font (D53 — a focus
   // zoom would scroll the host page and break the no-horizontal-scroll bar).
   font:
@@ -216,7 +216,7 @@
   border: 1px solid rgba(230, 235, 242, 0.35);
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.85);
-  color: #c7d0dd;
+  color: var(--tme-text-secondary);
   font:
     600 0.875rem/1.2 system-ui,
     -apple-system,
@@ -232,7 +232,7 @@
 
 .tme-block-button {
   border-color: rgba(201, 86, 78, 0.7);
-  color: #e08a84;
+  color: var(--tme-accent-warn);
 }
 
 .tme-block-button:disabled {
@@ -244,14 +244,14 @@
 // .tme-button chrome (>= 44px, F52) beside it, never displacing it.
 .tme-block-access {
   border-color: rgba(201, 86, 78, 0.7);
-  color: #e08a84;
+  color: var(--tme-accent-warn);
 }
 
 // D20 made visible: the static note under a disabled Lift — why the chat
 // cannot lift a library-level block.
 .tme-authored-note {
   margin: 0;
-  color: #9aa7b8;
+  color: var(--tme-text-muted);
   font-size: 0.8125rem;
 }
 
@@ -302,7 +302,7 @@
   height: 44px;
   margin: 0;
   padding: 0;
-  accent-color: #ffd166; // the established gold accent
+  accent-color: var(--tme-accent-gold); // the established gold accent
   touch-action: manipulation;
 }
 
@@ -314,7 +314,7 @@
   min-height: 44px;
   display: flex;
   align-items: center;
-  color: #e6ebf2;
+  color: var(--tme-text);
   cursor: pointer;
   touch-action: manipulation;
 }
@@ -329,7 +329,7 @@
   border: 1px solid rgba(174, 189, 211, 0.4);
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.85);
-  color: #e6ebf2;
+  color: var(--tme-text);
   font:
     400 1rem/1.2 system-ui,
     -apple-system,
@@ -347,7 +347,7 @@
   border: 1px solid rgba(174, 189, 211, 0.4);
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.85);
-  color: #e6ebf2;
+  color: var(--tme-text);
   font:
     400 1rem/1.4 system-ui,
     -apple-system,
@@ -382,7 +382,7 @@
   border: 1px solid rgba(230, 235, 242, 0.35);
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.85);
-  color: #c7d0dd;
+  color: var(--tme-text-secondary);
   font:
     600 1rem/1 system-ui,
     -apple-system,
@@ -399,7 +399,7 @@
   border: 1px solid rgba(230, 235, 242, 0.35);
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.85);
-  color: #c7d0dd;
+  color: var(--tme-text-secondary);
   font:
     600 0.875rem/1.2 system-ui,
     -apple-system,
@@ -411,13 +411,13 @@
 // Apply — the commit (gold primary, the established accent); Remove — the
 // destructive red family.
 .tme-apply-button {
-  border-color: #ffd166;
-  color: #ffd166;
+  border-color: var(--tme-accent-gold);
+  color: var(--tme-accent-gold);
 }
 
 .tme-remove-button {
   border-color: rgba(201, 86, 78, 0.7);
-  color: #e08a84;
+  color: var(--tme-accent-warn);
 }
 
 // C30 field-precise refusals — the B-117 errors pattern, one line per issue:
@@ -437,11 +437,11 @@
   align-items: baseline;
   gap: 0 0.375rem;
   margin: 0;
-  color: #e08a84;
+  color: var(--tme-accent-warn);
 }
 
 .tme-error-path {
-  color: #9aa7b8;
+  color: var(--tme-text-muted);
   font-size: 0.75rem;
 }
 
@@ -453,7 +453,7 @@
   border: 1px solid rgba(201, 86, 78, 0.5);
   border-radius: 8px;
   background: rgba(201, 86, 78, 0.12);
-  color: #e08a84;
+  color: var(--tme-accent-warn);
 }
 
 // The measure section's scale readout (R1: core numbers verbatim) and its
@@ -468,14 +468,14 @@
 }
 
 .tme-scale-kind {
-  color: #9aa7b8;
+  color: var(--tme-text-muted);
   font-weight: 400;
   font-size: 0.8125rem;
 }
 
 .tme-scale-note {
   margin: 0 0 0.25rem;
-  color: #9aa7b8;
+  color: var(--tme-text-muted);
   font-size: 0.8125rem;
 }
 

@@ -11,5 +11,10 @@ export default defineConfig({
     include: ['tests/**/*.spec.ts'],
     exclude: ['tests/e2e/**'],
     environment: 'node',
+    // PKG B-140 (R0): the suite's one css-language `?raw` import is the token
+    // drift pin's `_tokens.scss?raw` — vitest v5 stubs css-language ?raw to ""
+    // unless test.css opts in. Include ONLY that one id (Vite's css plugin
+    // itself skips ?raw ids; its asset plugin serves the file text as-is).
+    css: { include: [/_tokens\.scss\?raw$/] },
   },
 });

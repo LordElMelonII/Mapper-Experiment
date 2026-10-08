@@ -355,6 +355,7 @@ import type {
 } from 'cytoscape';
 import { Injectable, OnDestroy, computed, effect, inject, linkedSignal, signal } from '@angular/core';
 import { MAP_LIBRARY } from './map-library';
+import { CANVAS_TOKENS } from './canvas-tokens';
 import type {
   ChatMapOverlay,
   LayerBackground,
@@ -466,9 +467,11 @@ export interface ArcModeRow {
 /**
  * B-121 (D77): the ONE light draft hue — the same pale paper tone across
  * both element kinds (a node's outline, an arc's line, a badge's text): the
- * "pencil sketch" reading of visibly-not-yet-saved. Plain data (D7).
+ * "pencil sketch" reading of visibly-not-yet-saved. Plain data (D7). B-140:
+ * the value comes from CANVAS_TOKENS (canvas-tokens.ts) — the canvas
+ * plane's single source for every color in the stylesheet below.
  */
-const DRAFT_ACCENT = '#f4f1e8';
+const DRAFT_ACCENT = CANVAS_TOKENS['--tme-canvas-draft-paper'];
 
 /**
  * D7: the cytoscape stylesheet as plain data. Selectors key off element
@@ -490,10 +493,10 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
       width: 44,
       height: 44,
       shape: 'ellipse',
-      'background-color': '#56637a',
+      'background-color': CANVAS_TOKENS['--tme-canvas-node-bg'],
       'border-width': 1,
-      'border-color': '#aebdd3',
-      color: '#e6ebf2',
+      'border-color': CANVAS_TOKENS['--tme-hairline'],
+      color: CANVAS_TOKENS['--tme-text'],
       'font-size': 12,
       'text-valign': 'bottom',
       'text-halign': 'center',
@@ -511,20 +514,20 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
       'border-style': 'dashed',
       'font-size': 14,
       'text-valign': 'top',
-      color: '#c7d0dd',
+      color: CANVAS_TOKENS['--tme-text-secondary'],
     },
   },
   {
     selector: 'node.tme-location',
-    style: { 'background-color': '#4f81b5' },
+    style: { 'background-color': CANVAS_TOKENS['--tme-node-location'] },
   },
   {
     selector: 'node.tme-hub',
-    style: { 'background-color': '#b0813f' },
+    style: { 'background-color': CANVAS_TOKENS['--tme-node-hub'] },
   },
   {
     selector: 'node.tme-waypoint',
-    style: { 'background-color': '#8064b8' },
+    style: { 'background-color': CANVAS_TOKENS['--tme-node-waypoint'] },
   },
   {
     // B-121 (D77): a node with unsaved edits renders the light draft
@@ -544,9 +547,9 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
   {
     selector: 'node.tme-pin',
     style: {
-      'background-color': '#ffd166',
+      'background-color': CANVAS_TOKENS['--tme-accent-gold'],
       'border-width': 2,
-      'border-color': '#1d232b',
+      'border-color': CANVAS_TOKENS['--tme-canvas-badge-border'],
     },
   },
   {
@@ -557,7 +560,7 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
     selector: 'node.tme-selected',
     style: {
       'border-width': 3,
-      'border-color': '#ffd166',
+      'border-color': CANVAS_TOKENS['--tme-accent-gold'],
     },
   },
   {
@@ -570,7 +573,7 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
     selector: 'node.tme-connect-pick',
     style: {
       'border-width': 3,
-      'border-color': '#4db6ac',
+      'border-color': CANVAS_TOKENS['--tme-accent-teal'],
       'border-style': 'dashed',
     },
   },
@@ -591,7 +594,7 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
     selector: 'node.tme-draw-pick',
     style: {
       'border-width': 3,
-      'border-color': '#4db6ac',
+      'border-color': CANVAS_TOKENS['--tme-accent-teal'],
       'border-style': 'dashed',
     },
   },
@@ -616,7 +619,7 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
       'border-width': 0,
       width: 4,
       height: 4,
-      color: '#8fa0b5',
+      color: CANVAS_TOKENS['--tme-canvas-text-muted'],
       'font-size': 11,
       'text-valign': 'center',
       'text-halign': 'center',
@@ -637,7 +640,7 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
     // draft projection's `tme-badge-<id>` lookup). No `min-zoomed-font-size`
     // (the B-107 hide-floor gotcha, binding).
     selector: 'node.tme-portal-badge',
-    style: { color: '#8fd3b6' },
+    style: { color: CANVAS_TOKENS['--tme-accent-pass'] },
   },
   {
     // B-131 (D94/F55/C34): the BLOCKED-NODE marker's hue — one visual
@@ -651,7 +654,7 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
     // prefixed id). No `min-zoomed-font-size` (the B-107 hide-floor gotcha,
     // binding).
     selector: 'node.tme-node-blocked-badge',
-    style: { color: '#c9564e' },
+    style: { color: CANVAS_TOKENS['--tme-accent-warn-strong'] },
   },
   {
     // B-121 (D77): a cross-layer arc with unsaved edits drafts its BADGE —
@@ -719,7 +722,7 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
     selector: 'edge',
     style: {
       'curve-style': 'bezier',
-      'line-color': '#8fa0b5',
+      'line-color': CANVAS_TOKENS['--tme-canvas-text-muted'],
       // B-106 (ruling 2): 4, not 2 — edges are tappable content now. The
       // installed runtime (cytoscape 3.34.3, findNearestElements/checkEdge)
       // hit-tests an edge within width/2 + (touch 24 : mouse 8)/zoom model
@@ -769,7 +772,7 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
     selector: 'edge.tme-blocked',
     style: {
       'line-style': 'dashed',
-      'line-color': '#c9564e',
+      'line-color': CANVAS_TOKENS['--tme-accent-warn-strong'],
       width: 4,
     },
   },
@@ -780,7 +783,7 @@ export const GRAPH_STYLESHEET: StylesheetStyle[] = [
     // class never restyles line-style, only the accent color/width).
     selector: 'edge.tme-edge-selected',
     style: {
-      'line-color': '#ffd166',
+      'line-color': CANVAS_TOKENS['--tme-accent-gold'],
       width: 5,
     },
   },
