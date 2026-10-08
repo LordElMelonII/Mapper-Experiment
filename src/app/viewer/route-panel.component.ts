@@ -174,12 +174,37 @@ export class RoutePanelComponent {
    * rescue clamp's own anchor semantics). A remembered position always wins
    * (the user's drag is the authority, D10). The selection signals are read
    * first so this computed re-runs exactly when they change (D2).
+   *
+   * B-141 (docs/ui-restyle/REPAIRS.md R1, the owner's stagger option): while
+   * the property panel is OPEN in the editor, the unplaced route floater
+   * anchors on the side OPPOSITE the property panel — away-from-PROPERTY
+   * instead of away-from-SELECTION — so the priced route is never fully
+   * occluded while the rail's Route toggle glows active. The route component
+   * reaches INTO no property component instance: the property's wide-side
+   * answer is mirrored from ITS OWN service-side rule, byte-identical there
+   * (property-panel.component.ts anchorStart: the compact floating form
+   * stand-downs the anchor, else away-from-selection ⇒ bottom-left, else its
+   * bottom-right default) — with no selection-side info the maximized
+   * property takes that bottom-right default, so the route's answer inverted
+   * to `true` (bottom-left) is its opposite. Property CLOSED ⇒ byte-identical
+   * to the pre-B-141 computation. Pure signal arithmetic (D2 — a class flip,
+   * no stage resize, no viewport move, D91).
    */
   protected readonly anchorStart = computed(() => {
     if (this.graph.routePanelPosition() !== null) return false;
     void this.graph.selection();
     void this.graph.edgeSelection();
-    return this.graph.selectionRenderedSide() === 'right';
+    const side = this.graph.selectionRenderedSide();
+    const sel = this.graph.selection();
+    // The property panel's own open() carried locally (the sheetExpanded
+    // source's exact predicate — library-node selections only, waypoints
+    // excluded per B-116; never a reach into the property component).
+    const propertyOpen =
+      this.graph.editorMode() && sel !== null && this.graph.nodeDataById(sel.id) !== null;
+    if (!propertyOpen) return side === 'right'; // property closed: byte-identical (pre-B-141)
+    // Away-from-PROPERTY: the property's maximized wide anchor rule mirrored.
+    const propertyAnchorStart = !this.graph.panelFloating() && side === 'right';
+    return !propertyAnchorStart;
   });
 
   /** The drag currently in progress, or null — a plain field (D2). */

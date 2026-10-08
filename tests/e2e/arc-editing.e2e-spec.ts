@@ -479,13 +479,15 @@ const dodgeBands = async (
  * The canvas tap, coverage-guarded: re-derives the aim FRESH (a dodge pans
  * the map — old coordinates are stale), checks it against the live bands,
  * and dodges only when covered. Fails with the geometry when the corridor
- * cannot fit rather than tapping blind. Phone-only (D53).
+ * cannot fit rather than tapping blind. B-141 re-baseline (docs/ui-restyle/
+ * REPAIRS.md R1, deliberate, cited): the route floater's staggered anchor
+ * removed the desktop's old lucky geometry — the blind desktop tap was safe
+ * only while the route floater sat UNDER the same-anchored property panel
+ * — so the BOTH-VIEWPORT guard runs here now (the same machinery the phone
+ * project has always exercised; the clear path is byte-identical to the old
+ * blind tap).
  */
 const tapAimed = async (page: Page, aim: () => Promise<Point>): Promise<void> => {
-  if (!isPhone()) {
-    await tapPoint(page, await aim());
-    return;
-  }
   for (let attempt = 0; attempt < 3; attempt++) {
     const pt = await aim();
     const boxes = await coveringBands(page);
@@ -544,6 +546,36 @@ const newEdgeIds = async (page: Page, before: readonly string[]): Promise<string
   (await readEdgeIds(page)).filter((id) => !before.includes(id));
 
 /**
+ * Park the route floater OUT OF THE WAY for the rest of the cell: one D10
+ * user gesture — a header drag (the floater's own drag machinery commits the
+ * position, clamped to its stage bounds, so slop in the pointer target lands
+ * the same parked rect) — and a PLACED floater wins over every default
+ * anchor and survives the D91 content re-derivations for the whole cell.
+ * B-141 re-baseline (docs/ui-restyle/REPAIRS.md R1, deliberate, cited): the
+ * staggered unplaced floater anchors OPPOSITE the property panel, which
+ * covers the B-109-vetted low-left canvas points the blind desktop cells
+ * were calibrated against. Desktop-only: the narrow sheet has no floater
+ * header (the phone flows never needed it, D91/D53).
+ */
+const parkRouteFloater = async (page: Page): Promise<void> => {
+  if (isPhone()) return;
+  await settle(page);
+  const canvas = await page.getByTestId('tme-canvas').boundingBox();
+  if (canvas === null) throw new Error('canvas host not visible');
+  const headBox = await page.getByTestId('tme-route-float-head').boundingBox();
+  if (headBox === null) {
+    throw new Error('tme-route-float-head not visible (the route floater is not open)');
+  }
+  await page.mouse.move(headBox.x + headBox.width / 2, headBox.y + headBox.height / 2);
+  await page.mouse.down();
+  // To the upper-right of the stage — clear of both corner anchors and of
+  // every aim these cells re-derive (probe-measured at the project viewport).
+  await page.mouse.move(canvas.x + canvas.width - 44, canvas.y + 150, { steps: 4 });
+  await page.mouse.up();
+  await settle(page);
+};
+
+/**
  * Place one authored node at the vetted background point and draw one arc
  * from `fromId` to it (the Node tool then the Arc tool — B-120/B-122). The
  * placed node is SELECTED right after placement; the drawn arc is selected
@@ -562,6 +594,10 @@ const placeNodeAndDrawArc = async (
   const nodeId = (await readSelectedNodeId(page)) as string;
   const nodePos = await readModelPosition(page, nodeId);
   if (nodePos === null) throw new Error('placed node has no model position');
+  // B-141 re-baseline: the placed node's selection staggered the unplaced
+  // route floater onto the opposite corner of the property panel — over this
+  // node's low-left aim — so the arc-tool coordinates parked in the cell first.
+  await parkRouteFloater(page);
   await activate(page, 'tme-tool-arc');
   // B-133c (D91): the placed node's selection opened the property sheet over
   // the lower stage — BOTH draw taps are coverage-guarded (the placed node's

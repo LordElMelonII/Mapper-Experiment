@@ -425,14 +425,48 @@ const dodgeBands = async (
 };
 
 /**
+ * Park the route floater OUT OF THE WAY for the rest of the cell: one D10
+ * user gesture — a header drag (the floater's own drag machinery commits the
+ * position, clamped to its stage bounds, so slop in the pointer target lands
+ * the same parked rect) — and a PLACED floater wins over every default
+ * anchor and survives the D91 content re-derivations for the whole cell.
+ * B-141 re-baseline (docs/ui-restyle/REPAIRS.md R1, deliberate, cited): the
+ * staggered unplaced floater anchors OPPOSITE the property panel, which
+ * covers the B-109-vetted low-left canvas points the blind desktop cells
+ * were calibrated against. Desktop-only: the narrow sheet has no floater
+ * header (the phone flows never needed it, D91/D53).
+ */
+const parkRouteFloater = async (page: Page): Promise<void> => {
+  if (isPhone()) return;
+  await settle(page);
+  const canvas = await page.getByTestId('tme-canvas').boundingBox();
+  if (canvas === null) throw new Error('canvas host not visible');
+  const headBox = await page.getByTestId('tme-route-float-head').boundingBox();
+  if (headBox === null) {
+    throw new Error('tme-route-float-head not visible (the route floater is not open)');
+  }
+  await page.mouse.move(headBox.x + headBox.width / 2, headBox.y + headBox.height / 2);
+  await page.mouse.down();
+  // To the upper-right of the stage — clear of both corner anchors and of
+  // every aim these cells re-derive (probe-measured at the project viewport).
+  await page.mouse.move(canvas.x + canvas.width - 44, canvas.y + 150, { steps: 4 });
+  await page.mouse.up();
+  await settle(page);
+};
+
+/**
  * A coverage-clear gesture start: re-derives the aim FRESH, checks it
  * against the live bands, dodges while covered, and returns the clear
  * point for the caller's own gesture (the drag cell's start). Fails with
- * the geometry when the corridor cannot fit. Phone-only (D53): desktop
- * returns the plain aim.
+ * the geometry when the corridor cannot fit. B-141 re-baseline (docs/
+ * ui-restyle/REPAIRS.md R1, deliberate, cited): the route floater's
+ * staggered anchor removed the desktop's old lucky geometry — the blind
+ * desktop start was safe only while the route floater sat UNDER the
+ * same-anchored property panel — so the BOTH-VIEWPORT guard runs here now
+ * (the same machinery the phone project has always exercised; the clear
+ * path is byte-identical to the old plain aim).
  */
 const clearAimed = async (page: Page, aim: () => Promise<Point>): Promise<Point> => {
-  if (!isPhone()) return aim();
   for (let attempt = 0; attempt < 3; attempt++) {
     const pt = await aim();
     const boxes = await coveringBands(page);
@@ -568,6 +602,11 @@ test.describe('unsaved-element draft visual (PKG B-121, D77)', () => {
       if (placedId === null) throw new Error('placed node not selected (C5/D75 id discovery failed)');
       await expect.poll(readDraftedIds.bind(null, p)).toEqual([placedId]);
 
+      // B-141 re-baseline: the placed node's selection staggered the unplaced
+      // route floater onto the opposite corner of the property panel — over
+      // this node's low-left aim — so the cell parks the floater (D10) before
+      // any gesture derives coordinates.
+      await parkRouteFloater(p);
       // Settle + aim FRESH (the selection may re-fit at phone width); the
       // BEFORE model read must precede the drag (editor-place-move order).
       await settle(p);

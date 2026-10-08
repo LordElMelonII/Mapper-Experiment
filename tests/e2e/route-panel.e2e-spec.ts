@@ -30,6 +30,12 @@
 // rendered verbatim (label + reason) beside the pin-incident blocked-arc
 // list, absent when nothing is blocked.
 //
+// PKG B-141 (docs/ui-restyle/REPAIRS.md R1) adds one desktop-only cell: with
+// the property panel open in editor mode, the unplaced route floater anchors
+// OPPOSITE the property panel (the owner's stagger) — the priced route's box
+// is on-screen and disjoint from the property panel's box while the rail's
+// Route toggle reports pressed.
+//
 // Canvas nodes are tapped through their RENDERED positions (the
 // DEV-HARNESS-ONLY window.__TME_E2E__ seam, src/app/app.ts) — real pixels,
 // both worlds, no locator-on-canvas cheating.
@@ -239,6 +245,80 @@ test.describe('route sidebar (PKG B-105)', () => {
     await expect(page.getByTestId('tme-blocked')).toBeVisible();
     await expect(page.getByTestId('tme-blocked-item')).toHaveCount(1);
     await expect(page.getByTestId('tme-blocked-label')).toHaveText('Fuyuki Bridge');
+  });
+
+  // --- PKG B-141 (docs/ui-restyle/REPAIRS.md R1, the owner's stagger) ------
+
+  test('editor mode, both floaters open: the priced route never hides under the property panel (B-141/R1, D91)', async ({
+    page,
+  }) => {
+    // The same-anchor stagger is a WIDE-floater rule: phone sheets stack by
+    // contract (the B-129 cap arithmetic) and never share the dose anchors.
+    test.skip(
+      isPhone(),
+      'the route-vs-property anchor stagger is desktop geometry (R1); phone sheets stack by contract',
+    );
+
+    // The R1 collision case, reproduced live: a library-node tap in editor
+    // mode opens the property panel (B-117) WHILE the route auto-floats with
+    // its content (the routePanelOpen rule) — both wide floaters open,
+    // neither placed (fresh page, no drag).
+    await activate(page, 'tme-editor-toggle');
+    await settle(page);
+    await tapNode(page, STATION_ID);
+    await expect(page.getByTestId('tme-property-panel')).toBeVisible();
+    await expect(page.getByTestId('tme-total')).toHaveText('50 min');
+
+    // Toggle honesty (R1): the rail's Route toggle keeps reporting the panel
+    // open — and with occlusion impossible by construction the pressed state
+    // reflects real visibility (routePanelOpen is untouched; no code change).
+    const routeToggle = page.getByTestId('tme-route-toggle');
+    await expect(routeToggle).toBeVisible();
+    await expect(routeToggle).toHaveAttribute('aria-pressed', 'true');
+
+    // The route panel's visible surface is on-screen and the route TOTAL
+    // (the priced route) sits OUTSIDE the property panel's box — never
+    // covering the product's payoff (R1 acceptance).
+    const routeBox = await page.getByTestId('tme-route-panel').boundingBox();
+    if (routeBox === null) throw new Error('tme-route-panel not visible');
+    const totalBox = await page.getByTestId('tme-total').boundingBox();
+    if (totalBox === null) throw new Error('tme-total not visible');
+    const propBox = await page.getByTestId('tme-property-panel').boundingBox();
+    if (propBox === null) throw new Error('tme-property-panel not visible');
+
+    const viewport = page.viewportSize();
+    if (viewport === null) throw new Error('no viewport');
+    for (const [name, box] of [
+      ['tme-route-panel', routeBox],
+      ['tme-total', totalBox],
+    ] as const) {
+      expect(box.x, `${name} on-screen left (R1)`).toBeGreaterThanOrEqual(0);
+      expect(box.y, `${name} on-screen top (R1)`).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width, `${name} on-screen right (R1)`).toBeLessThanOrEqual(viewport.width);
+      expect(box.y + box.height, `${name} on-screen bottom (R1)`).toBeLessThanOrEqual(
+        viewport.height,
+      );
+    }
+
+    // AABB disjointness (edge-touching allowed): the staggered anchors put
+    // the two floaters on opposite sides, so no box intersection survives —
+    // with either fade's collision case (same side, both defaults).
+    const disjoint = (
+      a: { x: number; y: number; width: number; height: number },
+      b: { x: number; y: number; width: number; height: number },
+    ): boolean =>
+      a.x + a.width <= b.x ||
+      b.x + b.width <= a.x ||
+      a.y + a.height <= b.y ||
+      b.y + b.height <= a.y;
+    expect(
+      disjoint(totalBox, propBox),
+      'the route total is not covered by the property panel (R1)',
+    ).toBe(true);
+    expect(
+      disjoint(routeBox, propBox),
+      'the route panel surface does not intersect the property panel (R1)',
+    ).toBe(true);
   });
 
   test('tap the pin: current-location state, no route numbers (ruling 6)', async ({ page }) => {
