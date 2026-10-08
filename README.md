@@ -1,6 +1,6 @@
 # TravelMapExplorer
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 22.2.1.
+Travel & Map Explorer is a SillyTavern extension that replaces static distance lookup tables with a user-authored, multi-layer map of nodes and arcs. It tracks the party's position, computes directions, distances, and times, and injects a template-driven context block into LLM prompts. The UI is an Angular application bundled to a single-file extension (`npm run build:extension`).
 
 ## Development server
 
@@ -11,20 +11,6 @@ ng serve
 ```
 
 Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
-
-## Code scaffolding
-
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
-
-```bash
-ng generate component component-name
-```
-
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
-
-```bash
-ng generate --help
-```
 
 ## Building
 
@@ -66,8 +52,6 @@ The specs live in `tests/e2e/` as `*.e2e-spec.ts`, and each one runs against two
 
 ## Maps & storage
 
-Uploaded background images are machine-local: they are stored in your browser's localforage under this extension's own store (`travel-map-explorer` / `tme-background-assets`), and a saved or exported map carries only a reference key, not the image bytes. A map moved to another machine therefore keeps its URL-based backgrounds but loses uploaded ones until the images are uploaded again on that machine.
+Authored maps persist in the map library — a machine-local store in the browser's localforage under this extension's own database (`travel-map-explorer` / `tme-maps`). Maps move between machines as JSON files via the Maps panel's export/import, and a legacy lookup-table paste imports the same way.
 
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+Uploaded background images are machine-local too: they are stored under `travel-map-explorer` / `tme-background-assets`, and a saved or exported map carries only a reference key, not the image bytes. A map moved to another machine therefore keeps its URL-based backgrounds but loses uploaded ones until the images are uploaded again on that machine.
