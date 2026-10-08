@@ -385,6 +385,15 @@ test.describe('the route summon floor under a maximized sheet (PKG B-136, D91 re
     // Every stack fill level: grow the maximized sheet (three alias rows —
     // draft-only, nothing commits) and scroll it to its bottom; the floor
     // holds and the summon stays a full tap target.
+    // B-145 (R-5) re-baseline: Aliases renders behind its collapsed section
+    // toggle — expand first, idempotently (R23: cited, never silent).
+    if ((await page.getByTestId('tme-node-section-aliases').getAttribute('aria-expanded')) !== 'true') {
+      await activate(page, 'tme-node-section-aliases');
+    }
+    await expect(page.getByTestId('tme-node-section-aliases')).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
     for (let i = 0; i < 3; i++) {
       await activate(page, 'tme-alias-add');
     }

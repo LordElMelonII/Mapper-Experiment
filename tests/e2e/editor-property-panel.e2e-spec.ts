@@ -38,6 +38,16 @@
 // plus the caught C30 refusal for an UNSAVED placed node (the A-018
 // saved-plane gate, surfaced console-silently — the B-121 lesson).
 //
+// PKG B-145 (REPAIRS R-5, the name-first property form) restructures the
+// panel and re-baselines this suite: the open focuses + selects the Name
+// input (unqualified across breakpoints), Identity (Name/Kind/Description)
+// renders expanded, the five advanced surfaces (Parent/Layer/Opens layer/
+// Aliases/Block access) sit behind collapsed-by-default section toggles
+// with live summaries, and Detach/Delete live in the pinned danger footer.
+// Every field, testid and commit path is byte-identical (R2 — presentation
+// only); the cells below expand their section first, each cited per the R23
+// discipline (a craft re-baseline is named in-file, never silent).
+//
 // FX1 facts (data/worlds/fuyuki.ts): 'outskirts' is a parentless location
 // with many incident arcs (the re-kind refusal target); 'kotomine-church'
 // carries alias 'church' and four projected edges incl. the harness curve
@@ -248,6 +258,21 @@ const bandCovers = (pt: Point, band: CoverBox | null): boolean =>
   pt.y >= band.top - 4 &&
   pt.y <= band.top + band.height + 4;
 
+/** B-145 (R-5): one plain DOM rect, read via getBoundingClientRect. */
+interface DomBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/** B-145 (R-5): exact containment within a 0.5px rounding tolerance. */
+const boxInside = (inner: DomBox, outer: DomBox): boolean =>
+  inner.top >= outer.top - 0.5 &&
+  inner.top + inner.height <= outer.top + outer.height + 0.5 &&
+  inner.left >= outer.left - 0.5 &&
+  inner.left + inner.width <= outer.left + outer.width + 0.5;
+
 /** One background drag carrying every aim above the CURRENT bands, clamped below the top chrome. */
 const dodgeBands = async (
   page: Page,
@@ -432,6 +457,27 @@ const activate = async (locator: Locator): Promise<void> => {
   else await locator.click();
 };
 
+/**
+ * PKG B-145 (R-5) re-baseline helper: the five advanced surfaces render
+ * behind collapsed-by-default section toggles — a cell touching one of the
+ * five fields expands its section first. IDEMPOTENT (probe finding, the
+ * portals unwire cell): a same-node panel re-entry never re-seeds, so a
+ * section the cell opened earlier in its lifetime is STILL open — an
+ * unconditional tap would fold it closed; expand only when collapsed (the
+ * user's own behavior). Each call site cites this helper (R23: a
+ * re-baseline is named in-file, never silent).
+ */
+const expandSection = async (
+  page: Page,
+  section: 'parent' | 'layer' | 'portal' | 'aliases' | 'block',
+): Promise<void> => {
+  const toggle = page.getByTestId(`tme-node-section-${section}`);
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') {
+    await activate(toggle);
+  }
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+};
+
 /** Screen-px point of a node's rendered center (seam read + canvas box). */
 const nodeScreenPoint = async (page: Page, id: string): Promise<Point> => {
   await settle(page);
@@ -598,6 +644,8 @@ test.describe('property panel: rename, kind & parent, aliases, description, dele
 
   test('re-parent into a district re-renders the node inside the compound box (F07/§6.2)', async ({ page }) => {
     await openPanelFor(page, OUTSKIRTS_ID);
+    // B-145 (R-5) re-baseline: Parent renders behind its collapsed toggle.
+    await expandSection(page, 'parent');
     const parent = page.getByTestId('tme-node-parent');
     await expect(parent).toHaveValue('');
 
@@ -626,6 +674,8 @@ test.describe('property panel: rename, kind & parent, aliases, description, dele
     page,
   }) => {
     await openPanelFor(page, CHURCH_ID);
+    // B-145 (R-5) re-baseline: Aliases renders behind its collapsed toggle.
+    await expandSection(page, 'aliases');
     const inputs = page.getByTestId('tme-alias-input');
     await expect(inputs).toHaveCount(1); // FX1: 'church'
     await expect(inputs.first()).toHaveValue('church');
@@ -716,6 +766,8 @@ test.describe('property panel: rename, kind & parent, aliases, description, dele
     page,
   }) => {
     await openPanelFor(page, OUTSKIRTS_ID);
+    // B-145 (R-5) re-baseline: Block access renders behind its collapsed toggle.
+    await expandSection(page, 'block');
     const markerId = `tme-node-blocked-badge-${OUTSKIRTS_ID}`; // the D94 marker convention
     const input = page.getByTestId('tme-node-block-input');
 
@@ -763,6 +815,9 @@ test.describe('property panel: rename, kind & parent, aliases, description, dele
     page,
   }) => {
     await openPanelFor(page, OUTSKIRTS_ID);
+    // B-145 (R-5) re-baseline: Block access renders behind its collapsed
+    // toggle — the kind gate COMPOSES with it (a container renders no toggle).
+    await expandSection(page, 'block');
     const kind = page.getByTestId('tme-node-kind');
     await expect(kind).toHaveValue('location');
     await expect(page.getByTestId('tme-node-block')).toBeVisible();
@@ -801,6 +856,8 @@ test.describe('property panel: rename, kind & parent, aliases, description, dele
     const placedId = await readSelectedId(page);
     if (placedId === null) throw new Error('placed node not selected (C5/D75 id discovery failed)');
 
+    // B-145 (R-5) re-baseline: Block access renders behind its collapsed toggle.
+    await expandSection(page, 'block');
     await activate(page.getByTestId('tme-node-block'));
     await expect(page.getByTestId('tme-node-block-refusal')).toBeVisible();
     await expect(page.getByTestId('tme-node-block-refusal')).toContainText('unsaved');
@@ -813,17 +870,31 @@ test.describe('property panel: rename, kind & parent, aliases, description, dele
 
   test('every new control meets the 44px tap-target floor (F52/D53)', async ({ page }) => {
     await openPanelFor(page, CHURCH_ID); // carries one seeded alias row
+    // B-145 (R-5) re-baseline: the five section TOGGLES join the sweep (they
+    // are controls in their own right), and the advanced fields render only
+    // once their sections expand — expand all five before reading boxes.
+    for (const section of ['parent', 'layer', 'portal', 'aliases', 'block'] as const) {
+      await expandSection(page, section);
+    }
     for (const testid of [
       'tme-node-label-input',
       'tme-node-kind',
-      'tme-node-parent',
       'tme-node-description',
+      'tme-node-section-parent',
+      'tme-node-section-layer',
+      'tme-node-section-portal',
+      'tme-node-section-aliases',
+      'tme-node-section-block',
+      'tme-node-parent',
+      'tme-node-layer',
+      'tme-node-portal',
       'tme-alias-input',
       'tme-alias-remove',
       'tme-alias-add',
       'tme-node-block-input',
       'tme-node-block',
       'tme-node-delete',
+      'tme-node-detach',
       'tme-node-done',
     ]) {
       const box = await page.getByTestId(testid).first().boundingBox();
@@ -855,11 +926,15 @@ test.describe('property panel: rename, kind & parent, aliases, description, dele
     if (placedId === null) throw new Error('placed node not selected (C5/D75 id discovery failed)');
 
     // Rename, re-parent, alias — one Done each, one command per commit.
+    // B-145 (R-5) re-baseline: Parent and Aliases render behind their
+    // collapsed toggles — expand each before its leg.
     await label.fill('Crossroads');
     await activate(page.getByTestId('tme-node-done'));
     await expect(page.getByTestId('tme-save-dock')).toBeVisible();
+    await expandSection(page, 'parent');
     await page.getByTestId('tme-node-parent').selectOption({ label: 'Miyama' });
     await activate(page.getByTestId('tme-node-done'));
+    await expandSection(page, 'aliases');
     await activate(page.getByTestId('tme-alias-add'));
     // The placed node seeds with NO aliases — the added row is the FIRST one.
     await page.getByTestId('tme-alias-input').first().fill('crossing');
@@ -883,5 +958,184 @@ test.describe('property panel: rename, kind & parent, aliases, description, dele
     await expect(page.getByTestId('tme-editor-toggle')).toHaveAttribute('aria-pressed', 'false');
 
     expect(bad, 'no console errors/warnings/pageerrors during the journey').toEqual([]);
+  });
+});
+
+// --- PKG B-145 (REPAIRS R-5): the name-first property form --------------------
+//
+// Cited IDs:
+//   R-5   — name-first: on open, focus + select the Name input; Identity
+//           (Name/Kind/Description) expanded; Parent/Layer/Opens layer/
+//           Aliases/Block access behind collapsed section toggles carrying
+//           summary values; Detach/Delete pinned in a danger footer that
+//           never scrolls away. Presentation only — the Done/Cancel contract
+//           and every command byte-identical (R2).
+//   F52/D53 — the toggles are >= 44px, aria-expanded, touch-alone operable;
+//             the focus+select fires unqualified across breakpoints (the
+//             phone soft keyboard is the point — WebKit emulation pops no
+//             keyboard, so geometry is unaffected; asserted via
+//             document.activeElement).
+//   C23    — the summaries are authored names + UI chrome words (the alias
+//             row count is the panel's own count — the B-118 pickLine
+//             precedent, not R1 math).
+test.describe('the name-first property form: focus, collapsed sections, pinned danger footer (PKG B-145, R-5)', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByTestId('tme-canvas')).toBeVisible();
+    await restoreBootViewport(page);
+    await expect.poll(() => readLabels(page)).toContain('Outskirts');
+  });
+
+  test('the open is name-first: placing a node focuses and fully selects the Name input (R-5)', async ({ page }) => {
+    // The critique's case: placing a node used to open the 9-group wall
+    // pre-emptively for a node auto-named 'New place' — now the first
+    // keystroke IS the name (focus + select: typing replaces wholesale).
+    await activate(page.getByTestId('tme-editor-toggle'));
+    await tapModelPoint(page, BG_MODEL_POINT);
+    await expect(page.getByTestId('tme-property-panel')).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? ''))
+      .toBe('tme-node-label-input');
+    const placed = await page.evaluate(() => {
+      const el = document.activeElement;
+      return el instanceof HTMLInputElement
+        ? { start: el.selectionStart, end: el.selectionEnd, value: el.value }
+        : null;
+    });
+    expect(placed?.value).toBe('New place');
+    expect(placed?.start).toBe(0);
+    expect(placed?.end).toBe('New place'.length);
+
+    // A LIBRARY node's open is name-first too — a rename is one keystroke
+    // away, selection covering the whole current name.
+    await tapNodeAimed(page, CASTLE_ID);
+    await expect(page.getByTestId('tme-node-label-input')).toHaveValue('Einzbern Castle');
+    await expect
+      .poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? ''))
+      .toBe('tme-node-label-input');
+    const library = await page.evaluate(() => {
+      const el = document.activeElement;
+      return el instanceof HTMLInputElement
+        ? { start: el.selectionStart, end: el.selectionEnd }
+        : null;
+    });
+    expect(library?.start).toBe(0);
+    expect(library?.end).toBe('Einzbern Castle'.length);
+  });
+
+  test('the five advanced sections render collapsed by default; the toggle rows carry live summaries (R-5, C23)', async ({
+    page,
+  }) => {
+    await openPanelFor(page, EMIYA_ID);
+    // Identity stays expanded in the open view — the name-first surface.
+    await expect(page.getByTestId('tme-node-kind')).toBeVisible();
+    await expect(page.getByTestId('tme-node-description')).toBeVisible();
+
+    // Collapsed: the fields are ABSENT, the toggle rows PRESENT and honest.
+    for (const testid of [
+      'tme-node-parent',
+      'tme-node-layer',
+      'tme-node-portal',
+      'tme-alias-add',
+      'tme-node-block',
+    ]) {
+      await expect(page.getByTestId(testid)).toHaveCount(0);
+    }
+    // FX1 facts: emiya-residence — parent district-miyama ('Miyama'), layer
+    // 'Fuyuki City', portal unwired, one alias ('Emiya home'), unblocked.
+    const summaries: ReadonlyArray<[string, string]> = [
+      ['parent', 'Miyama'],
+      ['layer', 'Fuyuki City'],
+      ['portal', 'None'],
+      ['aliases', '1 alias'],
+      ['block', 'Not blocked'],
+    ];
+    for (const [section, summary] of summaries) {
+      await expect(page.getByTestId(`tme-node-section-${section}`)).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
+      await expect(page.getByTestId(`tme-node-section-${section}-summary`)).toHaveText(summary);
+      const box = await page.getByTestId(`tme-node-section-${section}`).boundingBox();
+      expect(box?.height ?? 0, `${section} toggle height >= 44px (F52)`).toBeGreaterThanOrEqual(44);
+      expect(box?.width ?? 0, `${section} toggle width >= 44px (F52)`).toBeGreaterThanOrEqual(44);
+    }
+  });
+
+  test('a toggle expands its section; the field commits through Done; a NEW node re-collapses (R-5/R2)', async ({
+    page,
+  }) => {
+    await openPanelFor(page, OUTSKIRTS_ID);
+    await expandSection(page, 'parent');
+    const parent = page.getByTestId('tme-node-parent');
+    await expect(parent).toBeVisible();
+    await parent.selectOption({ label: 'Miyama' });
+    await activate(page.getByTestId('tme-node-done'));
+    // The commit is the SAME whole-draft command as before (R2 — one
+    // upsertNode; the toggle changed nothing about the path).
+    await expect(page.getByTestId('tme-save-dock')).toBeVisible();
+    await expect.poll(() => readNodeParent(page, OUTSKIRTS_ID)).toBe(MIYAMA_ID);
+    // The Done re-seed is the SAME node — the author's open section survives
+    // (only a NEW node's open resets the sections collapsed).
+    await expect(parent).toBeVisible();
+
+    // A NEW node's open: collapsed again, summary honest for that node.
+    await tapNodeAimed(page, CASTLE_ID);
+    await expect(page.getByTestId('tme-node-label-input')).toHaveValue('Einzbern Castle');
+    await expect(page.getByTestId('tme-node-parent')).toHaveCount(0);
+    await expect(page.getByTestId('tme-node-section-parent-summary')).toHaveText('None');
+  });
+
+  test('the danger footer stays pinned and visible without scroll in the panel\'s tallest practical state (R-5)', async ({
+    page,
+  }) => {
+    await openPanelFor(page, CHURCH_ID);
+    // The tallest practical state: every section expanded and the alias list
+    // grown by two rows beside the seeded one. Measured at re-baseline (R23:
+    // pinned in-file, not assumed): desktop 1251px of content in the 594px
+    // maximized scrollport (overflow 657); phone 1201px in the ~310px sheet
+    // under the 70% stack cap (overflow 891) — the footer pinned inside the
+    // band on both. The cell asserts the overflow LIVE — it only passes when
+    // the state genuinely scrolls, so a future shrink fails loud, not
+    // false-green.
+    for (const section of ['parent', 'layer', 'portal', 'aliases', 'block'] as const) {
+      await expandSection(page, section);
+    }
+    await activate(page.getByTestId('tme-alias-add'));
+    await activate(page.getByTestId('tme-alias-add'));
+
+    const readGeometry = () =>
+      page.evaluate((): { host: DomBox; footer: DomBox; overflow: number } | null => {
+        const host = document.querySelector('tme-property-panel');
+        const footer = document.querySelector('[data-testid="tme-node-danger-footer"]');
+        if (host === null || footer === null) return null;
+        const box = (el: Element): DomBox => {
+          const r = el.getBoundingClientRect();
+          return { left: r.left, top: r.top, width: r.width, height: r.height };
+        };
+        return { host: box(host), footer: box(footer), overflow: host.scrollHeight - host.clientHeight };
+      });
+    const geo = await readGeometry();
+    if (geo === null) throw new Error('panel or danger footer not rendered');
+    expect(geo.overflow, 'the tallest state genuinely overflows the scrollport').toBeGreaterThan(0);
+    expect(
+      boxInside(geo.footer, geo.host),
+      'Detach/Delete sit inside the panel band without scroll (R-5)',
+    ).toBe(true);
+
+    // PINNED: scroll the host top-to-bottom — the footer's box never moves
+    // (a non-sticky footer would ride off-band at scrollTop 0).
+    const pinnedTop = geo.footer;
+    await page.evaluate(() => {
+      const host = document.querySelector('tme-property-panel');
+      if (host !== null) host.scrollTop = host.scrollHeight;
+    });
+    await settle(page);
+    const scrolled = await readGeometry();
+    if (scrolled === null) throw new Error('panel or danger footer not rendered after scroll');
+    expect(boxInside(scrolled.footer, scrolled.host), 'the footer stays inside the band scrolled').toBe(true);
+    expect(Math.abs(scrolled.footer.top - pinnedTop.top), 'the footer never scrolls away (top)').toBeLessThanOrEqual(0.5);
+    expect(Math.abs(scrolled.footer.left - pinnedTop.left), 'the footer never scrolls away (left)').toBeLessThanOrEqual(0.5);
+    expect(Math.abs(scrolled.footer.width - pinnedTop.width), 'the footer never scrolls away (width)').toBeLessThanOrEqual(0.5);
   });
 });

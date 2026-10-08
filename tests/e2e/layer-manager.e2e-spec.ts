@@ -37,6 +37,9 @@
 //              render (the spec addresses rows by authored NAME).
 //   F52/D53  — the whole journey runs touch-alone at the phone viewport;
 //              every control is a >= 44px tap target; no hover affordance.
+//   R-5 (B-145) — the property panel's advanced fields render behind
+//              collapsed-by-default section toggles; the Layer cells expand
+//              their section first (each cited in-file — the R23 discipline).
 //
 // FX1 facts (data/worlds/fuyuki.ts): layers layer-fuyuki ("Fuyuki City") /
 // layer-misaki ("Misaki Town"); 'misaki-town' is misaki's ONLY node; the
@@ -221,6 +224,22 @@ const activate = async (page: Page, testId: string): Promise<void> => {
   const locator = page.getByTestId(testId);
   if (isPhone()) await locator.tap();
   else await locator.click();
+};
+
+/**
+ * PKG B-145 (R-5) re-baseline helper: the advanced property-panel fields
+ * (Parent/Layer/Opens layer/Aliases/Block access) render behind
+ * collapsed-by-default section toggles — a cell touching one expands its
+ * section first. IDEMPOTENT: a same-node panel re-entry never re-seeds, so
+ * a section opened earlier in the page's lifetime is still open — tap only
+ * when collapsed (R23: cited at each call site, never silent).
+ */
+const expandSection = async (page: Page, section: string): Promise<void> => {
+  const toggle = page.getByTestId(`tme-node-section-${section}`);
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') {
+    await activate(page, `tme-node-section-${section}`);
+  }
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
 };
 
 /**
@@ -727,6 +746,9 @@ test.describe('the layer-manager sheet, the Layer dropdown and Detach (PKG B-126
     await activate(page, 'tme-editor-toggle');
     await tapNode(page, OUTSKIRTS_ID);
     await expect(page.getByTestId('tme-property-panel')).toBeVisible();
+    // B-145 (R-5) re-baseline: the Layer dropdown renders behind its
+    // collapsed toggle — expand first.
+    await expandSection(page, 'layer');
     // B-133 REVIEW DIAGNOSTIC (temporary): which node did the tap select?
     const dropdown = page.getByTestId('tme-node-layer');
     await expect(dropdown).toHaveValue(FUYUKI_LAYER_ID);
@@ -765,6 +787,9 @@ test.describe('the layer-manager sheet, the Layer dropdown and Detach (PKG B-126
     // the moved node's layer). The D83 two-pass revert itself is untouched.
     await tapNodeAimed(page, EMIYA_ID);
     await expect(page.getByTestId('tme-property-panel')).toBeVisible();
+    // B-145 (R-5) re-baseline: emiya is a NEW node's open — the sections
+    // re-collapsed; expand Layer again before the stranding pick.
+    await expandSection(page, 'layer');
     await expect(dropdown).toHaveValue(FUYUKI_LAYER_ID);
     await dropdown.selectOption({ label: 'Misaki Town' });
     await expect(page.getByTestId('tme-node-errors')).toBeVisible();
@@ -827,6 +852,9 @@ test.describe('the layer-manager sheet, the Layer dropdown and Detach (PKG B-126
     // Move outskirts to Misaki Town — the moved node is DRAFTED.
     await activate(page, 'tme-editor-toggle');
     await tapNode(page, OUTSKIRTS_ID);
+    // B-145 (R-5) re-baseline: the Layer dropdown renders behind its
+    // collapsed toggle — expand first.
+    await expandSection(page, 'layer');
     await page.getByTestId('tme-node-layer').selectOption({ label: 'Misaki Town' });
     await expect
       .poll(async () => readDraftedIds(page), { timeout: 5_000 })

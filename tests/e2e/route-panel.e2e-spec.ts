@@ -36,6 +36,10 @@
 // is on-screen and disjoint from the property panel's box while the rail's
 // Route toggle reports pressed.
 //
+// PKG B-145 (REPAIRS R-5) re-baseline: the blocked-nodes cell's one-tap
+// Block access now sits behind its collapsed section toggle — the cell
+// expands the section first (cited in-file, R23).
+//
 // Canvas nodes are tapped through their RENDERED positions (the
 // DEV-HARNESS-ONLY window.__TME_E2E__ seam, src/app/app.ts) — real pixels,
 // both worlds, no locator-on-canvas cheating.
@@ -236,10 +240,17 @@ test.describe('route sidebar (PKG B-105)', () => {
 
     // Block a leaf node through the property panel's one-tap (D94/F55):
     // editor mode, select Outskirts, Block access on the pristine input.
+    // B-145 (R-5) re-baseline: Block access renders behind its collapsed
+    // section toggle — expand first (R23: cited, never silent).
     await activate(page, 'tme-editor-toggle');
     await settle(page);
     await tapNode(page, OUTSKIRTS_ID);
     await expect(page.getByTestId('tme-property-panel')).toBeVisible();
+    // Idempotent (the portals unwire probe): tap only when collapsed.
+    if ((await page.getByTestId('tme-node-section-block').getAttribute('aria-expanded')) !== 'true') {
+      await activate(page, 'tme-node-section-block');
+    }
+    await expect(page.getByTestId('tme-node-section-block')).toHaveAttribute('aria-expanded', 'true');
     await activate(page, 'tme-node-block');
     await expect(page.getByTestId('tme-node-block-reason')).toHaveText('Closed');
     // Exit editor — the block is chat-scoped overlay state, it survives.

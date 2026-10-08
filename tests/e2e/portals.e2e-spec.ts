@@ -31,6 +31,9 @@
 //             the installed runtime fires both names on the mouse path and
 //             dbltap on touch, so plain taps suffice; no WebKit twin needed,
 //             AGENTS.md §6); crumbs and the panel select are >= 44px.
+//   R-5 (B-145) — the property panel's "Opens layer"/Layer fields render
+//             behind collapsed-by-default section toggles; every wiring and
+//             refusal pick expands its section first (cited in-file, R23).
 //   R1      — the pin's snapshot headers stay verbatim across every
 //             transition (the pin renders on its home layer).
 //
@@ -104,6 +107,22 @@ const activate = async (locator: Locator): Promise<void> => {
 
 const activateTestId = (page: Page, testId: string): Promise<void> =>
   activate(page.getByTestId(testId));
+
+/**
+ * PKG B-145 (R-5) re-baseline helper: the property panel's advanced fields
+ * render behind collapsed-by-default section toggles — a pick cell expands
+ * its section first. IDEMPOTENT (probe finding, the unwire cell): a
+ * same-node panel re-entry never re-seeds, so a section the flow opened
+ * earlier (wireCastleTo) is STILL open — an unconditional tap would fold it
+ * closed; expand only when collapsed (R23: cited at each call site).
+ */
+const expandSection = async (page: Page, section: string): Promise<void> => {
+  const toggle = page.getByTestId(`tme-node-section-${section}`);
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') {
+    await activateTestId(page, `tme-node-section-${section}`);
+  }
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+};
 
 // page.evaluate callbacks are SERIALIZED: the hook lookup is inlined in each
 // one and data crosses as the evaluate argument — no closures over spec-scope
@@ -229,6 +248,9 @@ const wireCastleTo = async (page: Page, layerLabel: string | null): Promise<void
   await tapNode(page, CASTLE_ID); // selects the castle — the panel opens
   await expect(page.getByTestId('tme-property-panel')).toBeVisible();
   await expect(page.getByTestId('tme-node-label-input')).toHaveValue(CASTLE_LABEL); // the panel is CASTLE's
+  // B-145 (R-5) re-baseline: "Opens layer" renders behind its collapsed
+  // toggle — expand first (every wiring rides this helper).
+  await expandSection(page, 'portal');
   const select = page.getByTestId('tme-node-portal');
   await expect(select).toHaveValue(''); // unwired by default
   await select.selectOption(layerLabel === null ? { label: 'None' } : { label: layerLabel });
@@ -275,6 +297,10 @@ test.describe('portals: badges, the entry gesture, the breadcrumb, and the F17 u
     await activateTestId(page, 'tme-editor-toggle');
     await tapNode(page, CASTLE_ID);
     await expect(page.getByTestId('tme-node-label-input')).toHaveValue(CASTLE_LABEL);
+    // B-145 (R-5) re-baseline: expand "Opens layer" before the unwire pick.
+    // IDEMPOTENT by need: this re-entry is the SAME castle draft (no
+    // re-seed) — the wire step's section may still be open.
+    await expandSection(page, 'portal');
     await page.getByTestId('tme-node-portal').selectOption({ label: 'None' });
     await expect.poll(() => readPortalBadgeText(page, CASTLE_ID)).toBeNull();
     await activateTestId(page, 'tme-layer-manage');
@@ -391,6 +417,9 @@ test.describe('portals: badges, the entry gesture, the breadcrumb, and the F17 u
     // are content-bound, and a selectOption racing the panel render would
     // hit the previous node's DOM.
     await expect(page.getByTestId('tme-node-label-input')).toHaveValue('Outskirts');
+    // B-145 (R-5) re-baseline: a new node's open re-collapses the sections —
+    // expand "Opens layer" before the second-entry refusal pick.
+    await expandSection(page, 'portal');
     await page.getByTestId('tme-node-portal').selectOption({ label: 'Misaki Town' });
     await expect(page.getByTestId('tme-node-errors')).toBeVisible();
     await expect(page.getByTestId('tme-node-errors')).toContainText(
@@ -404,6 +433,9 @@ test.describe('portals: badges, the entry gesture, the breadcrumb, and the F17 u
     // mechanism); the wiring itself survives untouched.
     await tapNode(page, CASTLE_ID);
     await expect(page.getByTestId('tme-node-label-input')).toHaveValue(CASTLE_LABEL);
+    // B-145 (R-5) re-baseline: the castle is a NEW node's open (sections
+    // re-collapsed) — expand Layer before the own-layer refusal pick.
+    await expandSection(page, 'layer');
     await page.getByTestId('tme-node-layer').selectOption({ label: 'Misaki Town' });
     await expect(page.getByTestId('tme-node-errors')).toBeVisible();
     await expect(page.getByTestId('tme-node-errors')).toContainText(

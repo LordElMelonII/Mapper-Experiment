@@ -13,7 +13,11 @@
      is the floating panel's drag handle (pointerdown; buttons keep their
      taps) and the Maximize/Restore toggle sits at its end: Restore floats
      the panel at its remembered (stage-clamped) position, Maximize returns
-     it to this docked form (the editor's default). -->
+     it to this docked form (the editor's default).
+     B-145 (R-5): the edit body is NAME-FIRST — Identity (Name/Kind/
+     Description) expanded, the five advanced surfaces behind collapsed
+     section toggles with live summaries, Detach/Delete in the pinned danger
+     footer. The connect banner branch above is byte-identical (untouched). -->
 @if (view(); as d) {
   <section class="tme-prop" data-testid="tme-property-panel" aria-label="Place properties">
     @if (connecting()) {
@@ -75,6 +79,15 @@
         </div>
       </header>
 
+      <!-- B-145 (R-5 name-first property form): the panel opens NAME-FIRST —
+           the Identity group (Name/Kind/Description) expanded in the open
+           view; the five advanced surfaces (Parent, Layer, Opens layer,
+           Aliases, Block access) behind collapsed-by-default section toggles
+           whose rows carry the live summary (C23 authored names + UI words);
+           Detach/Delete pinned in the danger footer below (never scrolls
+           away). Presentation only: every field, testid and commit path is
+           byte-identical (R2) — the fields render inside their sections. -->
+
       <label class="tme-field-label" for="tme-node-label-input">Name</label>
       <input
         id="tme-node-label-input"
@@ -93,13 +106,36 @@
         }
       </select>
 
-      <label class="tme-field-label" for="tme-node-parent">Parent</label>
-      <select id="tme-node-parent" class="tme-input" data-testid="tme-node-parent" (change)="onParentChange($event)">
-        <option value="" [selected]="d.parent === null">None</option>
-        @for (option of parentOptions(); track option.id) {
-          <option [value]="option.id" [selected]="d.parent === option.id">{{ option.label }}</option>
-        }
-      </select>
+      <label class="tme-field-label" for="tme-node-description">Description</label>
+      <textarea
+        id="tme-node-description"
+        class="tme-input tme-description"
+        rows="2"
+        data-testid="tme-node-description"
+        [value]="d.description"
+        (input)="onDescriptionInput($event)"
+      ></textarea>
+
+      <button
+        type="button"
+        class="tme-section-toggle"
+        data-testid="tme-node-section-parent"
+        [attr.aria-expanded]="sections().parent"
+        (click)="toggleSection('parent')"
+      >
+        <span class="tme-section-name">Parent</span>
+        <span class="tme-section-summary" data-testid="tme-node-section-parent-summary">{{ parentSummary() }}</span>
+        <span class="tme-section-caret" aria-hidden="true">{{ sections().parent ? '▾' : '▸' }}</span>
+      </button>
+      @if (sections().parent) {
+        <label class="tme-field-label" for="tme-node-parent">Parent</label>
+        <select id="tme-node-parent" class="tme-input" data-testid="tme-node-parent" (change)="onParentChange($event)">
+          <option value="" [selected]="d.parent === null">None</option>
+          @for (option of parentOptions(); track option.id) {
+            <option [value]="option.id" [selected]="d.parent === option.id">{{ option.label }}</option>
+          }
+        </select>
+      }
 
       <!-- B-126 (D83): the Layer dropdown — the ONE way to move a node
            between layers. NOT a draft field: a pick is a complete discrete
@@ -107,13 +143,26 @@
            wrapper (R2). The selected option is the LIVE node's layer (a
            refused stranding move reverts here — never silently re-parented);
            the five draft fields and their commit path are untouched. All
-           layers by NAME (C23). -->
-      <label class="tme-field-label" for="tme-node-layer">Layer</label>
-      <select id="tme-node-layer" class="tme-input" data-testid="tme-node-layer" (change)="onLayerChange($event)">
-        @for (layer of graph.layerNames(); track layer.id) {
-          <option [value]="layer.id" [selected]="layerSelectValue() === layer.id">{{ layer.name }}</option>
-        }
-      </select>
+           layers by NAME (C23). B-145 (R-5): behind its collapsed toggle. -->
+      <button
+        type="button"
+        class="tme-section-toggle"
+        data-testid="tme-node-section-layer"
+        [attr.aria-expanded]="sections().layer"
+        (click)="toggleSection('layer')"
+      >
+        <span class="tme-section-name">Layer</span>
+        <span class="tme-section-summary" data-testid="tme-node-section-layer-summary">{{ layerSummary() }}</span>
+        <span class="tme-section-caret" aria-hidden="true">{{ sections().layer ? '▾' : '▸' }}</span>
+      </button>
+      @if (sections().layer) {
+        <label class="tme-field-label" for="tme-node-layer">Layer</label>
+        <select id="tme-node-layer" class="tme-input" data-testid="tme-node-layer" (change)="onLayerChange($event)">
+          @for (layer of graph.layerNames(); track layer.id) {
+            <option [value]="layer.id" [selected]="layerSelectValue() === layer.id">{{ layer.name }}</option>
+          }
+        </select>
+      }
 
       <!-- B-128 (D85/F02): the "Opens layer" dropdown — portal WIRING, the
            ONE surface that authors nodes[i].portal (R2: the service's
@@ -124,51 +173,68 @@
            NAME (C23) — the node's own layer never renders (a portal cannot
            target its own layer). Success makes the portal badge appear on
            the canvas (the rebuild owns that); the hierarchy (the breadcrumb)
-           derives from this wiring. -->
-      <label class="tme-field-label" for="tme-node-portal">Opens layer</label>
-      <select id="tme-node-portal" class="tme-input" data-testid="tme-node-portal" (change)="onPortalChange($event)">
-        <option value="" [selected]="portalSelectValue() === ''">None</option>
-        @for (layer of portalOptions(); track layer.id) {
-          <option [value]="layer.id" [selected]="portalSelectValue() === layer.id">{{ layer.name }}</option>
-        }
-      </select>
+           derives from this wiring. B-145 (R-5): behind its collapsed
+           toggle. -->
+      <button
+        type="button"
+        class="tme-section-toggle"
+        data-testid="tme-node-section-portal"
+        [attr.aria-expanded]="sections().portal"
+        (click)="toggleSection('portal')"
+      >
+        <span class="tme-section-name">Opens layer</span>
+        <span class="tme-section-summary" data-testid="tme-node-section-portal-summary">{{ portalSummary() }}</span>
+        <span class="tme-section-caret" aria-hidden="true">{{ sections().portal ? '▾' : '▸' }}</span>
+      </button>
+      @if (sections().portal) {
+        <label class="tme-field-label" for="tme-node-portal">Opens layer</label>
+        <select id="tme-node-portal" class="tme-input" data-testid="tme-node-portal" (change)="onPortalChange($event)">
+          <option value="" [selected]="portalSelectValue() === ''">None</option>
+          @for (layer of portalOptions(); track layer.id) {
+            <option [value]="layer.id" [selected]="portalSelectValue() === layer.id">{{ layer.name }}</option>
+          }
+        </select>
+      }
 
-      <span class="tme-field-label" id="tme-aliases-label">Aliases</span>
-      <div class="tme-aliases" role="group" aria-labelledby="tme-aliases-label">
-        @for (alias of d.aliases; track $index) {
-          <div class="tme-alias-row">
-            <input
-              class="tme-input tme-alias-input"
-              type="text"
-              autocomplete="off"
-              [attr.aria-label]="'Alias ' + ($index + 1)"
-              data-testid="tme-alias-input"
-              [value]="alias"
-              (input)="onAliasInput($index, $event)"
-            />
-            <button
-              type="button"
-              class="tme-alias-remove"
-              data-testid="tme-alias-remove"
-              [attr.aria-label]="'Remove alias ' + ($index + 1)"
-              (click)="removeAlias($index)"
-            >
-              ×
-            </button>
-          </div>
-        }
-        <button type="button" class="tme-alias-add" data-testid="tme-alias-add" (click)="addAlias()">Add alias</button>
-      </div>
-
-      <label class="tme-field-label" for="tme-node-description">Description</label>
-      <textarea
-        id="tme-node-description"
-        class="tme-input tme-description"
-        rows="2"
-        data-testid="tme-node-description"
-        [value]="d.description"
-        (input)="onDescriptionInput($event)"
-      ></textarea>
+      <button
+        type="button"
+        class="tme-section-toggle"
+        data-testid="tme-node-section-aliases"
+        [attr.aria-expanded]="sections().aliases"
+        (click)="toggleSection('aliases')"
+      >
+        <span class="tme-section-name">Aliases</span>
+        <span class="tme-section-summary" data-testid="tme-node-section-aliases-summary">{{ aliasesSummary() }}</span>
+        <span class="tme-section-caret" aria-hidden="true">{{ sections().aliases ? '▾' : '▸' }}</span>
+      </button>
+      @if (sections().aliases) {
+        <span class="tme-field-label" id="tme-aliases-label">Aliases</span>
+        <div class="tme-aliases" role="group" aria-labelledby="tme-aliases-label">
+          @for (alias of d.aliases; track $index) {
+            <div class="tme-alias-row">
+              <input
+                class="tme-input tme-alias-input"
+                type="text"
+                autocomplete="off"
+                [attr.aria-label]="'Alias ' + ($index + 1)"
+                data-testid="tme-alias-input"
+                [value]="alias"
+                (input)="onAliasInput($index, $event)"
+              />
+              <button
+                type="button"
+                class="tme-alias-remove"
+                data-testid="tme-alias-remove"
+                [attr.aria-label]="'Remove alias ' + ($index + 1)"
+                (click)="removeAlias($index)"
+              >
+                ×
+              </button>
+            </div>
+          }
+          <button type="button" class="tme-alias-add" data-testid="tme-alias-add" (click)="addAlias()">Add alias</button>
+        </div>
+      }
 
       <!-- B-131 (D94/F55): the Blocking section — BLOCKABLE kinds only (a
            container never connects to arcs per F07, so blocking one is a
@@ -182,42 +248,57 @@
            overlay-ONLY (D94 adds no library-level node block), so the shown
            block is always liftable here. The block is a DISCRETE intent, not
            a draft field: it commits immediately (the Layer/Portal dropdown
-           precedent) and never rides Done. -->
+           precedent) and never rides Done. B-145 (R-5): the kind gate (a
+           non-blockable kind renders NO Block toggle at all) COMPOSES with
+           the section toggle — the toggle renders for blockable kinds, the
+           fields only when expanded. -->
       @if (blockSectionOpen()) {
-        <span class="tme-field-label" id="tme-node-block-heading">Block access</span>
-        @if (nodeBlockReason(); as reason) {
-          <p class="tme-node-block-row" data-testid="tme-node-block-row">
-            <span class="tme-block-tag">Blocked</span>
-            <span class="tme-node-block-reason" data-testid="tme-node-block-reason">{{ reason }}</span>
-          </p>
-        }
-        <label class="tme-field-label" for="tme-node-block-input">Reason</label>
-        <input
-          id="tme-node-block-input"
-          class="tme-input"
-          type="text"
-          autocomplete="off"
-          data-testid="tme-node-block-input"
-          [value]="blockReason()"
-          (input)="onBlockReasonInput($event)"
-        />
-        <div class="tme-actions tme-node-block-actions">
-          <button type="button" class="tme-node-block-button" data-testid="tme-node-block" (click)="blockNode()">
-            Block access
-          </button>
-          @if (nodeBlockReason() !== null) {
-            <button type="button" class="tme-node-block-lift" data-testid="tme-node-block-lift" (click)="liftNodeBlock()">
-              Lift
-            </button>
+        <button
+          type="button"
+          class="tme-section-toggle"
+          data-testid="tme-node-section-block"
+          [attr.aria-expanded]="sections().block"
+          (click)="toggleSection('block')"
+        >
+          <span class="tme-section-name">Block access</span>
+          <span class="tme-section-summary" data-testid="tme-node-section-block-summary">{{ blockSummary() }}</span>
+          <span class="tme-section-caret" aria-hidden="true">{{ sections().block ? '▾' : '▸' }}</span>
+        </button>
+        @if (sections().block) {
+          @if (nodeBlockReason(); as reason) {
+            <p class="tme-node-block-row" data-testid="tme-node-block-row">
+              <span class="tme-block-tag">Blocked</span>
+              <span class="tme-node-block-reason" data-testid="tme-node-block-reason">{{ reason }}</span>
+            </p>
           }
-        </div>
-        <!-- B-131: the blockNode catch's refusal — blocking an UNSAVED placed
-             node (the A-018 saved-plane gate) surfaces field-precise here,
-             never an uncaught console error (the arc panel's
-             tme-arc-block-refusal pattern); cleared when the panel leaves
-             the node. -->
-        @if (graph.nodeBlockRefusal(); as refusal) {
-          <p class="tme-node-block-refusal" data-testid="tme-node-block-refusal" role="alert">{{ refusal }}</p>
+          <label class="tme-field-label" for="tme-node-block-input">Reason</label>
+          <input
+            id="tme-node-block-input"
+            class="tme-input"
+            type="text"
+            autocomplete="off"
+            data-testid="tme-node-block-input"
+            [value]="blockReason()"
+            (input)="onBlockReasonInput($event)"
+          />
+          <div class="tme-actions tme-node-block-actions">
+            <button type="button" class="tme-node-block-button" data-testid="tme-node-block" (click)="blockNode()">
+              Block access
+            </button>
+            @if (nodeBlockReason() !== null) {
+              <button type="button" class="tme-node-block-lift" data-testid="tme-node-block-lift" (click)="liftNodeBlock()">
+                Lift
+              </button>
+            }
+          </div>
+          <!-- B-131: the blockNode catch's refusal — blocking an UNSAVED placed
+               node (the A-018 saved-plane gate) surfaces field-precise here,
+               never an uncaught console error (the arc panel's
+               tme-arc-block-refusal pattern); cleared when the panel leaves
+               the node. -->
+          @if (graph.nodeBlockRefusal(); as refusal) {
+            <p class="tme-node-block-refusal" data-testid="tme-node-block-refusal" role="alert">{{ refusal }}</p>
+          }
         }
       }
 
@@ -241,8 +322,11 @@
            Connect (also in the header) starts the quick-connect flow.
            B-126 (D82/F54): the danger zone — Detach from arcs beside Delete,
            immediate, no confirm (the F46 precedent: the cascade confirm
-           exists because a LAYER dies, not because arcs do). -->
-      <div class="tme-actions">
+           exists because a LAYER dies, not because arcs do).
+           B-145 (R-5): the pair lives in the PINNED danger footer — a
+           constant band with the red hairline top edge, sticky in the
+           scrolling host, so it never scrolls away. -->
+      <div class="tme-actions tme-danger-footer" data-testid="tme-node-danger-footer">
         <button type="button" class="tme-detach" data-testid="tme-node-detach" (click)="detach()">Detach from arcs</button>
         <button type="button" class="tme-delete" data-testid="tme-node-delete" (click)="remove()">Delete</button>
       </div>

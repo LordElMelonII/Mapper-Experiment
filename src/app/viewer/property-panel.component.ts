@@ -75,6 +75,18 @@
 // command — §9 reserves preference persistence for Phase 4's host). All
 // B-117/B-118 behavior is untouched: the draft rule, the C30 refusal
 // display, the Connect flow, the ≥44px sweep.
+//
+// B-145 (R-5 name-first property form): the edit body restructures — the
+// Identity group (Name/Kind/Description) renders expanded in the open view,
+// the five advanced surfaces (Parent, Layer, Opens layer, Aliases, Block
+// access) sit behind collapsed-by-default section toggles whose rows carry
+// the live summary (C23), and Detach/Delete live in a pinned danger footer
+// (red hairline top edge) that never scrolls away. The open is NAME-FIRST:
+// the Name input is focused + selected (unqualified across breakpoints —
+// the phone soft keyboard is the point). PRESENTATION ONLY: every field,
+// testid and commit path is byte-identical (R2 — no command changes), and
+// the sections' collapse state is reset exactly when the draft re-seeds for
+// a NEW node (a Done re-seed keeps the author's open sections).
 import {
   ChangeDetectionStrategy,
   Component,
@@ -175,6 +187,13 @@ interface ParentOption {
 }
 
 /**
+ * B-145 (R-5 name-first property form): the five advanced sections' names —
+ * Parent, Layer, Opens layer, Aliases, Block access — each rendered behind a
+ * collapsed-by-default section toggle whose row carries the live summary.
+ */
+type SectionName = 'parent' | 'layer' | 'portal' | 'aliases' | 'block';
+
+/**
  * The local DRAFT (C29/R2): plain copies of the five panel-editable fields,
  * opened from one library node (id immutable), carrying the seed it was
  * opened from — the no-change guard for the commit points.
@@ -245,6 +264,60 @@ export class PropertyPanelComponent {
    * user-visibly by the template — never console-only.
    */
   protected readonly refusals = signal<readonly NodeEditIssue[]>([]);
+
+  // --- B-145 (R-5): the advanced sections' collapse state --------------------
+
+  /**
+   * B-145 (R-5): the five advanced sections' USER collapse state — collapsed
+   * by default, reset when the draft re-seeds for a NEW node (seedDraft; a
+   * same-node re-seed after a Done commit keeps the author's open sections —
+   * mid-editing Done must not fold their context away). Pure presentation:
+   * no field, no commit path, no facade read changes (R2).
+   */
+  private readonly sections = signal<Record<SectionName, boolean>>({
+    parent: false,
+    layer: false,
+    portal: false,
+    aliases: false,
+    block: false,
+  });
+
+  /** B-145 (R-5): the toggle rows' tap — one signal write (R3, D2). */
+  protected toggleSection(name: SectionName): void {
+    this.sections.update((s) => ({ ...s, [name]: !s[name] }));
+  }
+
+  /**
+   * B-145 (R-5, the R-7 design-ahead seam): focus + SELECT the Name input —
+   * the name-first open's behavior, exposed as a PUBLIC entry (the
+   * rename-nudge packet reuses exactly this open; not an anonymous one-off).
+   * A purely presentational imperative write (the B-119 drag-write precedent:
+   * focus/selection is DOM chrome, never a signal, never a commit).
+   */
+  focusName(): void {
+    const input = this.host.nativeElement.querySelector<HTMLInputElement>(
+      'input[data-testid="tme-node-label-input"]',
+    );
+    if (input === null) return; // not rendered — degrade, never throw (C32 spirit)
+    input.focus();
+    input.select();
+  }
+
+  /** B-145 (R-5): armed by seedDraft for a new node; fired after the render. */
+  private readonly nameFocusArmed = signal(false);
+
+  /**
+   * B-145 (R-5): the open path's focus — the input exists only after the
+   * @if renders it, so the focus rides an afterRenderEffect (the
+   * clearPendingPicks timing precedent): one render shows the seeded input,
+   * the next pass focuses + selects it. Unqualified across breakpoints —
+   * phone too (the soft keyboard is the point: name it now, D53).
+   */
+  private readonly focusNameOnOpen = afterRenderEffect(() => {
+    if (!this.nameFocusArmed()) return;
+    this.nameFocusArmed.set(false);
+    this.focusName();
+  });
 
   /**
    * Panel visibility: editor mode with an open draft. The host element
@@ -351,6 +424,17 @@ export class PropertyPanelComponent {
     return options;
   });
 
+  /**
+   * B-145 (R-5): the Parent toggle's summary — the authored parent's label
+   * (parentOptions already keeps an off-list seeded parent honest), or the
+   * none word. C23: authored name or UI chrome, never an id.
+   */
+  protected readonly parentSummary = computed((): string => {
+    const d = this.draft();
+    if (d === null || d.parent === null) return 'None';
+    return this.parentOptions().find((option) => option.id === d.parent)?.label ?? 'None';
+  });
+
   // --- B-126 (D83): the Layer dropdown — the ONE way to move a node ---------
 
   /**
@@ -429,6 +513,33 @@ export class PropertyPanelComponent {
   protected readonly portalSelectValue = computed(
     () => this.pendingPortal() ?? this.nodePortalTarget() ?? '',
   );
+
+  // --- B-145 (R-5): the collapsed toggle rows' summaries ----------------------
+  // Reads of the seams the template already binds (nodeLayerId/layerNames/
+  // nodePortalTarget/parentOptions/nodeBlockReason/the draft) — no new facade
+  // reads, no copies of state the signals already carry (R4). C23 throughout:
+  // authored names + UI chrome words; the alias count is the panel's own row
+  // count (the B-118 pickLine precedent — not R1 math).
+
+  /** The Layer toggle's summary: the LIVE node's layer NAME (C23; follows a move). */
+  protected readonly layerSummary = computed((): string => {
+    const id = this.nodeLayerId();
+    return this.graph.layerNames().find((layer) => layer.id === id)?.name ?? 'None';
+  });
+
+  /** The Opens-layer toggle's summary: the wired target's NAME, or the none word. */
+  protected readonly portalSummary = computed((): string => {
+    const target = this.nodePortalTarget();
+    if (target === null) return 'None';
+    return this.graph.layerNames().find((layer) => layer.id === target)?.name ?? 'None';
+  });
+
+  /** The Aliases toggle's summary: the draft's row count in the UI's own voice. */
+  protected readonly aliasesSummary = computed((): string => {
+    const n = this.draft()?.aliases.length ?? 0;
+    if (n === 0) return 'No aliases yet';
+    return n === 1 ? '1 alias' : `${n} aliases`;
+  });
 
   /**
    * B-126 (D83), generalized by B-128 (D85): the revert pass — clears the
@@ -575,6 +686,16 @@ export class PropertyPanelComponent {
     void this.graph.graphRevision(); // dependency: a block/lift re-reads (R4)
     const d = this.draft();
     return d === null ? null : this.graph.nodeBlockReason(d.id);
+  });
+
+  /**
+   * B-145 (R-5): the Block toggle's summary — the live block state in words
+   * (the reason verbatim, C2/D20's mirror; 'Not blocked' is the off word —
+   * deliberately NOT 'Open', which the panel already spends on "Opens layer").
+   */
+  protected readonly blockSummary = computed((): string => {
+    const reason = this.nodeBlockReason();
+    return reason === null ? 'Not blocked' : `Blocked — ${reason}`;
   });
 
   /**
@@ -965,8 +1086,18 @@ export class PropertyPanelComponent {
    * Seed a LOCAL draft copy from the live node (C29/R2 — the live MapNodeData
    * is never bound). A non-library selection (waypoint — no editor command,
    * B-116 precedent) or no selection closes the draft and the panel.
+   * B-145 (R-5): a NEW node's seed is the panel's OPEN moment — the advanced
+   * sections reset collapsed and the name-first focus arms (fired by the
+   * afterRenderEffect once the input renders). A same-node re-seed (the Done
+   * commit's honest re-seed) keeps the author's open sections and focuses
+   * nothing — the panel never closed.
    */
   private seedDraft(id: string | null): void {
+    const switched = (this.draft()?.id ?? null) !== id;
+    if (switched) {
+      this.sections.set({ parent: false, layer: false, portal: false, aliases: false, block: false });
+      this.nameFocusArmed.set(id !== null);
+    }
     if (id === null) {
       this.draft.set(null);
       this.refusals.set([]);

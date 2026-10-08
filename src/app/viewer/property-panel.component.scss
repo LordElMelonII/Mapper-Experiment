@@ -482,3 +482,72 @@
 .tme-prop {
   pointer-events: auto; // B-133 review (D91) — the visible sheet re-enables
 }
+
+// --- B-145 (R-5 name-first property form): the section toggles + the danger
+// footer. The host stays the scroll container in EVERY regime (the wide
+// maximized overlay, the compact floater, the phone sheet), so both chrome
+// pieces key off it directly.
+
+// The collapsed-by-default section toggle row — one full-width >= 44px tap
+// target (F52), touch-alone (D53), no hover affordance: the aria-expanded
+// state and the caret glyph are the signal. The row carries the section
+// name and the LIVE summary (C23: authored names + UI chrome words, never
+// ids); a long summary ellipsizes — never a horizontal scroll (D53).
+.tme-section-toggle {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.5rem;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px; // F52
+  margin-top: 0.375rem;
+  padding: 0.25rem 0.125rem;
+  border: none;
+  border-top: 1px solid rgba(174, 189, 211, 0.25); // the hairline ladder's separator step
+  background: transparent;
+  color: var(--tme-text-secondary);
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+.tme-section-name {
+  flex: 0 0 auto;
+}
+
+.tme-section-summary {
+  flex: 1 1 auto;
+  min-width: 0; // never propagate content width into the row (D53)
+  overflow: hidden;
+  color: var(--tme-text-muted);
+  font-weight: 400;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tme-section-caret {
+  flex: 0 0 auto;
+  color: var(--tme-text-muted);
+}
+
+// The pinned danger footer (R-5): Detach/Delete in a constant band with the
+// red hairline top edge. Sticky in the host scroll container — the footer
+// holds at the scrollport's bottom edge in every regime and never scrolls
+// away; the opaque plate masks the content scrolling under it. The danger
+// hue is the strong red (both planes): the packet's --tme-accent-red name
+// is NOT in the R-0 catalog — proposed there, not invented here (no new hex).
+.tme-danger-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-top: 0.75rem;
+  padding: 0.5rem 0 0.25rem;
+  border-top: 1px solid var(--tme-accent-warn-strong);
+  background: var(--tme-plate);
+}
