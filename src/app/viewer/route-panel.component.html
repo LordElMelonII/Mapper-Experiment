@@ -131,7 +131,19 @@
         }
       }
     } @else {
-      <p class="tme-state" data-testid="tme-hint">Tap a node on the map to route there from the pin.</p>
+      <!-- B-144 (REPAIRS.md §R4): the pinless half of this hint is never
+           rendered — "route there from the pin" names a pin that does not
+           exist (the empty-half-of-a-sentence pattern). The R-3 sentence
+           family, same predicate as the target line's degrade above so the
+           two surfaces never disagree: a full sentence naming the missing
+           thing and the action, under its OWN testid so both states stay
+           assertable. Pin PRESENT: today's hint, byte-identical (same
+           testid, same words). -->
+      @if (graph.snapshot()?.location) {
+        <p class="tme-state" data-testid="tme-hint">Tap a node on the map to route there from the pin.</p>
+      } @else {
+        <p class="tme-state" data-testid="tme-hint-pinless">Set where the party is to route from here.</p>
+      }
     }
 
     <!-- B-124 (F32/D19, D78/C23): the travel-mode preference — the map's mode

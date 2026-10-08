@@ -288,6 +288,10 @@ interface TmeE2EHook {
   cardSuggestedMapId(): string | null;
   /** B-137: the loaded map's id, or null when mapless (the mapless/delete states). */
   loadedMapId(): string | null;
+  /** B-144 (REPAIRS R4/R1): the snapshot's cost-unit word — the header's own
+   *  rendered string, read as data (never a spec-magic word); null when
+   *  mapless. Read-only (R2/R4). */
+  snapshotUnit(): string | null;
 }
 
 @Component({
@@ -430,6 +434,7 @@ export class App {
       bootMapless: () => this.bootWasMapless,
       cardSuggestedMapId: () => this.graphService.cardSuggestedMapId(),
       loadedMapId: () => this.graphService.loadedMapId(),
+      snapshotUnit: () => this.graphService.snapshot()?.unit ?? null,
     };
   }
 }

@@ -64,12 +64,23 @@
 
     <!-- R1: the header renders the snapshot's core strings verbatim — location,
          the PIN's layer name (not the active viewer layer), and the snapshot's
-         cost unit. Degrades to empty strings when no snapshot exists (C32). -->
+         cost unit. Degrades to empty strings when no snapshot exists (C32).
+         B-144 (REPAIRS.md §R4, ghost punctuation): the three VALUE spans keep
+         their testids and DOM presence in EVERY state (the mapped-state
+         per-span asserts stay green untouched); only the SEPARATOR spans
+         collapse — a separator renders strictly BETWEEN two present values,
+         so a mapless boot shows no "· ·" and a pinless fresh map renders the
+         unit alone, never debris around an empty half. Presentation only:
+         every rendered value stays the snapshot's own string (R1). -->
     <header class="tme-header" data-testid="tme-header">
       <span data-testid="tme-location">{{ graph.snapshot()?.location ?? '' }}</span>
-      <span class="tme-sep" aria-hidden="true">·</span>
+      @if (graph.snapshot()?.location && graph.snapshot()?.layer) {
+        <span class="tme-sep" aria-hidden="true">·</span>
+      }
       <span data-testid="tme-snapshot-layer">{{ graph.snapshot()?.layer ?? '' }}</span>
-      <span class="tme-sep" aria-hidden="true">·</span>
+      @if ((graph.snapshot()?.location || graph.snapshot()?.layer) && graph.snapshot()?.unit) {
+        <span class="tme-sep" aria-hidden="true">·</span>
+      }
       <span data-testid="tme-unit">{{ graph.snapshot()?.unit ?? '' }}</span>
       <!-- B-116 (F45/D75) via the B-133 review (D91): the save dock — the
            app-bar pill form. It lived in the rail until the review showed a
