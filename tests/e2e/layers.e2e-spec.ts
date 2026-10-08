@@ -72,6 +72,21 @@ const activate = async (page: Page, testId: string): Promise<void> => {
   else await locator.click();
 };
 
+/**
+ * PKG B-142 (REPAIRS R-2) re-baseline: the phone boot now stages AT the pin
+ * (the boot-posture zoom, the pin-centered viewport). This spec's cells pin
+ * the determinism of the PRE-PACKET WORLD-FIT boot viewport (the round-trip
+ * first-paint equality), so the phone cells restore exactly that viewport
+ * first by tapping the rail's Fit — the packet's own "explicit full-world
+ * ask" (§R2). Desktop never arms the posture (the wide gate mirrors D81's
+ * 700px breakpoint), so its boot is byte-unchanged and this is a no-op. Aim
+ * math and every assertion are untouched — the R23 in-box-content law stands
+ * throughout.
+ */
+const restoreBootViewport = async (page: Page): Promise<void> => {
+  if (test.info().project.name === 'phone') await page.getByTestId('tme-zoom-fit').tap();
+};
+
 // FX1 facts (data/worlds/fuyuki.ts): district-miyama parents exactly these six
 // leaves; the blocked bridge arc; the pin.
 const MIYAMA_CHILDREN = [
@@ -93,6 +108,7 @@ test.describe('layers & structures (PKG B-104)', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await expect(page.getByTestId('tme-canvas')).toBeVisible();
+    await restoreBootViewport(page);
     // First paint is Fuyuki (loadMap's first layer) — the precondition every
     // test below builds on.
     await expect.poll(() => readLabels(page)).toContain('Emiya Residence');

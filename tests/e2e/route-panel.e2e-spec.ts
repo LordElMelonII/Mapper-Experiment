@@ -56,6 +56,23 @@ const OUTSKIRTS_ID = 'outskirts'; // the B-131 blocking cell's leaf node
 
 const isPhone = (): boolean => test.info().project.name === 'phone';
 
+/**
+ * PKG B-142 (REPAIRS R-2) re-baseline: the phone boot now stages AT the pin
+ * (the boot-posture zoom, the pin-centered viewport). This spec's aims are
+ * exhaustively scanned against the PRE-PACKET WORLD-FIT boot viewport
+ * (zoom = 0.282... on FX1 — the whole world in view: the castle at x=-380,
+ * the station cluster at x=560+ — all out of the narrow pin-centered view),
+ * so the phone cells restore exactly that viewport first by tapping the
+ * rail's Fit — the packet's own "explicit full-world ask" (§R2). Desktop
+ * never arms the posture (the wide gate mirrors D81's 700px breakpoint),
+ * so its boot is byte-unchanged and this is a no-op. Booted twins (the
+ * in-test Chromium phone pages) take the same restore. Aim math and every
+ * assertion are untouched — the R23 in-box-content law stands throughout.
+ */
+const restoreBootViewport = async (page: Page): Promise<void> => {
+  if (isPhone()) await page.getByTestId('tme-zoom-fit').tap();
+};
+
 const readPosition = (page: Page, id: string): Promise<{ x: number; y: number } | null> =>
   page.evaluate((nodeId): { x: number; y: number } | null => {
     // page.evaluate callbacks are serialized: the hook lookup is inlined
@@ -105,6 +122,7 @@ test.describe('route sidebar (PKG B-105)', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await expect(page.getByTestId('tme-canvas')).toBeVisible();
+    await restoreBootViewport(page);
     // First paint is Fuyuki (loadMap's first layer) with the pin rendered.
     await expect.poll(() => readPosition(page, PIN_ID)).not.toBeNull();
   });

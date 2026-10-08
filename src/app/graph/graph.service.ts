@@ -936,6 +936,14 @@ const LABEL_CULL_FACTOR = 0.6;
 const NEVER_CULL_ZOOM = 0;
 
 /**
+ * B-142 (REPAIRS R-2): the over-zoom CAP on the narrow boot posture — a lone
+ * pin or a small world's world-fit zoom can already exceed 1, and the
+ * posture's floor-scaled level scales with it, so the boot view is clamped
+ * down to this ceiling rather than presenting a map-sized blow-up.
+ */
+const BOOT_OVER_ZOOM_CAP = 2.5;
+
+/**
  * The D3 cytoscape owner. `providedIn: 'root'`: one instance per app — in the
  * dev harness the app root; in the extension the panel root (Phase 3).
  */
@@ -2267,6 +2275,83 @@ export class GraphService implements OnDestroy {
     this.lastViewportW = window.innerWidth;
     this.lastViewportH = window.innerHeight;
     this.fitView(); // headless rebuilds have no viewport — fit now that we do
+    // B-142 (REPAIRS R-2): the narrow boot's SECOND fit — the initial
+    // ResizeObserver delivery classifies panel-driven but the D91 narrow
+    // branch still world-fits ~150–250 ms later (measured; neither fire is
+    // "a later narrow environmental resize"). The posture is entered HERE,
+    // after this fix, and the one-shot re-asserts it AFTER that reflexive
+    // refit consumed it — armed (sanctioned lead ruling) strictly after the
+    // posture's own application, consumed by `cy.one` on ITS first fire,
+    // which in the measured runtime is the boot refit's emission: the
+    // installed cytoscape fit (cytoscape.esm.mjs:19472-19478) writes
+    // _p.zoom/_p.pan atomically and then emits 'pan zoom viewport' ONCE, so
+    // a listener armed on 'zoom' sees the refit's final zoom and runs
+    // mid-emission, BEFORE fitView's untouched tail recomputes the cull
+    // threshold from the re-asserted level (the machinery's own formula,
+    // zero arithmetic edits — D81/D87 fit sites stay byte-identical).
+    // Anything consuming it EARLY (a rotation mid-boot is the one
+    // ergodic change) re-gates below: `cy.one` self-removes on that first
+    // fire even when every gate refuses, so no latent listener ever races a
+    // user gesture (D10) — and a real input cannot reach cy before the RO's
+    // first delivery anyway (cy binds container listeners at mount; the RO
+    // delivery lands in the first rendering cycle, the same one that paints).
+    if (this.bootAtPin()) {
+      this.cy.one('zoom', () => {
+        this.bootAtPin(); // re-gates everything; consumed either way
+      });
+    }
+  }
+
+  /**
+   * B-142 (REPAIRS R-2, phone boot zoom): stage the narrow-layout boot
+   * around the party's position — boot the viewport AT the pin instead of
+   * the anonymous-speck world fit. Idempotent: mount() runs it right after
+   * the world fix (zoom == the world-fit zoom then), and the mount-armed
+   * one-shot runs it again mid-cy.fit at the reflexive initial RO refit
+   * (zoom == the re-fit's world-fit zoom then) — both callers read the fit
+   * zoom off the current viewport and derive the same level.
+   *
+   * The level is the label-survival floor, the cull factor's double-inverse:
+   * `min(fit zoom × (1/LABEL_CULL_FACTOR)², BOOT_OVER_ZOOM_CAP)`. The cull
+   * machinery guarantees only that labels are NOT hidden at a default view
+   * (zoom ≥ zoom × 0.6 always); on the phone stage the world fit itself is
+   * so low that the authored 12 px label renders ≈3 px — dust — so legibility
+   * needs the fit-relative floor scaled by the cull factor's double-inverse
+   * (fit / 0.6² = fit × ≈2.78; FX1: 0.28 → 0.78, the label's ≈9.4 px), and
+   * `fitView()`'s untouched tail then re-bases cullZoom from the result, so
+   * the boot view's own label-survival floor IS posture-relative through the
+   * ordinary machinery. Every gate refusing degrades to today's world fit
+   * (C32), never a throw: wide layout (desktop boots unchanged, byte-identical
+   * to pre-packet), mapless boot, absent pin (D40's pin-null first state) or
+   * a pin unknown to the projection (C27) all return false.
+   *
+   * Centering is two viewport writes like the user's own gestures (R2
+   * spirit: zoom/pan are cy-level state — the B-127 rail trio's class): one
+   * `zoom({ level, renderedPosition })` about the pin (the pin's rendered
+   * point stays fixed while the world scales — B-127's verified setter
+   * semantics), then one absolute `pan()` to the exact stage center
+   * (rendered = model × level + pan ⇒ pan = center − model × level). Both
+   * emit the `zoom`/`pan` stream the normal followers already handle. No
+   * pin model position is ever written (D10); no facade state moves (R2).
+   */
+  private bootAtPin(): boolean {
+    if (!this.mounted) return false;
+    if (window.matchMedia(WIDE_LAYOUT_QUERY).matches) return false; // D81's mirror — desktop boots unchanged
+    const pinId = this.overlay?.currentLocationId ?? null;
+    if (pinId === null) return false; // mapless or D40's pin-null — today's fit
+    const pin = this.cy.getElementById(pinId);
+    if (pin.length === 0) return false; // C27: an unknown pin id degrades, never throws
+    const level = Math.min(
+      this.cy.zoom() / (LABEL_CULL_FACTOR * LABEL_CULL_FACTOR),
+      BOOT_OVER_ZOOM_CAP,
+    );
+    this.cy.zoom({ level, renderedPosition: pin.renderedPosition() });
+    const model = pin.position(); // read-only (D10): the maths only computes the pan
+    this.cy.pan({
+      x: this.cy.width() / 2 - model.x * level,
+      y: this.cy.height() / 2 - model.y * level,
+    });
+    return true;
   }
 
   /**
@@ -4944,6 +5029,17 @@ export class GraphService implements OnDestroy {
   /** B-103: current zoom level (`cy.zoom()`) — pure read. */
   testZoom(): number {
     return this.cy.zoom();
+  }
+
+  /**
+   * B-142 (REPAIRS R-2): the LIVE label-cull threshold — the same private
+   * field `applyLabelCull` reads (B-113's ruling 1, fit-relative) — the
+   * *boot-posture* e2e's floor seam: the sanctioned floor derivation reads
+   * the machinery's own current value and un-does the cull factor to the
+   * fit-relative base. Read-only (R2/R4 hold), no machine names (C23).
+   */
+  testCullZoom(): number {
+    return this.cullZoom;
   }
 
   /** B-103: current pan offset (`cy.pan()`) — pure read. */

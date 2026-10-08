@@ -205,6 +205,9 @@ interface TmeE2EHook {
   nodeParent(id: string): string | null;
   /** B-113: whether one projected node currently carries a class (read-only). */
   nodeHasClass(id: string, cls: string): boolean;
+  /** B-142 (R-2 phone boot zoom): the LIVE label-cull threshold (fitView's
+   *  fit-relative field, B-113 ruling 1) — the boot floor's in-page seam. */
+  cullZoom(): number;
   /** B-116: MODEL position of one node (read-only) — persistence/non-drag proofs. */
   nodeModelPosition(id: string): { x: number; y: number } | null;
   /** B-116: the selected node's id, or null — engine-assigned ids are never hardcoded (C5/D75). */
@@ -390,6 +393,7 @@ export class App {
       edgeIds: () => this.graphService.testEdgeIds(),
       nodeParent: (id: string) => this.graphService.testNodeParent(id),
       nodeHasClass: (id: string, cls: string) => this.graphService.testNodeHasClass(id, cls),
+      cullZoom: () => this.graphService.testCullZoom(),
       nodeModelPosition: (id: string) => this.graphService.testNodeModelPosition(id),
       selectedNodeId: () => this.graphService.selection()?.id ?? null,
       nodeData: (id: string) => this.graphService.testNodeData(id),

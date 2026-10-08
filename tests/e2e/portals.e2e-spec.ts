@@ -79,6 +79,23 @@ const R1_HEADERS: ReadonlyArray<[string, string]> = [
 
 const isPhone = (): boolean => test.info().project.name === 'phone';
 
+/**
+ * PKG B-142 (REPAIRS R-2) re-baseline: the phone boot now stages AT the pin
+ * (the boot-posture zoom, the pin-centered viewport). This spec's aims are
+ * exhaustively scanned against the PRE-PACKET WORLD-FIT boot viewport
+ * (zoom = 0.282... on FX1 — the whole world in view: the castle at x=-380,
+ * the station cluster at x=560+ — all out of the narrow pin-centered view),
+ * so the phone cells restore exactly that viewport first by tapping the
+ * rail's Fit — the packet's own "explicit full-world ask" (§R2). Desktop
+ * never arms the posture (the wide gate mirrors D81's 700px breakpoint),
+ * so its boot is byte-unchanged and this is a no-op. Booted twins (the
+ * in-test Chromium phone pages) take the same restore. Aim math and every
+ * assertion are untouched — the R23 in-box-content law stands throughout.
+ */
+const restoreBootViewport = async (page: Page): Promise<void> => {
+  if (isPhone()) await page.getByTestId('tme-zoom-fit').tap();
+};
+
 /** F52/D53: genuine tap on the touch-emulated project, click on desktop. */
 const activate = async (locator: Locator): Promise<void> => {
   if (isPhone()) await locator.tap();
@@ -232,6 +249,7 @@ test.describe('portals: badges, the entry gesture, the breadcrumb, and the F17 u
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await expect(page.getByTestId('tme-canvas')).toBeVisible();
+    await restoreBootViewport(page);
     await expect.poll(() => readRenderedPosition(page, 'emiya-residence')).not.toBeNull();
   });
 

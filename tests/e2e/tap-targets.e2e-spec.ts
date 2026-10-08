@@ -62,6 +62,20 @@ const CASTLE_ARC = { id: 'arc-outskirts-einzbern-castle', source: 'outskirts', t
 const BG_MODEL_POINT: { x: number; y: number } = { x: -250, y: 450 };
 
 const isPhone = (): boolean => test.info().project.name === 'phone';
+/**
+ * PKG B-142 (REPAIRS R-2) re-baseline: the phone boot now stages AT the pin
+ * (the boot-posture zoom, the pin-centered viewport). This spec's aims are
+ * exhaustively scanned against the PRE-PACKET WORLD-FIT boot viewport
+ * (zoom = 0.282... on FX1 — the hit-corridor arithmetic above), so the phone
+ * cells restore exactly that viewport first by tapping the rail's Fit — the
+ * packet's own "explicit full-world ask". Desktop never arms the posture
+ * (the wide gate mirrors D81's 700px breakpoint), so its boot is
+ * byte-unchanged and this is a no-op. Aim math and every assertion are
+ * untouched — the R23 in-box-content law stands throughout.
+ */
+const restoreBootViewport = async (page: Page): Promise<void> => {
+  if (isPhone()) await page.getByTestId('tme-zoom-fit').tap();
+};
 
 const HOOK_ERROR = 'window.__TME_E2E__ missing — dev harness not loaded';
 
@@ -205,6 +219,7 @@ test.describe('F52 tap-target sweep (PKG B-114)', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await expect(page.getByTestId('tme-canvas')).toBeVisible();
+    await restoreBootViewport(page);
     await expect.poll(() => readPosition(page, 'emiya-residence')).not.toBeNull();
   });
 

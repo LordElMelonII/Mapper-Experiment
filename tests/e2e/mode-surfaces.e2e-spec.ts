@@ -86,6 +86,23 @@ const HORSE_ARC_ID = 'arc-vale-gate-high-pasture'; // THE registry-only arc
 
 const isPhone = (): boolean => test.info().project.name === 'phone';
 
+/**
+ * PKG B-142 (REPAIRS R-2) re-baseline: the phone boot now stages AT the pin
+ * (the boot-posture zoom, the pin-centered viewport). This spec's aims are
+ * exhaustively scanned against the PRE-PACKET WORLD-FIT boot viewport
+ * (zoom = 0.282... on FX1 — the whole world in view), so every boot runs the
+ * restore first: tapping the rail's Fit — the packet's own "explicit
+ * full-world ask" (§R2) — brings the pre-packet viewport exactly back, on
+ * both the FX1 boot and the in-cell registry-demo boots (the demo's small
+ * world boots into the over-zoom cap). Desktop never arms the posture (the
+ * wide gate mirrors D81's 700px breakpoint), so its boot is byte-unchanged
+ * and this is a no-op. Aim math and every assertion are untouched — the R23
+ * in-box-content law stands throughout.
+ */
+const restoreBootViewport = async (page: Page): Promise<void> => {
+  if (isPhone()) await page.getByTestId('tme-zoom-fit').tap();
+};
+
 // page.evaluate callbacks are SERIALIZED: the hook lookup is inlined in each
 // one — no module-scope closures cross the wire (interactions.e2e-spec.ts
 // precedent).
@@ -246,6 +263,7 @@ test.describe('map-driven mode surfaces (PKG B-124)', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(FX1_URL);
     await expect(page.getByTestId('tme-canvas')).toBeVisible();
+    await restoreBootViewport(page);
     await expect.poll(() => readRenderedPosition(page, 'emiya-residence')).not.toBeNull();
   });
 
@@ -282,6 +300,7 @@ test.describe('map-driven mode surfaces (PKG B-124)', () => {
   }) => {
     await page.goto(DEMO_URL);
     await expect(page.getByTestId('tme-canvas')).toBeVisible();
+    await restoreBootViewport(page);
     await expect.poll(() => readRenderedPosition(page, VALE_GATE_ID)).not.toBeNull();
     await openSheetOnPhone(page);
     if (!isPhone()) {
@@ -334,6 +353,7 @@ test.describe('map-driven mode surfaces (PKG B-124)', () => {
   }) => {
     await page.goto(DEMO_URL);
     await expect(page.getByTestId('tme-canvas')).toBeVisible();
+    await restoreBootViewport(page);
     await expect.poll(() => readRenderedPosition(page, VALE_GATE_ID)).not.toBeNull();
 
     // A DEFAULT run (overlay walk preference, no explicit mode) to the node
@@ -371,6 +391,7 @@ test.describe('map-driven mode surfaces (PKG B-124)', () => {
 
     await page.goto(DEMO_URL);
     await expect(page.getByTestId('tme-canvas')).toBeVisible();
+    await restoreBootViewport(page);
     await expect.poll(() => readRenderedPosition(page, VALE_GATE_ID)).not.toBeNull();
 
     const edgesBefore = await readEdgeIds(page);
@@ -488,6 +509,7 @@ test.describe('map-driven mode surfaces (PKG B-124)', () => {
   }) => {
     await page.goto(DEMO_URL);
     await expect(page.getByTestId('tme-canvas')).toBeVisible();
+    await restoreBootViewport(page);
     await expect.poll(() => readRenderedPosition(page, VALE_GATE_ID)).not.toBeNull();
 
     // Select the authored registry-only arc in VIEW mode (a clean canvas —

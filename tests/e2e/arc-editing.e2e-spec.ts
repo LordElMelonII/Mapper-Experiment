@@ -118,6 +118,23 @@ const SELECTED_GOLD = 'rgb(255,209,102)'; // edge.tme-edge-selected — '#ffd166
 
 const isPhone = (): boolean => test.info().project.name === 'phone';
 
+/**
+ * PKG B-142 (REPAIRS R-2) re-baseline: the phone boot now stages AT the pin
+ * (the boot-posture zoom, the pin-centered viewport). This spec's aims are
+ * exhaustively scanned against the PRE-PACKET WORLD-FIT boot viewport
+ * (zoom = 0.282... on FX1 — the hit-corridor arithmetic above), so the phone
+ * cells restore exactly that viewport first by tapping the rail's Fit — the
+ * packet's own "explicit full-world ask". Desktop never arms the posture
+ * (the wide gate mirrors D81's 700px breakpoint), so its boot is
+ * byte-unchanged and this is a no-op. The withPhoneChromiumPage twin boots
+ * under the SAME iPhone-13 emulation, so it takes the same restore. Aim
+ * math and every assertion are untouched — the R23 in-box-content law
+ * stands throughout.
+ */
+const restoreBootViewport = async (page: Page): Promise<void> => {
+  if (isPhone()) await page.getByTestId('tme-zoom-fit').tap();
+};
+
 // page.evaluate callbacks are SERIALIZED: the hook lookup is inlined in each
 // one — no module-scope closures cross the wire (interactions.e2e-spec.ts
 // precedent).
@@ -708,6 +725,7 @@ const withPhoneChromiumPage = async (run: (page: Page) => Promise<void>): Promis
   try {
     await page.goto('/');
     await expect(page.getByTestId('tme-canvas')).toBeVisible();
+    await restoreBootViewport(page);
     await expect.poll(() => readRenderedPosition(page, EMIYA_ID)).not.toBeNull();
     await run(page);
   } finally {
@@ -747,6 +765,7 @@ test.describe('arc editing: the M2 sections + measure this arc (PKG B-123)', () 
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await expect(page.getByTestId('tme-canvas')).toBeVisible();
+    await restoreBootViewport(page);
     await expect.poll(() => readRenderedPosition(page, EMIYA_ID)).not.toBeNull();
     await expect.poll(() => readRenderedPosition(page, CASTLE_ID)).not.toBeNull();
   });
