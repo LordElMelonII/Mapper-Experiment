@@ -187,6 +187,20 @@ const readRouteLegArcIds = (page: Page): Promise<string[] | null> =>
   });
 
 /**
+ * B-146 (R6 item 8): the single leg line's MODE word — the second ' · '
+ * segment of `from → to · mode · cost` (the from→to pair is one segment).
+ * DOM text (textContent — CSS-independent by construction; the cell
+ * separately pins that no CSS re-casing exists). Null while the leg line
+ * is absent or mid-rewrite.
+ */
+const legModeWord = async (page: Page): Promise<string | null> => {
+  if ((await page.getByTestId('tme-leg').count()) !== 1) return null;
+  const text = await page.getByTestId('tme-leg').first().textContent();
+  const segments = text?.split(' · ') ?? [];
+  return segments.length === 3 ? (segments[1] as string) : null;
+};
+
+/**
  * Wait two animation frames: panel open/close and the ResizeObserver-driven
  * re-fit run just before the next paint — reads and gestures inside that
  * window would aim at stale coordinates (the settle precedent).
@@ -378,6 +392,70 @@ test.describe('map-driven mode surfaces (PKG B-124)', () => {
     await expect(page.getByTestId('tme-mode-walk')).toHaveAttribute('aria-pressed', 'false');
     await expect(page.getByTestId('tme-total')).toHaveText('300 min');
     await expect.poll(readRouteLegArcIds.bind(null, page)).toEqual([HORSE_ARC_ID]);
+  });
+
+  // B-146 (R6 item 8): the casing unification — chips and legs render the
+  // resolver's word VERBATIM through the ONE app-layer formatter
+  // (graph.modeWord — identity, the R6 lead ruling: authored casing is user
+  // words, C23 verbatim outranks the letter). The retired CSS capitalize
+  // rendered the built-ins as 'Walk' while the legs said 'walk'. The
+  // registry demo is the fixture with a custom-cased mode: 'Horseback'
+  // (registry) beside 'walk' (built-in). The teeth: staging the capitalize
+  // revert makes the text-transform assertion below red.
+  test("registry demo: chips and legs render the resolver's word verbatim — no CSS re-casing (B-146/R6 item 8, C23/D78)", async ({
+    page,
+  }) => {
+    await page.goto(DEMO_URL);
+    await expect(page.getByTestId('tme-canvas')).toBeVisible();
+    await restoreBootViewport(page);
+    await expect.poll(() => readRenderedPosition(page, VALE_GATE_ID)).not.toBeNull();
+
+    // Route FIRST through the walk-only arc (arc-vale-gate-old-mill,
+    // authoredMinutes 30): the desktop panel is closed at the route-free
+    // boot (nothing covers the tap), the phone sheet starts collapsed.
+    await tapPoint(page, await nodeScreenPoint(page, OLD_MILL_ID));
+    await expect.poll(legModeWord.bind(null, page)).toBe('walk');
+
+    // The surface shows with content; the desktop boot may leave it
+    // unsummoned — the rail's Route toggle is the summon (the cell above's
+    // pattern). The phone sheet auto-expanded with the route (B-114).
+    if (!isPhone() && !(await page.getByTestId('tme-route-panel').isVisible())) {
+      await activate(page.getByTestId('tme-route-toggle'));
+    }
+    await expect(page.getByTestId('tme-route-panel')).toBeVisible();
+
+    // The app's seam: the resolver's words for the split pair — the
+    // lowercase built-in and the custom-cased registry word.
+    const rows = await readModeRows(page);
+    const seamWord = new Map(rows.map((row) => [row.id, row.label] as const));
+    expect(seamWord.get('walk')).toBe('walk');
+    expect(seamWord.get('horse')).toBe('Horseback');
+
+    // The chips render those words EXACTLY, and NO CSS re-casing exists:
+    // text-transform none is what makes the DOM text the rendered text
+    // (the retired capitalize rendered 'walk' as 'Walk' — the R6 split).
+    for (const [id, word] of [
+      ['walk', 'walk'],
+      ['horse', 'Horseback'],
+    ] as const) {
+      const chip = page.getByTestId(`tme-mode-${id}`);
+      await expect(chip).toHaveText(word);
+      expect(
+        await chip.evaluate((el) => getComputedStyle(el).textTransform),
+        `tme-mode-${id} carries no text-transform (the capitalize is retired)`,
+      ).toBe('none');
+    }
+
+    // Chip === leg === seam on the walk word (the leg line asserted above).
+    // textContent is raw — the chip template wraps the interpolation in
+    // whitespace, so trim (toHaveText above already normalized it).
+    expect((await page.getByTestId('tme-mode-walk').textContent())?.trim()).toBe(seamWord.get('walk'));
+
+    // Route through the registry-only arc — the leg's word IS the chip's
+    // word and the seam's word: 'Horseback' everywhere, 'walk' everywhere.
+    await tapPoint(page, await nodeScreenPoint(page, HIGH_PASTURE_ID));
+    await expect.poll(legModeWord.bind(null, page)).toBe('Horseback');
+    expect((await page.getByTestId('tme-mode-horse').textContent())?.trim()).toBe('Horseback');
   });
 
   test('registry demo: quick-connect commits the default-allowed set — the opted-out built-in is OUT, the registry mode is IN (D42/D78); console clean (D53)', async ({

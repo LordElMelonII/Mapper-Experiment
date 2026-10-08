@@ -123,7 +123,9 @@
     border: 1px solid rgba(174, 189, 211, 0.4);
     border-radius: 8px;
     background: var(--tme-plate); // opaque — the map underneath is occluded, not bled through
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    // B-146 (R6 item 4, gpt-thin-border-wide-shadow): the 24px-blur elevation
+    // retired — the opaque plate + hairline border ARE the surface (flat
+    // plate, no blur; the head's drag affordance needs no lift).
     overflow: hidden; // the BODY scrolls (the head must stay reachable)
   }
 
@@ -340,10 +342,12 @@
 // double-taps never zoom the chrome (§6.2). The group wraps, so a registry
 // map's longer list grows DOWN, never sideways (D53's no-horizontal-scroll
 // bar). No hover-only affordances: active state is signal-driven, visible.
-// text-transform is presentation only (chrome, D7): the template binds the
-// ONE core resolver's words verbatim — capitalizing them for display keeps
-// the no-registry rendering byte-identical to the retired hardcoded trio
-// ('walk' → 'Walk') without any id-to-word mapping in code.
+// B-146 (R6 item 8): the chips render the resolver's word through the ONE
+// app-layer formatter (graph.modeWord — identity, C23 verbatim; the R6 lead
+// ruling). The CSS text-transform: capitalize is RETIRED — it re-cased the
+// built-ins ('walk' → 'Walk') while the legs said 'walk' (the R6 split);
+// authored casing ('Horseback') was never transformed and stays
+// byte-identical. Chips and legs now agree with zero transformation.
 .tme-modes {
   display: flex;
   flex-wrap: wrap;
@@ -365,7 +369,6 @@
     sans-serif;
   cursor: pointer;
   touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
-  text-transform: capitalize; // B-124: presentation of the resolver's word — see the block comment
 }
 
 .tme-mode.tme-active {

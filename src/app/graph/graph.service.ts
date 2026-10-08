@@ -356,6 +356,7 @@ import type {
 import { Injectable, OnDestroy, computed, effect, inject, linkedSignal, signal } from '@angular/core';
 import { MAP_LIBRARY } from './map-library';
 import { CANVAS_TOKENS } from './canvas-tokens';
+import { modeWord } from './mode-word';
 import type {
   ChatMapOverlay,
   LayerBackground,
@@ -4734,6 +4735,18 @@ export class GraphService implements OnDestroy {
     if (authored !== undefined) return authored;
     return this.overlay?.userNodes.find((node) => node.id === id)?.label ?? id;
   }
+
+  /**
+   * B-146 (R6 item 8): the ONE mode-word display formatter — the pure
+   * function from ./mode-word, exposed for templates beside labelOf (the
+   * display-words family). IDENTITY on the core resolver's word: the R6
+   * lead ruling — authored casing is user words (C23 verbatim outranks the
+   * letter; a blanket transform would re-word 'Horseback'), so the
+   * formatter renders the built-ins' plain lowercase ('walk', the legs'
+   * voice) and authored words byte-for-byte. The chips' CSS capitalize is
+   * retired with it — chips and legs agree with zero transformation.
+   */
+  readonly modeWord = modeWord;
 
   /**
    * Charter lifecycle: the host's ResizeObserver funnels container resizes

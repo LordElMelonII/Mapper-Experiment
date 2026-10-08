@@ -8,8 +8,19 @@
 
 :host {
   display: block;
+  // B-146 (R6 item 5, cramped-padding): the root's children breathe off the
+  // ground edge — a 0.5rem bottom inset. border-box folds the inset INSIDE
+  // the 100dvh box, so the host page never gains a scrollbar (D53).
+  box-sizing: border-box;
   height: 100dvh;
+  padding-bottom: 0.5rem;
   background: var(--tme-ground);
+  // Deliberate, cited stage-size change (the R23 discipline): the stage is
+  // 8px shorter at BOTH breakpoints; the D91 resize classes absorb it (the
+  // ResizeObserver's environmental/boot refits re-run against the live
+  // box), the phone boot posture is cap-clamped (B-142) and the D81 phone
+  // fit is width-limited (R23) — zoom unmoved; every geometry cell is
+  // live-read/relational, none pins an absolute stage height.
 }
 
 .tme-harness {

@@ -70,7 +70,9 @@
     border: 1px solid rgba(174, 189, 211, 0.4);
     border-radius: 8px;
     background: var(--tme-plate); // opaque — the map underneath is occluded, not bled through
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    // B-146 (R6 item 4, gpt-thin-border-wide-shadow): the 24px-blur elevation
+    // retired — the opaque plate + hairline border ARE the surface (flat
+    // plate, no blur; the head's drag affordance needs no lift).
     overflow: hidden; // the BODY scrolls (the head must stay reachable)
   }
 
@@ -200,6 +202,16 @@
     -apple-system,
     sans-serif;
   touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+// B-146 (R6 item 2, low-contrast): the UA's default placeholder grey
+// (~#757575) measures 3.9:1 on the plate — under the 4.5:1 floor. The DOM
+// muted tier clears it (≈6.9:1). Every placeholder-bearing input in this
+// panel rides these two classes ("min", "authored straight-line length",
+// "authored length of this arc", the unit hint). No new hex — token only.
+.tme-reason-input::placeholder,
+.tme-mode-minutes::placeholder {
+  color: var(--tme-text-muted);
 }
 
 .tme-actions {

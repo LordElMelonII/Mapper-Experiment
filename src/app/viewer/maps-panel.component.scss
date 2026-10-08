@@ -132,7 +132,9 @@
     border: 1px solid rgba(174, 189, 211, 0.4);
     border-radius: 8px;
     background: var(--tme-plate); // opaque — the map underneath is occluded, not bled through
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    // B-146 (R6 item 4, gpt-thin-border-wide-shadow): the 24px-blur elevation
+    // retired — the opaque plate + hairline border ARE the surface (flat
+    // plate, no blur).
     overflow: hidden; // the BODY scrolls (the head must stay reachable)
   }
 }
@@ -262,10 +264,38 @@
   border-top: 1px solid rgba(174, 189, 211, 0.2);
 }
 
-// The .json file input: full-width, the shared input chrome — its box IS
-// the >= 44px tap target (F52; the sweep measures the input itself).
+// B-146 (R6 item 7): the file import as a real BUTTON affordance — the
+// layer manager's Upload precedent: the label carries .tme-button chrome
+// and IS the >= 44px tap target (F52; an inline label ignores min-height,
+// so flex it — .tme-button supplies the size), the wrapped input below is
+// visually hidden but test-reachable.
+.tme-import-button {
+  display: inline-flex;
+  align-items: center;
+  // The containing block for the overlaying input below — without this the
+  // input's absolute box anchors to the floater/sheet host and a full-panel
+  // opacity-0 input would eat every click.
+  position: relative;
+  cursor: pointer;
+}
+
+// The wrapped file input: visually hidden but focusable/reachable (the
+// label is the affordance; tests address the input directly — the layer
+// manager's .tme-upload-input twin). One DELIBERATE delta from the twin:
+// the input OVERLAYS ITS LABEL EXACTLY (inset 0, opacity 0) instead of the
+// 1px clip — maps-library's panel-local F52 sweep (B-137) measures every
+// rendered input's BOX, and the input's box is then the label's own >= 44px
+// affordance (F52), not a 1px speck. Same native picker, same wiring.
 .tme-import-file {
+  position: absolute;
+  inset: 0;
   width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  opacity: 0;
+  cursor: pointer;
 }
 
 // The lookup-table paste: room to see (and edit after a refusal) what was

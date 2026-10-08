@@ -41,11 +41,12 @@
     <p class="tme-endpoints" data-testid="tme-arc-endpoints">{{ info.sourceLabel }} ↔ {{ info.targetLabel }}</p>
 
     <!-- Allowed modes in authored key order — the RESOLVED authored words
-         (the ONE core resolver's labels via modeWord; the id stays the
-         testid key). On a no-registry map the id IS the word (B-124). -->
+         (the ONE core resolver's labels via modeLabelOf, rendered through
+         the service's modeWord formatter — B-146/R6 item 8; the id stays
+         the testid key). On a no-registry map the id IS the word (B-124). -->
     <p class="tme-modes" data-testid="tme-arc-modes">
       @for (mode of info.modes; track mode) {
-        <span class="tme-mode-word" [attr.data-testid]="'tme-arc-mode-' + mode">{{ modeWord(mode) }}</span>
+        <span class="tme-mode-word" [attr.data-testid]="'tme-arc-mode-' + mode">{{ graph.modeWord(modeLabelOf(mode)) }}</span>
       }
     </p>
 
@@ -146,14 +147,14 @@
                 class="tme-mode-name"
                 [attr.for]="'tme-arc-allowed-' + row.id"
                 [attr.data-testid]="'tme-arc-mode-row-' + row.id"
-              >{{ row.label }}</label>
+                >{{ graph.modeWord(row.label) }}</label>
               <input
                 class="tme-mode-minutes"
                 type="text"
                 inputmode="decimal"
                 autocomplete="off"
                 placeholder="min"
-                aria-label="Authored minutes for {{ row.label }}"
+                aria-label="Authored minutes for {{ graph.modeWord(row.label) }}"
                 [attr.data-testid]="'tme-arc-minutes-' + row.id"
                 [value]="row.minutes"
                 (input)="onMinutesInput(row, $event)"

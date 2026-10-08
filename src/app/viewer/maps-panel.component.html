@@ -216,17 +216,30 @@
            a labelled textarea; the Import is disabled while the trimmed
            paste is empty, the canCreate pattern C30). EVERY import lands
            under a fresh engine id (C5, the re-id ruling) and NEVER
-           auto-loads (D40's explicit pick — the user opens it). -->
+           auto-loads (D40's explicit pick — the user opens it).
+           B-146 (R6 item 7): the file control is a real BUTTON affordance —
+           the label-wraps-hidden-input pattern (the layer manager's Upload
+           precedent): the LABEL carries the .tme-button chrome and IS the
+           >= 44px tap target, the native input stays visually hidden with
+           its testid/change wiring byte-identical (the native picker opens
+           by label activation — no JS changes). The filename never
+           persisted even before (importFile resets input.value after every
+           attempt — control hygiene); the import's outcomes surface as
+           they already did: the new library row on success, the refusal
+           words on failure. -->
       <div class="tme-import-section" data-testid="tme-maps-import">
         <label class="tme-field-label" for="tme-maps-import-file">Import a map file</label>
-        <input
-          id="tme-maps-import-file"
-          class="tme-input tme-import-file"
-          type="file"
-          accept=".json,application/json"
-          data-testid="tme-maps-import-file"
-          (change)="importFile($event)"
-        />
+        <label class="tme-button tme-import-button" data-testid="tme-maps-import-button">
+          Choose file…
+          <input
+            id="tme-maps-import-file"
+            class="tme-import-file"
+            type="file"
+            accept=".json,application/json"
+            data-testid="tme-maps-import-file"
+            (change)="importFile($event)"
+          />
+        </label>
 
         <label class="tme-field-label" for="tme-maps-paste-input">Paste your lookup table</label>
         <textarea

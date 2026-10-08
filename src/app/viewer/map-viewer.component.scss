@@ -47,6 +47,14 @@
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
+  // B-146 (R6 item 6, clipped-overflow-container) AUDIT — the clip stands
+  // (the D53 law: never horizontal scroll at phone width) and no legitimate
+  // child is cut: the header/breadcrumb/chip/hint/calibrate band are
+  // top-anchored INSIDE the box, the sheet stack is bottom-anchored with
+  // its own 70% cap and per-sheet scroll, the R-3 node-menu plate CLAMPS
+  // INTO the stage by design (z-17, fully visible), and the wide floaters
+  // are position:fixed — the containing block is the viewport, so this
+  // overflow never clips them. No change proposed.
   overflow: hidden; // never horizontal scroll at phone width (D53)
   background: var(--tme-ground);
 }
@@ -241,7 +249,8 @@
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.9);
   color: var(--tme-text);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  // B-146 (R6 item 4, gpt-thin-border-wide-shadow): the 16px-blur elevation
+  // retired — the hairline border IS the edge (a flat header pill, no blur).
 }
 
 // The C30 save refusal — user-visibly inside the pill (its own wrapped

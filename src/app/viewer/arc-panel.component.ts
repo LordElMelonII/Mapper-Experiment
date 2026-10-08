@@ -328,15 +328,19 @@ export class ArcPanelComponent {
   }
 
   /**
-   * B-124 (D78/C23): the read-only allowed-mode chips' display word — the
+   * B-124 (D78/C23): the allowed-mode chips' word LOOKUP — the
    * core-resolved label via the service's `modeRows` (the ONE resolver's
    * words; the UI looks a word up, it never maps an id itself, R1 spirit
    * for authored words). A registry relabel renders ('Carriage'); on a
    * no-registry map the id IS the word, so the rendering is byte-identical
    * to the pre-B-124 trio. Unknown id ⇒ the id (degrade, never throw —
    * C32 spirit).
+   * B-146 (R6 item 8): renamed from `modeWord` — this resolves id → word;
+   * DISPLAY is the service's ONE formatter (`graph.modeWord`, identity on
+   * the resolver's word per the R6 lead ruling), which the template applies
+   * to this lookup's result.
    */
-  protected modeWord(id: TravelMode): string {
+  protected modeLabelOf(id: TravelMode): string {
     const row = this.graph.modeRows().find((candidate) => candidate.id === id);
     return row?.label ?? id;
   }

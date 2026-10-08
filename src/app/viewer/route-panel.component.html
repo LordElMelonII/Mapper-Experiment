@@ -120,7 +120,7 @@
                puts the unit on the total line, once). -->
           <ol class="tme-legs" data-testid="tme-legs">
             @for (leg of route.legs; track leg.arcId) {
-              <li data-testid="tme-leg">{{ graph.labelOf(leg.from) }} → {{ graph.labelOf(leg.to) }} · {{ leg.modeLabel }} · {{ leg.cost }}</li>
+              <li data-testid="tme-leg">{{ graph.labelOf(leg.from) }} → {{ graph.labelOf(leg.to) }} · {{ graph.modeWord(leg.modeLabel) }} · {{ leg.cost }}</li>
             }
           </ol>
           <p class="tme-total" data-testid="tme-total">{{ route.total }} {{ route.unit }}</p>
@@ -163,7 +163,7 @@
           [attr.data-testid]="'tme-mode-' + mode.id"
           (click)="setMode(mode.id)"
         >
-          {{ mode.label }}
+          {{ graph.modeWord(mode.label) }}
         </button>
       }
     </div>

@@ -387,7 +387,9 @@
   border: 1px solid rgba(174, 189, 211, 0.4);
   border-radius: 8px;
   background: var(--tme-plate); // opaque — the map underneath is occluded, not bled through
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  // B-146 (R6 item 4, gpt-thin-border-wide-shadow): the 24px-blur elevation
+  // retired — the opaque plate + hairline border ARE the surface (flat
+  // plate, no blur; the header's drag affordance needs no lift).
 }
 
 // The header is the floating panel's drag handle: pointer events unify
@@ -440,7 +442,9 @@
     border: 1px solid rgba(174, 189, 211, 0.4);
     border-radius: 8px;
     background: var(--tme-plate);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    // B-146 (R6 item 4, gpt-thin-border-wide-shadow): the 24px-blur elevation
+    // retired — the opaque plate + hairline border ARE the surface (flat
+    // plate, no blur; the header's drag affordance needs no lift).
   }
 
   // The avoid-the-selection default anchor (placement-only, never a pan):

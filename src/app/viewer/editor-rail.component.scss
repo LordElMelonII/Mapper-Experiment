@@ -289,6 +289,14 @@
   min-width: 44px; // F52: >= 44px tap target, both dims — the sweep asserts it
   min-height: 44px;
   margin: 0;
+  // B-146 (R6 item 1 — the one unthemed control): color-scheme hands the UA
+  // the DARK form-control palette (the white pill/Arial in the pitch-dark
+  // rail is gone at both breakpoints), accent-color re-homes the
+  // track/thumb to the gold token. Still the NATIVE control — no
+  // appearance overrides, the value↔position mapping stays
+  // browser-intrinsic; presentation only, the value/behavior are untouched.
+  color-scheme: dark;
+  accent-color: var(--tme-accent-gold);
   // §6.2: manipulation kills double-tap zoom, but a slider's thumb drag
   // must never be re-interpreted as a pan of the wrapping rail — none is
   // the one native-slider-reliable value (the canvas host's precedent).

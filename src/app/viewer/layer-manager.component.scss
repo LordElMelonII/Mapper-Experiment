@@ -160,7 +160,14 @@
     border: 1px solid rgba(174, 189, 211, 0.4);
     border-radius: 8px;
     background: var(--tme-plate); // opaque — the map underneath is occluded, not bled through
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    // B-146 (R6 item 4, gpt-thin-border-wide-shadow): the 24px-blur elevation
+    // retired — the opaque plate + hairline border ARE the surface (flat
+    // plate, no blur; the head's drag affordance needs no lift).
+    // B-146 (R6 item 6, clipped-overflow-container) AUDIT — the open state
+    // already has its room: the BODY is the scroll member (overflow-y:
+    // auto below), so the head stays reachable at every fill level, and the
+    // host clip's only positioned child is the sr-only upload input (clipped
+    // BY DESIGN — the label is the affordance). No legitimate child is cut.
     overflow: hidden; // the BODY scrolls (the head must stay reachable)
   }
 
@@ -221,6 +228,14 @@
     -apple-system,
     sans-serif;
   touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+// B-146 (R6 item 2, low-contrast): the UA's default placeholder grey
+// (~#757575) measures 3.9:1 on the plate — under the 4.5:1 floor. The DOM
+// muted tier clears it (≈6.9:1 on #14171c): authored hint words (the
+// background row's "Image URL") stay readable. No new hex — the token only.
+.tme-input::placeholder {
+  color: var(--tme-text-muted);
 }
 
 // The create/rename/confirm rows: the input flexes, the buttons keep their
