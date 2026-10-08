@@ -82,7 +82,7 @@ F-numbers are stable feature IDs. The roadmap and test plan cite them.
 
 ### F. Presence & travel
 
-- **F27 Pin on leaves** — the pin sits on concrete places; districts never hold it. A precise unnamed spot means the user creates a node for it (D37).
+- **F27 Pin on leaves** — the pin sits on concrete places; districts never hold it. A precise unnamed spot means the user creates a node for it (D37). The app layer sets it: long-press (touch) or context-click a node opens the node menu — "Set as party location", and "Clear party location" on the pinned node; a refused set renders the core's own words, never a re-wording (D10 — explicit, per-node, user-initiated; no drag, no auto-set).
 - **F28 Status note** — freeform presence: "on the road to Big Bridge, ~2 km out" (D17).
 - **F29 Sticky state** — the position survives swipes, deletions, and regenerations (D12).
 - **F30 Silent moves + announce toggle** — moving the pin is silent by default; an optional bracketed travel line can be emitted to chat (D38).

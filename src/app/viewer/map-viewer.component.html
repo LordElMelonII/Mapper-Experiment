@@ -133,6 +133,13 @@
       </button>
     }
 
+    <!-- B-143 (REPAIRS.md §R3): the pin-setting node menu — the surface of the
+         service's taphold/cxttap binding. One stage overlay among the stage's
+         other overlays; the component owns its clamp and its 44px arms, and
+         the host is a full-stage passthrough so no canvas gesture is ever
+         blocked by the closed surface. -->
+    <tme-node-menu />
+
     <!-- B-122 (F17/C3 + C23): the draw-arc refusal banner — why the last
          Arc-tool tap refused (the cross-layer fence), plain words, rendered
          only while the Arc tool is active and a refusal stands. A status

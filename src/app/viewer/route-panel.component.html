@@ -60,8 +60,19 @@
 
     @if (graph.selection(); as sel) {
       <!-- Target line: the pin's snapshot label → the tapped node's authored
-           label (core/authored strings, verbatim). -->
-      <p class="tme-target" data-testid="tme-target">{{ graph.snapshot()?.location ?? '' }} → {{ sel.label }}</p>
+           label (core/authored strings, verbatim). B-143 (REPAIRS.md §R3):
+           with NO pin set the empty half of the sentence is not rendered —
+           the dangling "→ New place" arrow degrades to §R3's full sentence
+           naming the missing thing and the action ("Set where the party is
+           to route from here."), killing the ghost arrow at the exact
+           moment it would appear (R4 names the pattern; the sentence is
+           R3's). Same slot: the sentence owns its testid, `tme-target`
+           stays the arrow line's. -->
+      @if (graph.snapshot()?.location) {
+        <p class="tme-target" data-testid="tme-target">{{ graph.snapshot()?.location ?? '' }} → {{ sel.label }}</p>
+      } @else {
+        <p class="tme-empty-origin" data-testid="tme-empty-origin" role="status">Set where the party is to route from here.</p>
+      }
 
       @if (waypoint()) {
         <!-- B-110 (ruling 1): the Waypoint management section, ABOVE the route

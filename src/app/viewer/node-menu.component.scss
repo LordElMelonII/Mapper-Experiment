@@ -1,0 +1,99 @@
+// PKG B-143 (docs/ui-restyle/REPAIRS.md §R3) — component-scoped chrome only
+// (D7: zero global leakage); the plate mirrors the stage's other surface
+// chrome (the calibrate band / hint pill family) and consumes the R0 token
+// catalog. The host is a full-stage INERT overlay standing over the canvas:
+// pointer-events none at the host passes every canvas gesture through (the
+// menu never blocks a pan or drag), and only the parked plate itself takes
+// input — a tap outside it lands on the canvas and dismisses through the
+// service's existing background-tap path. z-index 17: above the sheet stack
+// (15) and the calibrate band (16), below the wide floaters (20) — a floater
+// a user drags over a parked menu wins (the menu is presentation, the
+// panels are work surfaces).
+
+:host {
+  display: block;
+  position: absolute;
+  inset: 0;
+  // B-143r: the stage's overlay bands, held for real — the comment above
+  // promised this exact grade (sheets stack 15, calibrate band 16, wide
+  // floaters 20) but never declared it, so the DOM-order late siblings
+  // (.tme-sheets, line 262 of map-viewer.component.html) painted OVER the
+  // parked plate and its 44px arms on the narrow regime (measured: the
+  // open route sheet's tme-sheet-rail body intercepted the arm taps and
+  // the places' long-presses). z-index 17: above 15/16, below the
+  // floaters' 20 — a floater stays the user's work surface.
+  z-index: 17;
+  pointer-events: none;
+}
+
+.tme-node-menu {
+  position: absolute;
+  pointer-events: auto;
+  // The clamp geometry contract (the component's MENU_MAX_W/MENU_MAX_H):
+  // real content wraps INSIDE the width cap and stays under the height cap,
+  // so the clamped left/top can never push the plate off the stage.
+  max-width: 208px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 0.375rem;
+  border: 1px solid rgba(174, 189, 211, 0.4);
+  border-radius: 8px; // --tme-radius-sm (R0: cataloged, unconsumed rule holds)
+  background: rgba(20, 23, 28, 0.9);
+  box-shadow: none;
+}
+
+.tme-node-menu-label {
+  margin: 0;
+  padding: 0.25rem 0.5rem;
+  overflow-wrap: anywhere; // an authored name never forces horizontal scroll (D53)
+  color: var(--tme-text-secondary);
+  font:
+    600 0.8125rem/1.3 system-ui,
+    -apple-system,
+    sans-serif;
+}
+
+// The two arms — one >= 44px tap target each (F52), touch-alone (D53),
+// machine word-free (the wording is UI chrome). Full-width rows on the plate.
+.tme-node-menu-item {
+  display: block;
+  width: 100%;
+  min-height: 44px; // --tme-tap-min (F52)
+  padding: 0 0.5rem;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--tme-text);
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+  overflow-wrap: anywhere;
+}
+
+// Pointer-only brightening, no layout shift (R8's idiom; touch never needs
+// it — the arms are full-plate-width rows).
+@media (hover: hover) {
+  .tme-node-menu-item:hover {
+    background: rgba(174, 189, 211, 0.12);
+  }
+}
+
+// B-143 (C30/C32): the refused set's field-precise words — the core's own,
+// rendered as the menu's status line while the surface stands. A status, not
+// a control: no pointer-events work needed (it is inside the plate).
+.tme-node-menu-refusal {
+  margin: 0.125rem 0 0;
+  padding: 0.375rem 0.5rem 0.25rem;
+  border-top: 1px solid rgba(174, 189, 211, 0.25);
+  color: var(--tme-accent-warn);
+  font:
+    500 0.8125rem/1.35 system-ui,
+    -apple-system,
+    sans-serif;
+  overflow-wrap: anywhere;
+}

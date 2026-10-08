@@ -217,6 +217,16 @@
   font-weight: 600;
 }
 
+// B-143 (REPAIRS.md §R3/R4): the empty-origin sentence — the no-pin state
+// of the target slot replaces the dangling "→ New place" arrow with the
+// full sentence naming the missing thing and the action. The hint's quiet
+// tier (a status, not a priced result).
+.tme-empty-origin {
+  margin: 0 0 0.5rem;
+  color: var(--tme-text-secondary);
+  font-weight: 600;
+}
+
 .tme-state {
   margin: 0 0 0.75rem;
   color: var(--tme-text-secondary);

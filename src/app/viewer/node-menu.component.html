@@ -1,0 +1,53 @@
+<!-- src/app/viewer/node-menu.component.html — PKG B-143 (docs/ui-restyle/
+     REPAIRS.md §R3): the pin-setting node menu — the app's FIRST
+     setCurrentLocation caller. Opened by the service's `taphold`+`cxttap`
+     canvas binding (long-press touch / context-click pointer), rendered
+     here while the `nodeMenu` signal stands: the node's authored label
+     (C23 — read-only context, never a machine id), the Set as party
+     location arm (`facade.setCurrentLocation(nodeId)` through the
+     service's R2 command path), and the Clear party location arm
+     (`setCurrentLocation(null)`) ONLY while this node IS the pin (a live
+     signal read — R3's unidirectional flow, never a cached copy). A
+     refused set renders the core's field-precise words as the
+     menu's status line (C30/C32 — never re-worded, role=alert) and the pin
+     stays where it was; a successful set/clear consumes the menu.
+     D53/F52: both arms are >= 44px tap targets, touch-alone, no hover-only
+     affordance; the surface is the same menu at both breakpoints and in
+     both modes (view + editor). No drag-the-pin, no auto-set ever (D10). -->
+@if (graph.nodeMenu(); as menu) {
+  <div
+    class="tme-node-menu"
+    data-testid="tme-node-menu"
+    role="menu"
+    aria-label="Node actions"
+    [style.left.px]="pos().x"
+    [style.top.px]="pos().y"
+  >
+    <p class="tme-node-menu-label" data-testid="tme-node-menu-label">{{ menu.label }}</p>
+    <button
+      type="button"
+      class="tme-node-menu-item"
+      data-testid="tme-node-menu-set"
+      role="menuitem"
+      (click)="setLocation(menu.nodeId)"
+    >
+      Set as party location
+    </button>
+    @if (graph.isPartyLocation(menu.nodeId)) {
+      <button
+        type="button"
+        class="tme-node-menu-item"
+        data-testid="tme-node-menu-clear"
+        role="menuitem"
+        (click)="clearLocation(menu.nodeId)"
+      >
+        Clear party location
+      </button>
+    }
+    @if (menu.refusal; as refusal) {
+      <p class="tme-node-menu-refusal" data-testid="tme-node-menu-refusal" role="alert">
+        {{ refusal }}
+      </p>
+    }
+  </div>
+}

@@ -858,6 +858,26 @@ const CALIBRATE_HINT =
 const NODE_BLOCK_BADGE_OFFSET = 40;
 
 /**
+ * B-143 (REPAIRS.md §R3): the core's caught-refusal words, with the console
+ * discipline's ONE `[TravelMapper] ` prefix stripped — the message words are
+ * for PEOPLE (they render user-visibly in the node menu's status line); the
+ * machine prefix is console chatter only. Words are rendered verbatim, never
+ * re-worded (C30/C32); a message with no prefix passes through untouched
+ * (one string edit, nothing clever).
+ */
+const MACHINE_LOG_PREFIX = '[TravelMapper] ';
+
+const refusalWords = (message: string): string =>
+  message.startsWith(MACHINE_LOG_PREFIX) ? message.slice(MACHINE_LOG_PREFIX.length) : message;
+
+/**
+ * B-143 (C32): the node menu's refuse arm for a caught NON-Error throw — a
+ * generic in-menu note, never an uncaught exception on a user path and never
+ * an invented machine string.
+ */
+const GENERIC_PIN_NOTE = 'That location could not be set.';
+
+/**
  * B-117: one field-precise C30 refusal issue, the app's copy of the core's
  * ValidationIssue (path + message rendered verbatim by the property panel —
  * user-visibly, never console-only).
@@ -870,6 +890,24 @@ export interface NodeEditIssue {
 /** B-117: a refused editor command — the collected field-precise report (C30). */
 export interface NodeEditRefusal {
   readonly issues: readonly NodeEditIssue[];
+}
+
+/**
+ * B-143 (REPAIRS.md §R3, D53): the node menu's viewer-chrome state — the map
+ * node it was opened for, its authored label (C23 — the user's own string),
+ * and the CANVAS-relative rendered position captured at open. The menu is
+ * PARKED (the documented ruling): a panning map does not chase it; the next
+ * tap on another node / an edge / the background dismisses it. The `refusal`
+ * words are the caught facade error's own words minus the machine prefix —
+ * rendered as the menu's status line, the pin unmoved (C30
+ * reject-before-mutate). The surface is the node-menu component's only read.
+ */
+export interface NodeMenuState {
+  readonly nodeId: string;
+  readonly label: string;
+  readonly x: number;
+  readonly y: number;
+  readonly refusal: string | null;
 }
 
 /**
@@ -1595,11 +1633,31 @@ export class GraphService implements OnDestroy {
   /**
    * B-105 (ruling 6): the selection is the pin itself — the panel's
    * current-location state (label only, no route numbers).
+   * B-143 (REPAIRS.md §R3): the pin MOVES now (the node menu's set/clear —
+   * the M2 assumption that the pin is static is retired). The live
+   * `overlay.currentLocationId` read is not a signal dependency, so reads
+   * alone would cache; `graphRevision` joins as the discrete recompute
+   * trigger (the route computed's own dependency for the same reason — a
+   * set/clear bumps it once through afterGraphMutation).
    */
   readonly pinSelected = computed<boolean>(() => {
+    void this.graphRevision(); // B-143: a menu set/clear re-reads the live pin
     const sel = this.selection();
     return sel !== null && (this.overlay?.currentLocationId ?? null) === sel.id;
   });
+
+  /**
+   * B-143 (REPAIRS.md §R3): the long-press / context-click node menu's
+   * viewer-chrome state (R3 — a template-bound signal; nothing else binds
+   * DOM from it). Opened by the constructor's `taphold`+`cxttap` binding,
+   * closed by any tap elsewhere, any gate-signal change, a map
+   * load/unload, or the menu's own Set/Clear commands (the two mutation
+   * paths below ride `facade.setCurrentLocation`, R2 — the app adds no
+   * further write path to the pin). null = nothing open. The menu is
+   * PARKED at its captured rendered position (the open gesture's point, not
+   * re-anchored during pans — user pan/zoom while parked operate normally).
+   */
+  readonly nodeMenu = signal<NodeMenuState | null>(null);
 
   // D3: created ONCE, headless — mount() attaches a DOM host later; unmount()
   // returns to headless. Computation works with the UI closed. Verified
@@ -1648,6 +1706,18 @@ export class GraphService implements OnDestroy {
       // the sanctioned path. The selector guarantees a node target
       // (EventObject.target is typed any).
       const node = event.target as NodeSingular;
+      // B-143 (REPAIRS.md §R3): the node-menu dismissal hook — a tap on a
+      // DIFFERENT node closes the parked menu (any tap elsewhere). A tap on
+      // the menu's OWN node is exempt, deliberately: verified against the
+      // installed runtime, cytoscape fires `taphold` mid-hold AND a release
+      // `tap` on the very element that was held — that release-tap is the
+      // long-press finishing itself, not a dismissal gesture, so exempting
+      // it is what lets the touch menu survive its own open. The menu can
+      // only be open when no gate below is active (the dismissal effect),
+      // and this hook writes nothing but the menu signal — every branch
+      // below keeps its pre-packet semantics byte-identical.
+      const menu = this.nodeMenu();
+      if (menu !== null && menu.nodeId !== node.id()) this.closeNodeMenu();
       // B-135 (D93): calibrate owns EVERY canvas gesture while it is on — a
       // tap selects nothing and places nothing (the tap-vs-drag discipline;
       // the drag handlers below own movement). The gate sits above every
@@ -1721,6 +1791,10 @@ export class GraphService implements OnDestroy {
       this.selection.set({ id: node.id(), label: String(node.data('label') ?? '') });
     });
     this.cy.on('tap', 'edge', (event) => {
+      // B-143 (REPAIRS.md §R3): an edge tap is a tap elsewhere — a parked
+      // menu closes with it (the :1646 hook's rule; the signal write is a
+      // no-op when nothing is open). The arms below are untouched.
+      this.closeNodeMenu();
       // B-135 (D93): calibrate owns the gesture — no selection (see the node gate).
       if (this.calibrateMode()) return;
       // B-118: while connecting an arc tap is neither a pick nor a selection —
@@ -1749,6 +1823,10 @@ export class GraphService implements OnDestroy {
       // gesture, two effects, no hidden modes) and places NOTHING: view mode
       // is purely navigational (D76).
       if (event.target === this.cy) {
+        // B-143 (REPAIRS.md §R3): the background tap — the packet's named
+        // dismissal path — closes the parked menu first (a no-op write when
+        // nothing is open). The branches below are byte-identical.
+        this.closeNodeMenu();
         // B-135 (D93): calibrate owns the gesture — a tap places nothing and
         // clears nothing (see the node gate).
         if (this.calibrateMode()) return;
@@ -1772,6 +1850,44 @@ export class GraphService implements OnDestroy {
         this.selection.set(null);
         this.edgeSelection.set(null);
       }
+    });
+    // B-143 (REPAIRS.md §R3): the node-menu OPEN gesture — long-press (touch)
+    // or context-click (pointer). ONE handler bound ONCE (the binding-
+    // lifetime doctrine above) to the verified event union: 'taphold' and
+    // 'cxttap' are both in the installed declarations (@types/cytoscape
+    // 3.21.9 index.d.ts:5291/5297), and the installed runtime emits them
+    // through its own machinery — mouse: the context press (`cxttap` at
+    // release, which===3) AND a held non-dragging press (`taphold` fires
+    // on the hold timer); touch: a held, un-moved single finger (`taphold`;
+    // the release `tap` that fires afterwards on the same element is the
+    // :1646 hook's same-node exempt case — the long-press's own release).
+    // cytoscape's mouse handler also fires `taphold` for a held RIGHT
+    // press before `cxttap` — reopening overwrites the signal with the
+    // same state (idempotent; no double menu). The unified binding is the
+    // D53 discipline: mouse and touch share one code path, no device
+    // sniffing (F52).
+    //
+    // Mode gates above every open — the :1646 doctrine's order, adapted:
+    // calibrate owns EVERY canvas gesture while it is on (B-135/D93);
+    // connect mode's picks are arc ENDPOINTS, never menus (F46: opens that
+    // orphan a mode mid-pick); with the draw-arc tool active a node
+    // long-press is the same pick class (the tap handler's boundary ruling,
+    // B-122). Badges are pseudo-nodes — the cross-layer/portal gestures'
+    // whole surface, with no authored location of their own (a Set on the
+    // arc id would be meaningless — the tap handler skips them the same
+    // way). Compound parents OPEN deliberately: the facade's isPinEligible
+    // refuses containers with its own field-precise words (C1/F27/D58),
+    // rendered in the menu — the refusal is the affordance for the house
+    // rule. View AND editor modes both open (presence is runtime state,
+    // not authoring — the R-3 brief), nothing else (badges sit below the
+    // gates by the :1646 handler's own order).
+    this.cy.on('taphold cxttap', 'node', (event) => {
+      const node = event.target as NodeSingular;
+      if (this.calibrateMode()) return;
+      if (this.connectMode()) return;
+      if (this.editorMode() && this.editorTool() === 'arc') return;
+      if (node.hasClass('tme-badge')) return;
+      this.openNodeMenu(node);
     });
     this.cy.on('free', 'node', (event) => {
       // Nodes stay grabbable per their element definitions with ZERO code of
@@ -1911,6 +2027,24 @@ export class GraphService implements OnDestroy {
         this.exitCalibrate(false);
       }
     });
+
+    // B-143 (REPAIRS.md §R3): the node menu's mode/tool dismissal guard —
+    // the connectMode exit-guard's idiom. ANY change of a gate signal closes
+    // a parked menu: every gate above the open gesture means the surface can
+    // never outlive the mode it was granted in, and an editor/calibrate/
+    // connect exit must not leave a floating menu whose node may never
+    // re-appear. The reads are discrete-write signals only (D2 — the effect
+    // runs per discrete gesture); the close itself is a signal write that
+    // only notifies when something was open (null → null writes nothing, the
+    // default equality), so the effect re-runs to a stable stop without a
+    // looping chain.
+    effect(() => {
+      void this.editorMode();
+      void this.editorTool();
+      void this.calibrateMode();
+      void this.connectMode();
+      this.closeNodeMenu();
+    });
   }
 
   ngOnDestroy(): void {
@@ -1934,6 +2068,7 @@ export class GraphService implements OnDestroy {
     this.travelMode.set(overlay.travelMode);
     this.selection.set(null);
     this.edgeSelection.set(null);
+    this.closeNodeMenu(); // B-143: a parked menu's node belongs to the map just left (the packet's named reload dismissal)
     this.clearDrawPick(); // B-122: a pending pick is the same class of stale state — cleared with the selections
     this.layerManagerOpen.set(false); // B-126: a fresh map starts unmanaged — the sheet closes with the selections
     this.mapsPanelOpen.set(false); // B-137: a fresh map closes the picker — the map is the point (D40)
@@ -2160,6 +2295,7 @@ export class GraphService implements OnDestroy {
     this.travelMode.set('walk');
     this.selection.set(null);
     this.edgeSelection.set(null);
+    this.closeNodeMenu(); // B-143: no map, no node to menu over (the packet's named reload dismissal)
     this.clearDrawPick();
     this.exitEditor(); // mapless has nothing to edit — the honest reset
     this.unsavedIds.clear();
@@ -2644,6 +2780,118 @@ export class GraphService implements OnDestroy {
    */
   nodeBlockReason(nodeId: string): string | null {
     return this.overlay?.nodeBlocked[nodeId] ?? null;
+  }
+
+  // --- B-143 (REPAIRS.md §R3): the pin-setting node menu ----------------------
+
+  /**
+   * B-143: open the node menu for one map node — the ONLY writer of the
+   * menu state (the constructor's `taphold`/`cxttap` gesture; R3 writes
+   * through one signal, nothing writes the DOM here). The rendered position
+   * is captured at open (cy's own rendered coordinates, canvas-relative).
+   * Every context the component renders is authored data: the node's
+   * `label` (C23) and cy-rendered numbers are presentation facts only (R1).
+   * The menu is PARKED: this method does not follow pans or zooms.
+   */
+  private openNodeMenu(node: NodeSingular): void {
+    const rendered = node.renderedPosition();
+    this.nodeMenu.set({
+      nodeId: node.id(),
+      label: String(node.data('label') ?? ''),
+      x: rendered.x,
+      y: rendered.y,
+      refusal: null,
+    });
+  }
+
+  /**
+   * B-143: the menu's dismissal — a set/clear consumed it, a tap elsewhere
+   * landed, a gate signal changed, or the map reloaded. One signal write;
+   * the write notifies nothing when the menu is already null (the default
+   * Signal equality), so it is safe on every dismissal path including the
+   * gesture handlers' hooks.
+   */
+  closeNodeMenu(): void {
+    this.nodeMenu.set(null);
+  }
+
+  /**
+   * B-143: the menu's Set arm — `facade.setCurrentLocation(nodeId)` (R2: the
+   * EXISTING facade command; the pin's sole app-side write path this round,
+   * no facade extension). The R-3 brief's fences hold: no drag-the-pin, no
+   * auto-set (D10) — the pin moves ONLY on this explicit, per-node,
+   * user-initiated command. The wrapper shape is blockArc's (the packet's
+   * named precedent): the facade validates and mutates (`overlay.
+   * currentLocationId`; D38 silent), then the shared post-mutation sequence
+   * runs — the graphRevision bump re-runs the route computed (the pin is
+   * routing's origin), rebuildElements re-projects the `tme-pin` class and
+   * refreshSnapshot moves the header triplet. A refusal is CAUGHT and
+   * rendered FIELD-PRECISE in the open menu (the core's own words minus the
+   * console prefix — C30/C32; the pin and everything else untouched),
+   * keeping the menu open with the words so the user can retry elsewhere;
+   * a success CONSUMES the menu. A null menu (already closed) or a choice
+   * from a different node than the open surface is dropped — never applies
+   * a vanished context's choice (C32 belt).
+   */
+  setNodeAsLocation(nodeId: string): void {
+    const menu = this.nodeMenu();
+    if (menu === null || menu.nodeId !== nodeId) return;
+    const facade = this.facade;
+    if (facade === null) {
+      this.closeNodeMenu(); // no map, no choice — the surface has nothing to act on (C32 belt; unloadMap closes first)
+      return;
+    }
+    try {
+      facade.setCurrentLocation(nodeId);
+    } catch (error) {
+      this.nodeMenu.set({
+        ...menu,
+        refusal: error instanceof Error ? refusalWords(error.message) : GENERIC_PIN_NOTE,
+      });
+      return; // C30 reject-before-mutate: nothing happened — the pin keeps its node
+    }
+    this.closeNodeMenu();
+    this.afterGraphMutation();
+  }
+
+  /**
+   * B-143: the menu's Clear arm — `facade.setCurrentLocation(null)` (the
+   * packet's clear, mirroring the facade's nullable contract; D38's move is
+   * silent core-side, the header/route follow through refreshSnapshot and
+   * the graphRevision bump). Same wrapper shape, same guard, same caught
+   * refusal (the facade's clear arm validates nothing but the loaded map,
+   * so the catch is the C32 belt only), same consume-on-success.
+   */
+  clearNodeLocation(nodeId: string): void {
+    const menu = this.nodeMenu();
+    if (menu === null || menu.nodeId !== nodeId) return;
+    const facade = this.facade;
+    if (facade === null) {
+      this.closeNodeMenu(); // no map, no choice (C32 belt)
+      return;
+    }
+    try {
+      facade.setCurrentLocation(null);
+    } catch (error) {
+      this.nodeMenu.set({
+        ...menu,
+        refusal: error instanceof Error ? refusalWords(error.message) : GENERIC_PIN_NOTE,
+      });
+      return; // C30 reject-before-mutate belt: nothing happened
+    }
+    this.closeNodeMenu();
+    this.afterGraphMutation();
+  }
+
+  /**
+   * B-143: whether one node IS the current pin — a live read of the C24
+   * reference (R4; the nodeBlockReason precedent). The menu's Clear arm
+   * renders exactly while the long-pressed node holds the pin (the packet's
+   * "only while" rule); the menu re-renders it fresh per CD pass, never a
+   * stale copy.
+   */
+  isPartyLocation(nodeId: string): boolean {
+    return (this.overlay?.currentLocationId ?? null) === nodeId;
   }
 
   /**
