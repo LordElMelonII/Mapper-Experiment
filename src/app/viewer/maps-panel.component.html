@@ -68,7 +68,11 @@
       <!-- The D79 New-map row: name input + Create (the engine assigns the
            id, C5; the D79 default scale applies — the one-time hint arms on
            success). Offered in every state — the empty library's "New map"
-           affordance IS this row. -->
+           affordance IS this row.
+           B-148 (REPAIRS R-8, ruling 1): Enter commits the single-field form
+           — the SAME create() handler the button's tap fires, never a second
+           path; an Enter with an empty name is a no-op (create()'s own
+           guard — the disabled Create is never force-dispatched, C30). -->
       <label class="tme-field-label" for="tme-maps-create-input">New map name</label>
       <div class="tme-create-row">
         <input
@@ -79,6 +83,7 @@
           data-testid="tme-maps-create-input"
           [value]="createValue()"
           (input)="onCreateInput($event)"
+          (keyup.enter)="create()"
         />
         <button
           type="button"
@@ -241,6 +246,12 @@
           />
         </label>
 
+        <!-- B-148 (REPAIRS R-8, ruling 1, the deliberate reading, cited): the
+             paste textarea's Enter stays CONTENT — a lookup table is
+             line-delimited by design, so Enter here is a new row of data,
+             never a commit. The letter's "create/paste importers" resolves as
+             Enter-commit on single-line inputs only; the paste importer's
+             commit stays the Import button below. -->
         <label class="tme-field-label" for="tme-maps-paste-input">Paste your lookup table</label>
         <textarea
           id="tme-maps-paste-input"

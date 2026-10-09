@@ -70,3 +70,13 @@
   border: 1.5px dashed rgba(220, 228, 240, 0.4);
   border-radius: 2px;
 }
+
+// B-148 (REPAIRS R-8 item 2): pointer-device brightening — border/text color
+// only via the EXISTING tokens, no layout shift, never an affordance touch
+// lacks (D53: the toggle works identically by tap alone).
+@media (hover: hover) and (pointer: fine) {
+  .tme-legend-toggle:hover {
+    border-color: var(--tme-hairline);
+    color: var(--tme-text);
+  }
+}

@@ -419,3 +419,22 @@
 .tme-route {
   pointer-events: auto; // B-133 review (D91) — the visible sheet re-enables
 }
+
+// B-148 (REPAIRS R-8 item 2): pointer-device brightening — border/text
+// color only via the EXISTING tokens (the hairline's full value vs the
+// alpha ladder; --tme-text vs the secondary tier), NO layout shift, and
+// never an affordance touch lacks (D53: phone parity untouched). The
+// active mode chip's gold and the red Remove keep their tokens and stay
+// hover-static; a disabled control never brightens. The wide drag head's
+// bottom hairline brightens under the pointer (the move cursor is the
+// drag affordance).
+@media (hover: hover) and (pointer: fine) {
+  .tme-regime:hover,
+  .tme-sheet-rail:hover,
+  .tme-float-head:hover,
+  .tme-button:hover:not(.tme-remove-button):not(:disabled),
+  .tme-mode:hover:not(.tme-active) {
+    border-color: var(--tme-hairline);
+    color: var(--tme-text);
+  }
+}

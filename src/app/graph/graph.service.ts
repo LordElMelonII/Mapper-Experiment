@@ -1695,6 +1695,13 @@ export class GraphService implements OnDestroy {
     // against @types/cytoscape 3.21.9 index.d.ts:995-1003.
     this.cy.autoungrabify(true);
 
+    // B-148 (REPAIRS §R8, ruling 2): the Escape precedence's per-press
+    // arming — a CAPTURE-phase document keydown listener (the B-143r
+    // outside-tap precedent), bound once for the service's life. Capture
+    // order guarantees the snapshot lands BEFORE any surface's keydown
+    // handler can dismiss anything.
+    document.addEventListener('keydown', this.armEscapeTopSurface, true);
+
     // D53: canvas input binds through cytoscape's UNIFIED pointer/touch events
     // — 'tap' etc. of UserInputDeviceEventNameExt in the installed
     // @types/cytoscape 3.21.9 (index.d.ts: tapstart/tapdrag/tapend/taphold
@@ -2056,6 +2063,12 @@ export class GraphService implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    // B-148 review gate (lead): the capture-phase Escape arming listener is
+    // a document-level binding — the ngOnDestroy teardown removes it with
+    // the cy destroy (the B-143r outside-tap capture's own symmetric
+    // removal is the precedent; an extension re-mount must never accumulate
+    // listeners).
+    document.removeEventListener('keydown', this.armEscapeTopSurface, true);
     this.cy.destroy();
   }
 
@@ -2885,6 +2898,60 @@ export class GraphService implements OnDestroy {
   closeNodeMenu(): void {
     this.nodeMenu.set(null);
   }
+
+  /**
+   * B-148 (docs/ui-restyle/REPAIRS.md §R8, packet ruling 2): which of the
+   * Escape-dismissable surfaces is TOP-MOST right now, or null — the flow's
+   * owner. The keyboard Escape handlers (the two management panels, the node
+   * menu) each FIRE only this surface's own close path; the SERVICE answers
+   * which one, so one press dismisses exactly one surface (today both
+   * management panels close on one press — the defect the letter fixes).
+   * The precedence is the stage's own stack as built, measured not invented
+   * (map-viewer.component.html + the surfaces' SCSS): the node-menu plate
+   * paints z-17 (above the sheet stack's 15 and the calibrate/hint band's
+   * 16), and the two management panels share ONE grade — inside the
+   * .tme-sheets stack on narrow, individual z-20 floaters on wide — so DOM
+   * order alone decides between them: the Maps panel is the LATER sibling
+   * (the stack's last child) and paints above the layer manager. Encoding
+   * exactly that: node menu, then Maps panel, then layer manager.
+   * (The route/property/arc floaters' dismissal is selection-driven — out of
+   * this contract by the letter; the property panel's pre-existing
+   * connect-mode Escape exit is a MODE exit, not a panel dismissal, and
+   * stays untouched. C32: the read is pure, side-effect-free, throws
+   * nothing headless.)
+   *
+   * The PER-PRESS answer: all surface handlers run on the SAME Escape
+   * keydown, and a dismissal consumed earlier in that dispatch (the menu
+   * closing first) must NOT change their answers mid-flight — the live-signal
+   * read inside one event is race-bound. So the constructor's capture-phase
+   * document listener (the B-143r outside-tap precedent, D2: one discrete
+   * arming per press) snapshots the answer BEFORE any surface handler runs,
+   * and non-Escape presses clear it. `escapeTopSurface()` hands the armed
+   * answer to every handler of that press; the live read is the C32 belt
+   * fallback (also the shape any future non-Document caller gets).
+   */
+  private escapeAnswer: 'node-menu' | 'maps-panel' | 'layer-manager' | null = null;
+
+  escapeTopSurface(): 'node-menu' | 'maps-panel' | 'layer-manager' | null {
+    return this.escapeAnswer ?? this.liveEscapeTopSurface();
+  }
+
+  /** The render-stack read — the precedence the armed snapshot copies. */
+  private liveEscapeTopSurface(): 'node-menu' | 'maps-panel' | 'layer-manager' | null {
+    if (this.nodeMenu() !== null) return 'node-menu';
+    if (this.mapsPanelOpen()) return 'maps-panel';
+    if (this.layerManagerOpen()) return 'layer-manager';
+    return null;
+  }
+
+  /** D2: one discrete keydown — arm on Escape, clear on anything else. */
+  private readonly armEscapeTopSurface = (event: KeyboardEvent): void => {
+    if (event.key !== 'Escape') {
+      this.escapeAnswer = null;
+      return;
+    }
+    this.escapeAnswer = this.liveEscapeTopSurface();
+  };
 
   /**
    * B-143: the menu's Set arm — `facade.setCurrentLocation(nodeId)` (R2: the

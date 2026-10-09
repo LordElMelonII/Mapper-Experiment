@@ -555,3 +555,22 @@
   border-top: 1px solid var(--tme-accent-warn-strong);
   background: var(--tme-plate);
 }
+
+// B-148 (REPAIRS R-8 item 2): pointer-device brightening — border/text
+// color only via the EXISTING tokens (the hairline's full value vs the
+// alpha ladder; --tme-text vs the secondary tier), NO layout shift, and
+// never an affordance touch lacks (D53: phone parity untouched). The gold
+// Done/commit pair and the red block/detach/delete keys keep their tokens
+// and stay hover-static; the Connect door keeps its teal pick accent. The
+// section toggles and the alias rows are the neutral chrome.
+@media (hover: hover) and (pointer: fine) {
+  .tme-regime:hover,
+  .tme-connect-cancel:hover,
+  .tme-node-block-lift:hover,
+  .tme-alias-remove:hover,
+  .tme-alias-add:hover,
+  .tme-section-toggle:hover {
+    border-color: var(--tme-hairline);
+    color: var(--tme-text);
+  }
+}

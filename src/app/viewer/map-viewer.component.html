@@ -59,8 +59,23 @@
     }
 
     <!-- D53/§6.2: touch-action: none lives in the SCSS on this host so canvas
-         gestures (tap, drag, pinch-zoom, pan) never scroll the host page. -->
-    <div #canvasHost class="tme-canvas" data-testid="tme-canvas" aria-label="Map canvas"></div>
+         gestures (tap, drag, pinch-zoom, pan) never scroll the host page.
+         B-148 (REPAIRS R-8, ruling 3): tabindex="0" is the keyboard
+         destination for pointer parity — Tab can land on the canvas, and a
+         canvas click takes focus (a focused rail control no longer rides a
+         stray Space/Enter after the click). The host's keydown answers
+         +/=/-/_/0 through the zoom trio's own service commands (the handler
+         in map-viewer.component.ts: no new viewport math, R1/D81; the input
+         guard keeps form keys untouched, C32); arrow keys never nudge (the
+         editor-scope fence, F46). -->
+    <div
+      #canvasHost
+      class="tme-canvas"
+      data-testid="tme-canvas"
+      aria-label="Map canvas"
+      tabindex="0"
+      (keydown)="onCanvasKeydown($event)"
+    ></div>
 
     <!-- R1: the header renders the snapshot's core strings verbatim — location,
          the PIN's layer name (not the active viewer layer), and the snapshot's

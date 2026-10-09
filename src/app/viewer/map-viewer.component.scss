@@ -521,3 +521,19 @@ span.tme-crumb-active {
   cursor: pointer;
   touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
 }
+
+// B-148 (REPAIRS R-8 item 2): pointer-device brightening — border/text
+// color only via the EXISTING tokens (the hairline's full value vs the
+// alpha ladder; --tme-text vs the secondary tier), NO layout shift, and
+// never an affordance touch lacks (D53: phone parity untouched, hover adds
+// nothing to any touch device). The gold Save/chip/crumb accents and the
+// calibrate band's gold primary keep their tokens and stay hover-static;
+// the hint dismisses and the calibrate band's neutral controls are the
+// swept chrome (the letter's "hint dismisses" and calibrate family).
+@media (hover: hover) and (pointer: fine) {
+  .tme-hint-dismiss:hover,
+  .tme-calibrate-button:hover:not(.tme-calibrate-primary):not(:disabled) {
+    border-color: var(--tme-hairline);
+    color: var(--tme-text);
+  }
+}

@@ -516,9 +516,16 @@ export class MapsPanelComponent {
     this.pasteValue.set(''); // B-138: the paste importer's state joins the reset
   }
 
-  /** Escape — the no-op-when-closed guard lives here (one keydown, D2). */
+  /**
+   * Escape — the no-op-when-closed guard lives here (one keydown, D2).
+   * B-148 (REPAIRS §R8, packet ruling 2): Escape dismisses the TOP-MOST
+   * open surface, one per press — the panel takes the press ONLY when the
+   * service reads it as top-most (the Maps panel paints above the layer
+   * manager — the stack's later sibling — and beneath a parked node menu).
+   * The close is this surface's OWN ×/Escape path above; never a second one.
+   */
   protected onEscape(): void {
-    if (this.open()) this.close();
+    if (this.open() && this.graph.escapeTopSurface() === 'maps-panel') this.close();
   }
 
   /** B-114: the rail's collapse/expand — one discrete tap (D2). */

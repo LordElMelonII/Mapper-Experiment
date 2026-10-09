@@ -379,3 +379,22 @@
   cursor: pointer;
   touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
 }
+
+// B-148 (REPAIRS R-8 item 2): pointer-device brightening — border/text
+// color only via the EXISTING tokens (the hairline's full value vs the
+// alpha ladder; --tme-text vs the secondary tier), NO layout shift, and
+// never an affordance touch lacks (D53 stands: phone parity untouched).
+// The gold pressed/active states keep their accents and stay hover-static;
+// the dim slider stays the deliberate native control (no appearance
+// overrides to hover on), its row's reads stay statuses.
+@media (hover: hover) and (pointer: fine) {
+  .tme-editor-toggle:hover:not(.tme-active):not(:disabled),
+  .tme-tool:hover:not(.tme-active),
+  .tme-layer-button:hover:not(.tme-active),
+  .tme-route-toggle:hover:not(.tme-active),
+  .tme-zoom-button:hover,
+  .tme-rail-toggle:hover {
+    border-color: var(--tme-hairline);
+    color: var(--tme-text);
+  }
+}

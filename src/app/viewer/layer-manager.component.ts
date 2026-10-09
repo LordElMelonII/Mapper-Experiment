@@ -628,9 +628,21 @@ export class LayerManagerComponent {
     this.refusals.set([]);
   }
 
-  /** Escape — the no-op-when-closed guard lives here (one keydown, D2). */
+  /**
+   * Escape — the no-op-when-closed guard lives here (one keydown, D2).
+   * B-148 (REPAIRS §R8, packet ruling 2): Escape dismisses the TOP-MOST
+   * open surface, one per press — the sheet takes the press ONLY when the
+   * service reads it as top-most (the Maps panel paints above it — the
+   * stack's later sibling — and a parked node menu above both). The close
+   * is this surface's OWN ×/Escape path above; never a second one.
+   */
   protected onEscape(): void {
-    if (this.graph.layerManagerOpen()) this.close();
+    if (
+      this.graph.layerManagerOpen() &&
+      this.graph.escapeTopSurface() === 'layer-manager'
+    ) {
+      this.close();
+    }
   }
 
   /** B-114: the rail's collapse/expand — one discrete tap (D2). */

@@ -156,6 +156,53 @@ export class MapViewerComponent implements AfterViewInit, OnDestroy {
   }
 
   /**
+   * B-148 (docs/ui-restyle/REPAIRS.md §R8, ruling 3): the canvas host's zoom
+   * keys — this sit on the host div (tabindex="0" above in the template) so
+   * Tab/click can put keyboard focus on the canvas, and then +/-/= zoom in,
+   * -/_ zoom out, 0 fits. Every branch calls the rail zoom trio's EXISTING
+   * service viewport commands (zoomIn/zoomOut/fitToView — never a second
+   * viewport arithmetic, R1/D81; the trio reads mounted and degrades
+   * silently headless, C32).
+   * The guards: (a) a form field holding focus eats its own keys — the
+   * handler no-ops whenever an input/textarea/select is the focused element
+   * (belt: such a keydown does not bubble through this div anyway — the host
+   * has no form descendants — but the guard is the letter's, C32);
+   * (b) focus containment — the keydown must carry the host itself (or a
+   * descendant) as its target; anything else bubbles from elsewhere and is
+   * ignored; (c) every other key returns untouched — arrow keys never nudge
+   * (node movement is the editor-scope fence, F46). The consumed keys are
+   * preventDefault-ed so a scroll-adjacent UA default never wakes.
+   */
+  protected onCanvasKeydown(event: KeyboardEvent): void {
+    const active = document.activeElement;
+    if (
+      active instanceof HTMLInputElement ||
+      active instanceof HTMLTextAreaElement ||
+      active instanceof HTMLSelectElement
+    ) {
+      return;
+    }
+    const host = event.currentTarget;
+    if (!(host instanceof HTMLElement) || !host.contains(event.target as Node)) return;
+    switch (event.key) {
+      case '+':
+      case '=':
+        this.graph.zoomIn();
+        break;
+      case '-':
+      case '_':
+        this.graph.zoomOut();
+        break;
+      case '0':
+        this.graph.fitToView();
+        break;
+      default:
+        return; // arrows and the rest: nothing on the canvas moves (F46)
+    }
+    event.preventDefault();
+  }
+
+  /**
    * B-128 (D85/F02): a breadcrumb crumb's tap — the layer switch through the
    * service's single write path (R2/R3; selectLayer's explicit fit stands,
    * D85/D81). The active crumb is a non-interactive span (aria-current), so

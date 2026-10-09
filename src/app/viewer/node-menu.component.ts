@@ -69,6 +69,16 @@ const PLATE_SELECTOR = 'tme-node-menu, .tme-node-menu';
   templateUrl: './node-menu.component.html',
   styleUrl: './node-menu.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    // B-148 (REPAIRS §R8, packet ruling 2): Escape can dismiss the menu too —
+    // it takes the press only while parked AND painted as the top-most
+    // surface (the service's precedence; the plate's z-17 sits above the
+    // sheet stack). The dismissal is the SAME closeNodeMenu() call the
+    // outside-tap arm below makes — the menu's plain-tap semantics stay
+    // byte-identical (the R-3 landmine): keyboard Escape is additive chrome,
+    // never a second dismissal path.
+    '(document:keydown.escape)': 'onEscape()',
+  },
 })
 export class NodeMenuComponent implements OnDestroy {
   protected readonly graph = inject(GraphService);
@@ -91,6 +101,19 @@ export class NodeMenuComponent implements OnDestroy {
 
   constructor() {
     document.addEventListener('pointerdown', this.dismissOnOutsidePress, true);
+  }
+
+  /**
+   * B-148 (REPAIRS §R8, packet ruling 2): Escape — only when the menu is
+   * parked AND the service reads it as the top-most open surface; otherwise
+   * a silent no-op. C32 degrade-never-throw: a keydown over a closed menu
+   * (or under an open management panel — the z-paint authority) changes
+   * nothing, throws nothing.
+   */
+  protected onEscape(): void {
+    if (this.graph.nodeMenu() !== null && this.graph.escapeTopSurface() === 'node-menu') {
+      this.graph.closeNodeMenu();
+    }
   }
 
   ngOnDestroy(): void {

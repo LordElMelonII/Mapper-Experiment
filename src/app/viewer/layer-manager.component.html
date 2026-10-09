@@ -71,7 +71,11 @@
     <div class="tme-manager-body" id="tme-layer-manager-body" data-testid="tme-layer-manager-body">
       <!-- Ruling 2: the Create row — name input + Add; the engine assigns
            the id (C5). Add is disabled while the trimmed name is empty (C30
-           honesty — the facade stays the authority). -->
+           honesty — the facade stays the authority).
+           B-148 (REPAIRS R-8, ruling 1): Enter commits the single-field form
+           — the SAME add() the button's tap fires; its own guard makes an
+           Enter over the disabled state a no-op (never force-dispatched,
+           C30). -->
       <label class="tme-field-label" for="tme-layer-create-input">New layer name</label>
       <div class="tme-create-row">
         <input
@@ -82,6 +86,7 @@
           data-testid="tme-layer-create-input"
           [value]="createValue()"
           (input)="onCreateInput($event)"
+          (keyup.enter)="add()"
         />
         <button
           type="button"
@@ -100,6 +105,9 @@
       @for (layer of rows(); track layer.id; let i = $index) {
         <div class="tme-layer-row" data-testid="tme-layer-row">
           @if (renamingId() === layer.id) {
+            <!-- B-148 (REPAIRS R-8, ruling 1): Enter commits the rename — the
+                 SAME commitRename() the Save button fires; a disabled-save
+                 Enter (empty name) is commitRename()'s own no-op (C30). -->
             <label class="tme-field-label" [attr.for]="'tme-layer-rename-input-' + layer.id">Layer name</label>
             <div class="tme-create-row">
               <input
@@ -110,6 +118,7 @@
                 data-testid="tme-layer-rename-input"
                 [value]="renameValue()"
                 (input)="onRenameInput($event)"
+                (keyup.enter)="commitRename()"
               />
               <button
                 type="button"

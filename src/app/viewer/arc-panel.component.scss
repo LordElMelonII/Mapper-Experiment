@@ -502,3 +502,22 @@
 .tme-arc {
   pointer-events: auto; // B-133 review (D91) — the visible sheet re-enables
 }
+
+// B-148 (REPAIRS R-8 item 2): pointer-device brightening — border/text
+// color only via the EXISTING tokens (the hairline's full value vs the
+// alpha ladder; --tme-text vs the secondary tier), NO layout shift, and
+// never an affordance touch lacks (D53: phone parity untouched). The
+// gold Apply and the red Block/Remove keys keep their tokens and stay
+// hover-static; a disabled control never brightens. The wide drag head's
+// bottom hairline brightens under the pointer (the move cursor is the
+// drag affordance); the curve rows are the neutral chrome.
+@media (hover: hover) and (pointer: fine) {
+  .tme-regime:hover,
+  .tme-float-head:hover,
+  .tme-curve-add:hover,
+  .tme-curve-remove:hover,
+  .tme-button:hover:not(.tme-block-button):not(.tme-block-access):not(.tme-apply-button):not(.tme-remove-button):not(:disabled) {
+    border-color: var(--tme-hairline);
+    color: var(--tme-text);
+  }
+}
