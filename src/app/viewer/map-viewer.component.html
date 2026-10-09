@@ -258,6 +258,32 @@
       </aside>
     }
 
+    <!-- B-147 (REPAIRS R-7): the placement hint — the D79 pattern's second
+         instance: the same .tme-hint band, own testids, for the fresh-map
+         editor entry (nothing teaches that edit-mode canvas taps place
+         places). PRIORITY (the slot-competition idiom above generalized):
+         it renders only while the calibrate hint is NOT up — on a fresh map
+         the calibrate hint shows first, the placement hint appears after
+         that hint's dismissal/calibration (the top-edge pill population
+         never grows; one pill at a time). State is the service's PURE
+         computed (editor mode + the D79 fresh-set + not dismissed + not
+         done — the first successful placement marks it done); one >= 44px
+         Dismiss (F52), per-map session-memory (D79). -->
+    @if (graph.calibrateHint() === null && !graph.calibrateMode() && graph.placeHint() !== null) {
+      <aside class="tme-hint" data-testid="tme-place-hint" role="status" aria-label="Placement hint">
+        <span class="tme-hint-text" data-testid="tme-place-hint-text">{{ graph.placeHint() }}</span>
+        <button
+          type="button"
+          class="tme-hint-dismiss"
+          data-testid="tme-place-hint-dismiss"
+          aria-label="Dismiss the placement hint"
+          (click)="graph.dismissPlaceHint()"
+        >
+          ×
+        </button>
+      </aside>
+    }
+
     <!-- B-133 (D91): the four PANEL SURFACES — overlays over this stage.
          NARROW (the default): .tme-sheets is the bottom-sheet STACK anchored
          to the stage's bottom edge (absolute, pointer-events none on the

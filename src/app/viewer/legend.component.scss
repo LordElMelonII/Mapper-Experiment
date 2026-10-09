@@ -1,0 +1,72 @@
+// PKG B-147 (REPAIRS R-7) — the legend's component-scoped chrome (D7: zero
+// global leakage). Colors are the R-0 tokens ONLY — no hex (R0). The
+// swatches mirror exactly what the canvas draws: the three leaf kind hues
+// (the tokens' node-kind entries, full-value like the canvas node bodies)
+// and the district's dashed hairline box (the compound parent's 1.5px
+// dashed rgba(220,228,240,0.4) — the canvas border the stylesheet renders;
+// the closest DOM token is the hairline at its alpha ladder — presentation
+// equivalence, cited in the packet report, no new token).
+:host {
+  display: block;
+}
+
+.tme-legend-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px; // F52: >= 44px tap target, both dims — the sweep asserts it
+  min-height: 44px;
+  border: 1px solid rgba(174, 189, 211, 0.4);
+  border-radius: var(--tme-radius-sm, 8px);
+  background: transparent;
+  color: var(--tme-text-secondary);
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+.tme-legend-rows {
+  margin: 0;
+  padding: 0 0.25rem 0.25rem;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.tme-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--tme-text-secondary);
+  font: inherit;
+}
+
+// The swatches: the canvas node bodies are 44px ellipses of the full-value
+// kind hue — a 0.75rem square (pill-radius) swatch of the same token is the
+// DOM reading. The district swatch is the box: transparent fill, the
+// 1.5px dashed hairline border (the compound parent's box).
+.tme-legend-swatch {
+  flex: 0 0 auto;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: var(--tme-radius-pill, 999px);
+}
+
+.tme-swatch-location {
+  background: var(--tme-node-location);
+}
+
+.tme-swatch-hub {
+  background: var(--tme-node-hub);
+}
+
+.tme-swatch-waypoint {
+  background: var(--tme-node-waypoint);
+}
+
+.tme-swatch-district {
+  background: transparent;
+  border: 1.5px dashed rgba(220, 228, 240, 0.4);
+  border-radius: 2px;
+}

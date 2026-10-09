@@ -1,0 +1,34 @@
+<!-- PKG B-147 (REPAIRS R-7) — the node-kind legend: one ≥44px toggle (F52,
+     aria-expanded honest, plain word C23) over the four truthful rows
+     (swatch + kind word). Static taxonomy — the rows never change with
+     state; the collapse is component-local view chrome (B-114). The
+     section is INSIDE the rail body's flow (the host places it), so the
+     collapsed rail hides it with everything else. -->
+<section class="tme-legend" data-testid="tme-legend" aria-label="Node kind legend">
+  <button
+    type="button"
+    class="tme-legend-toggle"
+    data-testid="tme-legend-toggle"
+    [attr.aria-expanded]="expanded() ? 'true' : 'false'"
+    (click)="toggle()"
+  >
+    {{ expanded() ? 'Hide legend' : 'Legend' }}
+  </button>
+  @if (expanded()) {
+    <ul class="tme-legend-rows">
+      @for (row of rows; track row.kind) {
+        <li class="tme-legend-row">
+          <span
+            class="tme-legend-swatch"
+            [class.tme-swatch-location]="row.swatch === 'location'"
+            [class.tme-swatch-hub]="row.swatch === 'hub'"
+            [class.tme-swatch-waypoint]="row.swatch === 'waypoint'"
+            [class.tme-swatch-district]="row.swatch === 'district'"
+            aria-hidden="true"
+          ></span>
+          {{ row.kind }}
+        </li>
+      }
+    </ul>
+  }
+</section>

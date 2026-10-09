@@ -34,12 +34,14 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { GraphService } from '../graph/graph.service';
 import type { EditorTool } from '../graph/graph.service';
+import { LegendComponent } from './legend.component';
 
 @Component({
   selector: 'tme-editor-rail',
   templateUrl: './editor-rail.component.html',
   styleUrl: './editor-rail.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [LegendComponent], // B-147 (R-7): the node-kind legend hosts here
   host: {
     // D86: the rail HOST is the clamp's measured chrome rect (the map-viewer
     // measures '.tme-rail'); the collapsed class lets the PARENT's SCSS size

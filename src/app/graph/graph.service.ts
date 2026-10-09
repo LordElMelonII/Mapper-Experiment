@@ -849,6 +849,13 @@ const CALIBRATE_HINT =
   'New map: 1 px = 1 unit. Draw a route and calibrate its scale when you know real distances.';
 
 /**
+ * B-147 (R-7, C23): the placement hint's plain words — the REPAIRS letter's
+ * sentence verbatim: nothing teaches that edit-mode canvas taps place
+ * places. Informational, never a block (D10/D30 spirit).
+ */
+const PLACE_HINT = 'Tap the map to place a place.';
+
+/**
  * B-131: the blocked-node marker's display offset from its host node, in
  * model units — the shared badge-anchor convention of layer-elements.ts
  * (BADGE_OFFSET, both axes; that module is the pinned bare-Node seam, so
@@ -2383,6 +2390,69 @@ export class GraphService implements OnDestroy {
     this.calibrateHintDismissedIds.update((ids) => new Set(ids).add(mapId));
   }
 
+  // --- B-147 (R-7): the one-time placement hint --------------------------------
+
+  /**
+   * B-147: the per-map, per-session DONE record — the first successful
+   * placement is the thing the hint taught. Session-memory exactly like the
+   * D79 sets (the packet's ruling).
+   */
+  private readonly placeHintDoneIds = signal<ReadonlySet<string>>(new Set());
+
+  /**
+   * B-147: the per-map, per-session dismissal record for the placement hint
+   * — its own set (a dismissed placement hint must not un-dismiss the
+   * calibrate hint's machinery and vice versa).
+   */
+  private readonly placeHintDismissedIds = signal<ReadonlySet<string>>(new Set());
+
+  /**
+   * B-147: the placement hint's state — the plain words while the author is
+   * IN editor mode on a freshly created map (the D79 fresh-set — a
+   * boot-seeded, library-opened, or imported map never shows it), the hint
+   * neither dismissed nor taught-away (the first placement marks it done).
+   * A PURE computed over discrete signals only (D2) — no enterEditor change
+   * (the re-entry before dismiss/done legitimately re-shows; after either,
+   * never — the packet's ruling). The calibrate hint holds PRIORITY: the
+   * template renders this only while calibrateHint() is null (the slot-
+   * competition idiom, B-137's own calibrate-vs-mode gate) — the top-edge
+   * pill population never grows.
+   */
+  readonly placeHint = computed<string | null>(() => {
+    const map = this.map();
+    if (map === null) return null;
+    if (!this.editorMode()) return null;
+    if (!this.freshlyCreatedMapIds().has(map.id)) return null;
+    if (this.placeHintDismissedIds().has(map.id)) return null;
+    if (this.placeHintDoneIds().has(map.id)) return null;
+    return PLACE_HINT;
+  });
+
+  /** B-147: the hint's Dismiss — one discrete tap (R3), per-map, session-memory (D79). */
+  dismissPlaceHint(): void {
+    const mapId = this.map()?.id;
+    if (mapId === undefined) return;
+    this.placeHintDismissedIds.update((ids) => new Set(ids).add(mapId));
+  }
+
+  /**
+   * B-147: a successful placement marks the hint done for the loaded map —
+   * the author has done the thing it suggested. The absent-no-write
+   * discipline (no spurious recompute when the map is not in the fresh set).
+   * Called from the SUCCESS paths of placeNodeAt and placeWaypointAt only —
+   * a refused/failed placement changes nothing (C32).
+   */
+  private markPlaceHintDoneForLoadedMap(): void {
+    const mapId = this.map()?.id;
+    if (mapId === undefined) return;
+    this.placeHintDoneIds.update((ids) => {
+      if (ids.has(mapId)) return ids; // no write when present — no spurious recompute
+      const next = new Set(ids);
+      next.add(mapId);
+      return next;
+    });
+  }
+
   /**
    * B-137 (D79): calibrating clears the hint — the user has done the thing
    * it suggested. ANY calibrateScale command qualifies; measureArc is the
@@ -2919,6 +2989,7 @@ export class GraphService implements OnDestroy {
     if (facade === null || layerId === null) return;
     facade.addUserNodeAt(layerId, position);
     this.afterGraphMutation();
+    this.markPlaceHintDoneForLoadedMap(); // B-147: the taught-away placement (success path only)
   }
 
   /**
@@ -3078,6 +3149,7 @@ export class GraphService implements OnDestroy {
     if (createdId !== null) this.recordUnsaved(createdId);
     this.edgeSelection.set(null); // B-106 mutual exclusion: a node selection replaces an edge selection
     if (createdId !== null) this.selection.set({ id: createdId, label: 'New place' });
+    if (createdId !== null) this.markPlaceHintDoneForLoadedMap(); // B-147: the taught-away placement (success path only)
     this.editorRevision.update((n) => n + 1); // F45: the first edit shows the unsaved indicator
   }
 
