@@ -133,11 +133,38 @@ const BLOCKABLE_KINDS: ReadonlySet<NodeKind> = new Set<NodeKind>(['location', 'h
 /** The floating panel's width cap — 18rem in px (SCSS mirror). */
 const FLOAT_WIDTH_PX = 288; // 18rem
 /**
- * The floating panel's height cap — 22rem in px (SCSS mirror, B-136): Restore
- * clamps the WHOLE floating panel against it while the panel is still
- * maximized and unmeasurable (the width mirror's exact precedent).
+ * The floating panel's height cap on the WIDE layout — 22rem in px (SCSS
+ * mirror, B-136): Restore clamps the WHOLE floating panel against it while the
+ * panel is still maximized and unmeasurable (the width mirror's exact
+ * precedent). The narrow layout clamps against NARROW_FLOAT_MAX_HEIGHT_PX —
+ * see floatCap().
  */
 const FLOAT_MAX_HEIGHT_PX = 352; // 22rem
+/**
+ * B-148r (REPAIRS round, the R-6 inset + R-7 rail-row fallout): the floating
+ * panel's height cap on the NARROW layout — 20rem in px (SCSS mirror). The
+ * floater must fit between the top chrome band (the chip band's floor at
+ * 7rem — the 3.75rem chip top + the 2.75rem 44px target + the clamp's 8px
+ * gap) and the stage bottom: the post-R-6/R-7 phone stage measures 445px tall
+ * at the D53 viewport (390×844 emulated, dvh 664; was 505 at R-5), so 22rem
+ * overhung that stage by 18.5px — the clamp's bands inverted (minY 112 > the
+ * whole-panel floor 93) and the parked floater jut past the bottom with a
+ * zeroed downward drag range. 20rem fits below the band with a 13px range.
+ */
+const NARROW_FLOAT_MAX_HEIGHT_PX = 320; // 20rem
+/** D81's wide-layout breakpoint — the SCSS split's literal, mirrored by graph.service.ts. */
+const WIDE_LAYOUT_QUERY = '(min-width: 700px)';
+/**
+ * B-148r: the floating height cap per layout at Restore time. The panel is
+ * still maximized and unmeasurable then (the width mirror's precedent), so
+ * the clamp needs the cap pre-known: 22rem on wide (FLOAT_MAX_HEIGHT_PX —
+ * byte-unchanged), 20rem on narrow (NARROW_FLOAT_MAX_HEIGHT_PX — the floater
+ * must fit between the chrome band and the stage bottom there). Read live
+ * off D81's breakpoint: a narrowed desktop window gets the narrow cap too —
+ * correct, that stage is the smallest legitimate one.
+ */
+const floatCap = (): number =>
+  window.matchMedia(WIDE_LAYOUT_QUERY).matches ? FLOAT_MAX_HEIGHT_PX : NARROW_FLOAT_MAX_HEIGHT_PX;
 /** Never-dragged default: inset from the stage's top-left (the chrome-rhythm 0.75rem). */
 const FLOAT_DEFAULT_INSET_PX = 12;
 /** Clear gap below the top-right chrome stack when clamped under it. */
@@ -881,7 +908,7 @@ export class PropertyPanelComponent {
       this.graph.panelFloating.set(false);
       return;
     }
-    const frame = this.readFrame(FLOAT_WIDTH_PX, FLOAT_MAX_HEIGHT_PX);
+    const frame = this.readFrame(FLOAT_WIDTH_PX, floatCap());
     const remembered = this.graph.panelPosition();
     if (frame !== null) {
       const base =

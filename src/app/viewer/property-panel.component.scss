@@ -383,7 +383,18 @@
   left: 0;
   z-index: 20; // above the map it legitimately overlaps (clamped clear of the chrome)
   width: min(18rem, 100vw - 1.5rem); // FLOAT_WIDTH_PX — never offscreen-wide (D53)
-  max-height: min(22rem, 100vh - 1.5rem);
+  // B-148r: the narrow floater's height cap (the SCSS mirror of
+  // NARROW_FLOAT_MAX_HEIGHT_PX) — it must fit between the top chrome band and
+  // the stage bottom. The chip band's floor is 7rem (the 3.75rem chip top +
+  // the 2.75rem 44px target + the clamp's 8px gap); the post-R-6/R-7 phone
+  // stage measures 445px tall (the R-6 root inset and the R-7 legend row took
+  // 60px off the old 505 at the D53 390×844 viewport), so 22rem inverted the
+  // clamp's bands: the parked floater juts 18.5px past the stage bottom and
+  // the drag's vertical range zeroes (measured live — the B-136 contract's
+  // own arm could not hold). 20rem fits below the band with a 13px range.
+  // The wide form re-declares 22rem in the min-width block below — the
+  // desktop stage never inverts the bands.
+  max-height: min(20rem, 100vh - 1.5rem);
   border: 1px solid rgba(174, 189, 211, 0.4);
   border-radius: 8px;
   background: var(--tme-plate); // opaque — the map underneath is occluded, not bled through
