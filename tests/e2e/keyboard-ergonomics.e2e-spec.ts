@@ -44,7 +44,7 @@ const HOOK_ERROR = 'window.__TME_E2E__ missing — dev harness not loaded';
 
 /** FX1 authored facts — assertion keys per the canvas-spec convention. */
 const BOOT_MAP_ID = 'fuyuki-misaki';
-const SEEDED_NAME = 'Fuyuki & Misaki (FX1)';
+const SEEDED_NAME = 'Fuyuki & Misaki'; // B-149 R9 item 6 re-baseline (grep-revealed site): the '(FX1)' harness-speak suffix left the fixture's stored name (R1 verbatim render).
 
 const isPhone = (): boolean => test.info().project.name === 'phone';
 

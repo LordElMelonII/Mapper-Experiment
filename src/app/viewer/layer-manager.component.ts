@@ -274,6 +274,34 @@ export class LayerManagerComponent {
    */
   protected readonly collapsed = signal(false);
 
+  // --- B-149 (REPAIRS §R9 item 5): the background sub-form's expander --------
+
+  /**
+   * B-149 (REPAIRS §R9 item 5): which rows' background sub-form is expanded —
+   * COLLAPSED by default (the R-5 idiom, the property panel's five advanced
+   * surfaces' precedent): the row renders the toggle with the live background
+   * state line as its summary; the Upload / URL / Set / Remove / Calibrate
+   * controls hide until the row is expanded. Component-local VIEW chrome
+   * (R3): keyed by layer id, one discrete tap per toggle (D2); a removed
+   * layer's leftover key is harmless (its row is gone). No reset on close —
+   * the property panel keeps an author's open sections across a Done re-seed
+   * for the same reason.
+   */
+  protected readonly bgFormOpen = signal<ReadonlySet<string>>(new Set<string>());
+
+  /** B-149: the expander's toggle (the template's only write path, R3). */
+  protected toggleBgForm(layerId: string): void {
+    this.bgFormOpen.update((open) => {
+      const next = new Set(open);
+      if (next.has(layerId)) {
+        next.delete(layerId);
+      } else {
+        next.add(layerId);
+      }
+      return next;
+    });
+  }
+
   // --- The create row -------------------------------------------------------
 
   /** The create input's text (a controlled input — R3). */

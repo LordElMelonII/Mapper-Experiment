@@ -244,6 +244,15 @@
   color: var(--tme-text-secondary);
 }
 
+// B-149 (REPAIRS §R9 item 3): the cost never breaks mid-number on the phone
+// — the segment wraps as a unit (nowrap; the row wraps BETWEEN segments
+// instead). Presentation only: the leg's text is byte-identical (the unit
+// stays on the total line, C15/D72; the number is never truncated — C2
+// spirit, no ellipsis constraint).
+.tme-leg-cost {
+  white-space: nowrap;
+}
+
 // C15/D72: the unit appears exactly once — on the total line, accented.
 .tme-total {
   margin: 0 0 0.75rem;
@@ -418,6 +427,21 @@
 
 .tme-route {
   pointer-events: auto; // B-133 review (D91) — the visible sheet re-enables
+  // B-149 (REPAIRS §R9 item 4, the corner-state cap — the route-sheet side
+  // of the .tme-maps fix): the section IS the host's shrink chain — as a
+  // plain block it refused the stack's squeeze (the host shrank; the
+  // section's content painted BELOW the host box, straight into the Maps
+  // sheet's own band — measured: route expanded + Maps open squeezed the
+  // host to 139px while the section ran 293px (188→481) across the Maps
+  // band's rail at 378). Flex column + min-height: 0 lets the squeeze
+  // through so the BODY (flex 0 1 auto, min-height 0, overflow-y auto
+  // above) becomes the scrollable member — the standing D53/D91 rule — and
+  // the rail keeps its 44px floor (the stack's --tme-route-floor band).
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
 }
 
 // B-148 (REPAIRS R-8 item 2): pointer-device brightening — border/text

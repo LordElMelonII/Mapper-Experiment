@@ -99,7 +99,7 @@ Zero keyboard support today; no hover states on pointer. All additive, phone par
 ## R9 — Minor batch (from the critique's minor observations)
 
 1. Unify floater chrome: drag + collapse affordance class shared by route/property/layer-manager/maps/arc (maps floater currently lacks both; collapse idioms "Hide/Show" vs "Route ▾" converge to one pattern).
-2. Fix inverted Restore/Maximize labels (four panels carry `Maximize` strings; semantics verified inverted — "Restore" floats, "Maximize" re-docks).
+2. Fix inverted Restore/Maximize labels (four panels carry `Maximize` strings; semantics verified inverted — "Restore" floats, "Maximize" re-docks). *(Correction at execution, 2026-10-10 (B-149, lead ruling): the "verified inverted" premise measured FALSE live — the R-6 item-3 precedent. Every regime button speaks the ACTION word: the compact form offers 'Maximize' (the grow action), the maximized/tall form offers 'Restore' (the shrink action). Live-rect verdicts at :4200 (desktop): property 'Restore' floating @676 tall / 'Maximize' compact — correct by B-119, the floating state IS the tall overlay; route 'Maximize'@264 → 'Restore'@272; layer 'Maximize'@416 → 'Restore'@634; maps 'Maximize'@416 → 'Restore'@589 (the toggle this packet adds); arc 'Maximize'@416 → 'Restore'@676 (= 100dvh − 7.75rem exactly). No flips landed; nothing to fix; recorded here in lieu of a no-op packet item.)*
 3. Route legs: stop mid-cost wrap on phone (two-column leg row or nowrap+ellipsis on the cost).
 4. Phone corner state: route sheet expanded + Maps sheet open overflows (route section paints into the Maps band) — cap or hand off per the 70% stack contract.
 5. Layer-manager rows: background sub-form behind an expander (rows are 6 lines today).

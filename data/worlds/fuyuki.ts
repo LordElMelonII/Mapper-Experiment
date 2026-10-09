@@ -23,7 +23,11 @@ function deepFreeze<T extends object>(value: T): T {
 export const fuyukiMap: WorldMapData = deepFreeze({
   schemaVersion: 2, // equals CURRENT_SCHEMA_VERSION — pinned by the literal type and asserted in the spec (C31)
   id: 'fuyuki-misaki',
-  name: 'Fuyuki & Misaki (FX1)',
+  // R9 item 6 (REPAIRS.md, B-149): the picker renders stored names verbatim
+  // (R1 — never a display transform), so the harness-speak '(FX1)' suffix
+  // was the fixture's word and left the demo name in dev-speak. The stored
+  // name is the map's own demo world name; the unit tests pin it below.
+  name: 'Fuyuki & Misaki',
   layers: [
     { id: 'layer-fuyuki', name: 'Fuyuki City' },
     { id: 'layer-misaki', name: 'Misaki Town' },

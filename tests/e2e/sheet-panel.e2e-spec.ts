@@ -440,3 +440,125 @@ test.describe('the route summon floor under a maximized sheet (PKG B-136, D91 re
     expect(reachable, 'the route summon stays tap-reachable beside the maximized panel').toBe(true);
   });
 });
+
+// PKG B-149 (REPAIRS §R9 item 4) — the corner state: the route sheet EXPANDED
+// while the Maps sheet is open. The defect: the stack (the 70% cap) squeezed
+// the route HOST while the route SECTION — a plain block — refused the
+// squeeze and painted 293px of content straight through its 139px host into
+// the Maps sheet's band (measured pre-fix: route section 188→481 across the
+// Maps rail at 378). The repair is the .tme-maps flex chain's route-side
+// twin: the section is the host's shrink chain (flex column, min-height 0),
+// so a stack squeeze scrolls the ROUTE BODY — the standing D53/D91 rule —
+// and the rail keeps its 44px floor (the B-136 --tme-route-floor band).
+//
+// Cited IDs:
+//   R9 item 4 — this cell is the packet's NEW corner-state assertion.
+//   D53/D91   — a stack squeeze scrolls the sheet's own body, never paints
+//               out of it; the canvas/stage never resizes.
+//   B-136     — the route rail's 44px summon floor under a squeezed stack.
+//   C2        — the Blocked-here/Blocked-places rows stay reachable (they
+//               scroll, never vanish).
+test.describe('the corner-state stack cap (PKG B-149, REPAIRS §R9 item 4)', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByTestId('tme-canvas')).toBeVisible();
+    await restoreBootViewport(page);
+    await expect.poll(() => readPosition(page, 'emiya-residence')).not.toBeNull();
+  });
+
+  test('phone: the expanded route sheet scrolls its body instead of painting into the open Maps band; the summon floor holds', async ({
+    page,
+  }) => {
+    test.skip(
+      !isPhone(),
+      'the corner state is the narrow stack\'s phenomenon — at ≥700px the stack dissolves (display: contents) and the panels are independent floaters that never share a band',
+    );
+
+    // The corner state, staged in the proven order: Maps open, its body
+    // collapsed (the rail idiom), then a node tap auto-expands the route
+    // sheet (the M2 flow), then the Maps body re-expands — BOTH bodies open,
+    // the stack at its squeeze.
+    await activate(page, 'tme-maps-toggle');
+    await expect(page.getByTestId('tme-maps-panel')).toBeVisible();
+    await activate(page, 'tme-maps-rail');
+    await expect(page.getByTestId('tme-maps-body')).toBeHidden();
+    await tapNode(page, 'emiya-residence');
+    await expect(page.getByTestId('tme-sheet-body')).toBeVisible(); // the route sheet auto-expanded
+    await activate(page, 'tme-maps-rail');
+    await expect(page.getByTestId('tme-maps-body')).toBeVisible();
+
+    // The verdict, read IN-PAGE (one evaluate, same-tick consistent — the
+    // readRouteStrip discipline): the route section must EQUAL its host box
+    // (the shrink chain holds), the body must be the scrollable member, and
+    // nothing may paint into the Maps sheet's band.
+    await settle(page);
+    const corner = await page.evaluate(() => {
+      const rect = (el: Element | null): { top: number; bottom: number; h: number } | null => {
+        if (el === null) return null;
+        const r = el.getBoundingClientRect();
+        return { top: Math.round(r.top), bottom: Math.round(r.bottom), h: Math.round(r.height) };
+      };
+      const host = document.querySelector('tme-route-panel');
+      const section = host?.querySelector('.tme-route') ?? null;
+      const rail = host?.querySelector('[data-testid="tme-sheet-rail"]') ?? null;
+      const body = host?.querySelector('[data-testid="tme-sheet-body"]') ?? null;
+      const mapsHost = document.querySelector('tme-maps-panel');
+      const mapsSection = mapsHost?.querySelector('.tme-maps') ?? null;
+      const mapsBody = mapsHost?.querySelector('[data-testid="tme-maps-body"]') ?? null;
+      const hitRailCenter = (): boolean => {
+        if (rail === null) return false;
+        const r = rail.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return hit !== null && (hit === rail || rail.contains(hit));
+      };
+      return {
+        host: rect(host),
+        section: rect(section),
+        rail: rect(rail),
+        railCenterReachable: hitRailCenter(),
+        bodyScrolls:
+          body !== null && (body as HTMLElement).scrollHeight > (body as HTMLElement).clientHeight,
+        mapsHost: rect(mapsHost),
+        mapsSection: rect(mapsSection),
+        mapsBodyScrolls:
+          mapsBody !== null &&
+          (mapsBody as HTMLElement).scrollHeight > (mapsBody as HTMLElement).clientHeight,
+      };
+    });
+
+    // 1. The section honors the host — the shrink chain (the defect had it
+    //    at 293px through a 139px host).
+    expect(corner.host, 'route host rendered').not.toBeNull();
+    expect(corner.section, 'route section rendered').not.toBeNull();
+    expect(
+      Math.abs(corner.section!.h - corner.host!.h),
+      'R9.4: the route section never exceeds its host (the flex chain holds)',
+    ).toBeLessThanOrEqual(1);
+    // 2. Nothing paints into the Maps band.
+    expect(corner.mapsHost, 'maps host rendered').not.toBeNull();
+    expect(
+      corner.section!.bottom <= corner.mapsHost!.top + 1,
+      `R9.4: the route sheet ends (${corner.section!.bottom}) at or above the Maps band (${corner.mapsHost!.top})`,
+    ).toBe(true);
+    // 3. The squeeze became SCROLL, on both bodies (the D53/D91 rule).
+    expect(corner.bodyScrolls, 'R9.4: the squeezed route body scrolls its overflow').toBe(true);
+    expect(corner.mapsBodyScrolls, 'R9.4: the squeezed maps body scrolls its overflow').toBe(true);
+    // 4. The B-136 summon floor: the route rail keeps its box and its center
+    //    stays tap-reachable under the squeeze.
+    expect(corner.rail!.h, 'R9.4: the route rail keeps >= 44px (F52/B-136)').toBeGreaterThanOrEqual(
+      44,
+    );
+    expect(corner.railCenterReachable, 'R9.4: the rail center is tap-reachable').toBe(true);
+
+    // 5. The rail still WORKS: one tap folds the route sheet (the summon is
+    //    a real affordance, not painted chrome) — and the stack re-flows.
+    await activate(page, 'tme-sheet-rail');
+    await expect(page.getByTestId('tme-sheet-body')).toBeHidden();
+
+    // D53: the corner state never forces horizontal overflow.
+    expect(
+      await noHorizontalScroll(page),
+      'no horizontal scroll in the corner state (F52/D53)',
+    ).toBeLessThanOrEqual(0);
+  });
+});

@@ -198,19 +198,32 @@
                 Delete
               </button>
             </div>
-            <!-- B-130 (D84/D29): the row's BACKGROUND entry. The state line
-                 speaks in words (none / the user's URL / "Uploaded image" +
-                 the stored file name — C23). Upload is a label-wrapped file
-                 input — the LABEL is the >= 44px tap target (F52/D53), the
-                 input itself is visually hidden but reachable for tests. Set
-                 is disabled while the trimmed URL is empty or a no-change
-                 (C30 honesty). Remove renders only when a background exists.
-                 One image per layer: any Set/Upload replaces. -->
+            <!-- B-130 (D84/D29): the row's BACKGROUND entry. B-149 (REPAIRS
+                 §R9 item 5): the sub-form hides behind a collapsed-by-default
+                 expander — the R-5 idiom (the property panel's advanced
+                 surfaces): the toggle is a >= 44px full-width row carrying the
+                 LIVE state line as its summary (the same words, same testid,
+                 byte-identical text), and the Upload / URL / Set / Remove /
+                 Calibrate controls render only while expanded (one discrete
+                 tap per toggle, D2; aria-expanded honest). One image per
+                 layer: any Set/Upload replaces. -->
             <div class="tme-layer-bg" data-testid="tme-layer-bg">
-              <p class="tme-layer-bg-state" data-testid="tme-layer-bg-state">
-                {{ backgroundLines().get(layer.id) }}
-              </p>
-              <div class="tme-layer-bg-actions">
+              <button
+                type="button"
+                class="tme-section-toggle"
+                data-testid="tme-layer-bg-toggle"
+                [attr.aria-expanded]="bgFormOpen().has(layer.id)"
+                [attr.aria-controls]="'tme-layer-bg-actions-' + layer.id"
+                (click)="toggleBgForm(layer.id)"
+              >
+                <span class="tme-section-name">Background</span>
+                <span class="tme-section-summary" data-testid="tme-layer-bg-state">
+                  {{ backgroundLines().get(layer.id) }}
+                </span>
+                <span class="tme-section-caret" aria-hidden="true">{{ bgFormOpen().has(layer.id) ? '▾' : '▸' }}</span>
+              </button>
+              @if (bgFormOpen().has(layer.id)) {
+                <div class="tme-layer-bg-actions" [attr.id]="'tme-layer-bg-actions-' + layer.id" data-testid="tme-layer-bg-actions">
                 <!-- Gate-verifier finding 7 (M3 gate): id+name per input — the
                      rename input's a11y pattern (the aria-label names the
                      layer it belongs to; ids are per-row unique). -->
@@ -264,7 +277,8 @@
                      calibrate (the service's canCalibrate gate: not the
                      active layer, no background, a failed load, a stale
                      natural — the F07 dead-control reasoning). >= 44px,
-                     plain word (C23/F52/D53). -->
+                     plain word (C23/F52/D53). Behind the row's expander
+                     (B-149 item 5), like every control of the sub-form. -->
                 <button
                   type="button"
                   class="tme-button tme-bg-calibrate"
@@ -275,7 +289,8 @@
                 >
                   Calibrate
                 </button>
-              </div>
+                </div>
+              }
             </div>
             @if (rows().length === 1) {
               <span class="tme-fence" data-testid="tme-layer-fence">The last remaining layer can't be deleted.</span>

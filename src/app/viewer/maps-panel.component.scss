@@ -30,7 +30,37 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+  flex: 0 0 auto; // B-149 (item 4, the section chain): the head is never the shrinking member
   padding: 0.5rem 0.75rem 0;
+}
+
+// B-149 (REPAIRS §R9 item 1): the head-actions row — the regime toggle rides
+// beside the close X in the other floaters' chrome shape (component-scoped
+// restatement: the classes are scoped per component, D7).
+.tme-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+// B-133/B-149: the Maximize/Restore regime button — one >= 44px tap target
+// (F52), neutral chrome (panel management, not a map action); narrow keeps
+// it display:none (the sheet rail is the narrow world's affordance).
+.tme-regime {
+  display: none;
+  min-width: 44px; // F52
+  min-height: 44px;
+  padding: 0 0.625rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: var(--tme-text-secondary);
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
 }
 
 .tme-title {
@@ -62,6 +92,7 @@
 // (R3); the wide media query below neutralizes the whole rail.
 .tme-sheet-rail {
   display: flex;
+  flex: 0 0 auto; // B-149 (item 4, the section chain): the rail is never the shrinking member
   align-items: center;
   justify-content: space-between;
   box-sizing: border-box;
@@ -137,6 +168,56 @@
     // plate, no blur).
     overflow: hidden; // the BODY scrolls (the head must stay reachable)
   }
+
+  // B-149 (REPAIRS §R9 item 1): Maximize lifts the cap to the tall overlay
+  // form — the route/arc floater's exact arithmetic (the top chrome band at
+  // 7.75rem: chip band + the clamp gap, above the 0.75rem bottom inset);
+  // the remembered position keeps winning (D10) — placement is untouched.
+  :host(.tme-open.tme-maximized) {
+    max-height: calc(100dvh - 7.75rem);
+  }
+
+  // B-149: a remembered position (the drag's committed transform) replaces
+  // the anchor: the fixed host sits at the origin and the transform places
+  // it (the route/layer-manager tme-placed shape).
+  :host(.tme-open.tme-placed) {
+    top: 0;
+    left: 0;
+    right: auto;
+    bottom: auto;
+  }
+
+  // B-149 (REPAIRS §R9 item 1): the regime header — the wide drag surface +
+  // the maximize toggle. touch-action: none lives HERE ONLY (never the
+  // stage — §6.2) so a header drag never scrolls the host page.
+  .tme-maps-head {
+    border-bottom: 1px solid rgba(174, 189, 211, 0.25);
+    margin-bottom: 0; // the head band now part of the floater's box (drag chrome)
+    touch-action: none;
+    cursor: move;
+    user-select: none;
+  }
+
+  .tme-regime {
+    display: inline-flex;
+  }
+}
+
+// B-149 (REPAIRS §R9 item 4, the corner-state cap): the root section IS the
+// host's shrink chain — as a plain block it refused the stack's squeeze (the
+// host shrank; the section's content painted BELOW the host box, straight
+// into the band beneath — measured: at the stacked state the section ran 293
+// tall through its 139-tall host into the Maps sheet's own band). Flex
+// column + min-height: 0 makes the body the scrollable member, so a stack
+// squeeze scrolls THIS sheet's body — the standing D53/D91 rule — at narrow
+// AND keeps the wide floater's 26rem cap from clipping the row/import
+// content away without a scrollbar (the old host bottom cut it dead).
+.tme-maps {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
 }
 
 .tme-field-label {
@@ -405,6 +486,8 @@
 // own pre-existing hover tint and is not this packet's file.)
 @media (hover: hover) and (pointer: fine) {
   .tme-close:hover,
+  .tme-regime:hover,
+  .tme-maps-head:hover,
   .tme-sheet-rail:hover,
   .tme-button:hover:not(.tme-create):not(.tme-open-button):not(.tme-fork):not(.tme-delete):not(:disabled) {
     border-color: var(--tme-hairline);

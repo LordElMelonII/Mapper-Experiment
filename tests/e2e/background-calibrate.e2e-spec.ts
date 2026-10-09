@@ -159,21 +159,41 @@ const expectCleanConsoleToleratingSyntheticTouch = async (tally: ConsoleTally): 
   expect(tally.warnings, 'console warnings clean (housekeeping)').toEqual([]);
 };
 
+/**
+ * B-149 (REPAIRS §R9 item 5) re-baseline helper: the background sub-form
+ * (Upload / URL / Set / Remove / Calibrate) renders behind a collapsed-by-
+ * DEFAULT expander (the R-5 idiom) — a cell driving one of its fields
+ * expands the row's section first. IDEMPOTENT (the R-5 expandSection law,
+ * the portals wireCastleTo precedent): an already-expanded row is never
+ * folded — tap only when collapsed. Each caller cites this helper (R23: a
+ * re-baseline is named in-file, never silent).
+ */
+const expandBgForm = async (page: Page, rowName: string): Promise<void> => {
+  const toggle = layerRow(page, rowName).getByTestId('tme-layer-bg-toggle');
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') {
+    await tap(toggle);
+  }
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+};
+
 /** Set the URL arm on one row, touch-alone on phone (fill + tap Set). */
 const setUrlOn = async (page: Page, rowName: string, url: string): Promise<void> => {
   const row = layerRow(page, rowName);
+  await expandBgForm(page, rowName); // B-149 (R9 item 5): expand-first re-baseline
   await row.getByTestId('tme-layer-bg-url').fill(url);
   await tap(row.getByTestId('tme-layer-bg-set'));
 };
 
 /** Enter calibrate from the manager sheet (opens the sheet only if closed —
  *  Manage is a TOGGLE; the fresh-start and degenerate cells reuse an
- *  already-open sheet), then taps the row's entry. */
+ *  already-open sheet), then taps the row's entry. B-149 (R9 item 5): the
+ *  entry hides behind the row's collapsed expander — expand first. */
 const enterCalibrateViaSheet = async (page: Page, rowName: string): Promise<void> => {
   const body = page.getByTestId('tme-layer-manager-body');
   const open = (await body.count()) > 0 && (await body.isVisible());
   if (!open) await tap(page.getByTestId('tme-layer-manage'));
   await expect(body).toBeVisible();
+  await expandBgForm(page, rowName); // B-149 (R9 item 5): expand-first re-baseline
   await tap(layerRow(page, rowName).getByTestId('tme-layer-bg-calibrate'));
   await expect(page.getByTestId('tme-calibrate')).toBeVisible();
 };
@@ -679,8 +699,13 @@ test.describe('background calibrate (PKG B-135, D93/D92/D75/D90/C24/F07/F52/D53)
 
     // Fuyuki (active, harness background): ENABLED. Misaki (inactive, no
     // background): DISABLED — never hidden (the F07 dead-control reasoning).
+    // B-149 (R9 item 5): expand-first — the entry hides behind the row's
+    // collapsed expander; both rows open so the gate matrix reads real
+    // controls.
     const fuyuki = layerRow(page, FUYUKI_ROW);
     const misaki = layerRow(page, MISAKI_ROW);
+    await expandBgForm(page, FUYUKI_ROW);
+    await expandBgForm(page, MISAKI_ROW);
     await expect(fuyuki.getByTestId('tme-layer-bg-calibrate')).toBeEnabled();
     await expect(misaki.getByTestId('tme-layer-bg-calibrate')).toBeDisabled();
 
@@ -787,6 +812,7 @@ test.describe('background calibrate (PKG B-135, D93/D92/D75/D90/C24/F07/F52/D53)
     // The entry: a >= 44px tap target in the sheet; the journey runs
     // touch-alone from there.
     await tap(page.getByTestId('tme-layer-manage'));
+    await expandBgForm(page, FUYUKI_ROW); // B-149 (R9 item 5): the entry hides behind the expander
     const calibrate = layerRow(page, FUYUKI_ROW).getByTestId('tme-layer-bg-calibrate');
     await expect(calibrate).toBeEnabled();
     const entryBox = await calibrate.boundingBox();
@@ -834,6 +860,7 @@ test.describe('background calibrate (PKG B-135, D93/D92/D75/D90/C24/F07/F52/D53)
 
     // Re-entry works (the sheet reopens; the entry is still enabled).
     await tap(page.getByTestId('tme-layer-manage'));
+    await expandBgForm(page, FUYUKI_ROW); // B-149 (R9 item 5): idempotent — a no-op while still expanded
     await expect(layerRow(page, FUYUKI_ROW).getByTestId('tme-layer-bg-calibrate')).toBeEnabled();
 
     await expectHeaders(page);
@@ -848,6 +875,7 @@ test.describe('background calibrate (PKG B-135, D93/D92/D75/D90/C24/F07/F52/D53)
       // Enter touch-alone: Manage, then the Fuyuki row's Calibrate.
       await page.getByTestId('tme-layer-manage').tap();
       await expect(page.getByTestId('tme-layer-manager-body')).toBeVisible();
+      await expandBgForm(page, FUYUKI_ROW); // B-149 (R9 item 5): expand-first re-baseline
       await layerRow(page, FUYUKI_ROW).getByTestId('tme-layer-bg-calibrate').tap();
       await expect(page.getByTestId('tme-calibrate')).toBeVisible();
       await expect(page.getByTestId('tme-layer-manager-body')).toHaveCount(0);

@@ -167,9 +167,27 @@ const expectCleanConsole = async (tally: ConsoleTally): Promise<void> => {
   expect(tally.warnings, 'console warnings clean (housekeeping)').toEqual([]);
 };
 
+/**
+ * B-149 (REPAIRS §R9 item 5) re-baseline helper: the background sub-form
+ * (Upload / URL / Set / Remove / Calibrate) renders behind a collapsed-by-
+ * DEFAULT expander (the R-5 idiom) — a cell driving one of its fields
+ * expands the row's section first. IDEMPOTENT (the R-5 expandSection law,
+ * the portals wireCastleTo precedent): an already-expanded row is never
+ * folded — tap only when collapsed. Each caller cites this helper (R23: a
+ * re-baseline is named in-file, never silent).
+ */
+const expandBgForm = async (page: Page, rowName: string): Promise<void> => {
+  const toggle = layerRow(page, rowName).getByTestId('tme-layer-bg-toggle');
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') {
+    await tap(toggle);
+  }
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+};
+
 /** Set the URL arm on one row, touch-alone on phone (fill + tap Set). */
 const setUrlOn = async (page: Page, rowName: string, url: string): Promise<void> => {
   const row = layerRow(page, rowName);
+  await expandBgForm(page, rowName); // B-149 (R9 item 5): expand-first re-baseline
   await row.getByTestId('tme-layer-bg-url').fill(url);
   await tap(row.getByTestId('tme-layer-bg-set'));
 };
@@ -236,6 +254,7 @@ test.describe('per-layer backgrounds: sheet entry, store upload, degrade (PKG B-
 
     await tap(page.getByTestId('tme-layer-manage'));
     const row = layerRow(page, FUYUKI_ROW);
+    await expandBgForm(page, FUYUKI_ROW); // B-149 (R9 item 5): the file input hides behind the expander
     await row.getByTestId('tme-layer-bg-file').setInputFiles(fixturePng());
 
     // The stored upload renders — the harness store's key IS the object URL.
@@ -272,6 +291,11 @@ test.describe('per-layer backgrounds: sheet entry, store upload, degrade (PKG B-
     await tap(page.getByTestId('tme-layer-manage'));
     const fuyuki = layerRow(page, FUYUKI_ROW);
     const misaki = layerRow(page, MISAKI_ROW);
+    // B-149 (R9 item 5): expand-first — the Remove/Calibrate controls hide
+    // behind the collapsed expander; both rows open so the counts below stay
+    // meaningful (misaki's Remove is absent because it has no background).
+    await expandBgForm(page, FUYUKI_ROW);
+    await expandBgForm(page, MISAKI_ROW);
 
     // Engineering: the harness patch gives Fuyuki a background (Remove
     // rendered), Misaki has none (no Remove — the nothing-to-remove case
@@ -349,6 +373,9 @@ test.describe('per-layer backgrounds: sheet entry, store upload, degrade (PKG B-
 
     // Misaki opens with NO background: no Remove button (the packet's
     // refusal-path ruling — the nothing-to-remove case is unreachable).
+    // B-149 (R9 item 5): expand-first so the absent-Remove and disabled-Set
+    // asserts speak about a VISIBLE sub-form, not a collapsed one.
+    await expandBgForm(page, MISAKI_ROW);
     await expect(misaki.getByTestId('tme-layer-bg-remove')).toHaveCount(0);
     // Set is disabled while the trimmed input is empty (C30 honesty).
     await expect(misaki.getByTestId('tme-layer-bg-set')).toBeDisabled();
@@ -378,6 +405,7 @@ test.describe('per-layer backgrounds: sheet entry, store upload, degrade (PKG B-
     // The whole URL-arm journey runs touch-alone at 375px.
     await tap(page.getByTestId('tme-layer-manage'));
     const row = layerRow(page, FUYUKI_ROW);
+    await expandBgForm(page, FUYUKI_ROW); // B-149 (R9 item 5): the sweep measures the EXPANDED sub-form
     const targets = [
       { id: 'tme-layer-bg-upload', name: 'Upload label' },
       { id: 'tme-layer-bg-url', name: 'URL input' },

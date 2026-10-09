@@ -45,7 +45,7 @@ const HOOK_ERROR = 'window.__TME_E2E__ missing — dev harness not loaded';
  * canvas-spec convention: authored fixture strings, never engine output. */
 const EMIYA_LABEL = 'Emiya Residence';
 const PIN_LAYER_NAME = 'Fuyuki City';
-const SEEDED_NAME = 'Fuyuki & Misaki (FX1)';
+const SEEDED_NAME = 'Fuyuki & Misaki'; // B-149 R9 item 6: the '(FX1)' harness-speak suffix left the stored demo name — the picker renders stored names verbatim (R1).
 
 const isPhone = (): boolean => test.info().project.name === 'phone';
 
@@ -54,12 +54,22 @@ const isPhone = (): boolean => test.info().project.name === 'phone';
 // other spec follows).
 
 /** The header's rendered text, whitespace-normalized — the §R4 read: what a
- * user actually reads, separators included. */
+ * user actually reads, separators included. B-149 (REPAIRS §R9 item 7)
+ * re-baseline (R23: cited, never silent): the D79 hint pill and the save
+ * dock JOINED the header band's flex flow as its own status pills (role
+ * "status" asides — pills a user reads as separate statuses, never as the
+ * snapshot row); the §R4 read therefore EXCLUDES them, keeping the
+ * assertion calls byte-identical while measuring the same thing the
+ * pre-packet sibling layout measured. */
 const readHeaderText = (page: Page): Promise<string> =>
   page.evaluate((): string => {
     const header = document.querySelector('[data-testid="tme-header"]');
     if (header === null) throw new Error('tme-header missing');
-    return (header.textContent ?? '').replace(/\s+/g, ' ').trim();
+    const clone = header.cloneNode(true) as HTMLElement;
+    for (const pill of clone.querySelectorAll('.tme-hint, .tme-save-dock')) {
+      pill.remove();
+    }
+    return (clone.textContent ?? '').replace(/\s+/g, ' ').trim();
   });
 
 /** R1: the snapshot's cost-unit word read as DATA through the app's own

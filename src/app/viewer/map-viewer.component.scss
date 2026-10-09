@@ -318,19 +318,21 @@ span.tme-crumb-active {
 }
 
 // B-103: selection chip — signal-bound (visible only while a node is
-// selected), top-right so it never collides with canvas content at phone
-// width (D53; the bottom corners are chrome-free since B-127 moved the tool
-// control and the layer nav onto the rail). Top offset clears the header
-// even when its items wrap to two lines at phone width. One button = one
-// >= 44px tap target that dismisses the selection (F52).
+// selected), the header band's top-right pill. B-149 (REPAIRS §R9 item 7):
+// the chip JOINED the header's flex flow (it was an absolute at a fixed top
+// offset that collided with the docked band's save dock by 2px and with the
+// hint pill outright) — margin-left:auto keeps it the right-end pill and the
+// band's wrap gives it its own row when the band is tight, so the top-edge
+// pills can never overlap at any width (the reserved-row rule). Still a
+// clamp chrome rect (D86 — the clamps read the live rect wherever it sits).
 .tme-chip {
-  position: absolute;
-  top: 3.75rem;
-  right: 0.75rem;
+  pointer-events: auto; // the header is pointer-events:none; the chip is a real control
+  flex: 0 1 auto;
+  margin-left: auto; // right-aligned; wraps to its own row when the band is tight
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  max-width: calc(100% - 1.5rem); // never force horizontal scroll (D53)
+  max-width: 100%; // never force horizontal scroll (D53)
   min-height: 44px; // F52: >= 44px tap target
   padding: 0 0.875rem;
   border: 1px solid var(--tme-accent-gold);
@@ -475,25 +477,32 @@ span.tme-crumb-active {
 }
 
 // B-137 (D79): the one-time calibrate HINT — the stage-top overlay (the
-// calibrate band's slot; the template never renders both at once). An
-// absolute overlay that never joins the stage's layout flow (the
-// save-dock/commit-neutral discipline, D91): a hint show/dismiss resizes
-// nothing and moves no viewport. The text is a status; only the Dismiss
-// control is a hit target.
+// calibrate band's slot; the template never renders both at once).
+// B-149 (REPAIRS §R9 item 7): the hint JOINED the header band's flex flow —
+// it was an absolute top-center overlay that collided with the docked
+// band's save dock (x 182–293 of its 98–293 span, y 8–62 of its 8–102) and
+// with the selection chip. Its RESERVED ROW: flex-basis 100% claims a full
+// line (the pill never shares a row), max-width:fit-content + the auto
+// inline margins keep the pill COMPACT and CENTERED on that row. Commit-
+// neutral still holds (the header is an absolute overlay: the band's growth
+// costs canvas top, never a stage resize — the B-116 doctrine; the RO cannot
+// fire for it). position:relative + z 16 keeps the pill above the sheet
+// stack (15) if a maxed stack ever reaches the band, below the wide
+// floaters (20) — the old overlay doctrine, kept in flow.
 .tme-hint {
-  position: absolute;
-  top: 0.5rem;
-  left: 50%;
-  transform: translateX(-50%);
+  flex: 0 0 100%; // the reserved row — the pill never shares a line (R9 item 7)
+  max-width: fit-content; // the pill stays compact, not a full-width bar
+  margin-inline: auto; // centered on its reserved row
+  position: relative;
   z-index: 16; // above the sheet stack (15), below the wide floaters (20)
   display: flex;
   align-items: center;
   gap: 0.375rem;
-  max-width: calc(100% - 1.5rem); // never force horizontal scroll (D53)
   padding: 0.25rem 0.375rem 0.25rem 0.75rem;
   border: 1px solid rgba(174, 189, 211, 0.4);
   border-radius: 8px;
   background: rgba(20, 23, 28, 0.9);
+  pointer-events: auto; // the header is pointer-events:none; the Dismiss is a real control
 }
 
 .tme-hint-text {

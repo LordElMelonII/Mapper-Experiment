@@ -90,6 +90,7 @@
 // (R3); the wide media query below neutralizes the whole rail.
 .tme-sheet-rail {
   display: flex;
+  flex: 0 0 auto; // B-149 (item 4, the section chain): the rail is never the shrinking member
   align-items: center;
   justify-content: space-between;
   box-sizing: border-box;
@@ -342,20 +343,64 @@
   font-size: 0.8125rem;
 }
 
-// B-130 (D84/D29): the row's background entry — the state line, then the
-// upload/URL/Set/Remove controls. Both wrap, so a long URL or a narrow
-// phone never forces horizontal scroll (D53).
+// B-130 (D84/D29) + B-149 (REPAIRS §R9 item 5): the row's background entry —
+// the collapsed-by-default expander (the R-5 idiom: the property panel's
+// five advanced surfaces' `.tme-section-toggle` row, restated here because
+// the classes are component-scoped, D7) then the upload/URL/Set/Remove/
+// Calibrate controls, which render only while expanded. The actions wrap,
+// so a long URL or a narrow phone never forces horizontal scroll (D53).
 .tme-layer-bg {
   margin-top: 0.375rem;
 }
 
-// The state line — words only (C23). break-all so even the user's longest
-// URL wraps inside the sheet instead of overflowing it (D53).
-.tme-layer-bg-state {
-  margin: 0.125rem 0 0.25rem;
+// B-149 (item 5): the expander toggle — the R-5 row shape verbatim: one
+// full-width >= 44px tap target (F52), name + live summary + caret, the
+// hairline separator step above (the property panel's exact recipe).
+.tme-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px; // F52
+  padding: 0.25rem 0.125rem;
+  border: none;
+  border-top: 1px solid rgba(174, 189, 211, 0.25); // the hairline ladder's separator step
+  background: transparent;
+  color: var(--tme-text-secondary);
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+.tme-section-name {
+  flex: 0 0 auto;
+}
+
+.tme-section-summary {
+  flex: 1 1 auto;
+  min-width: 0; // never propagate content width into the row (D53)
+  overflow: hidden;
   color: var(--tme-text-muted);
+  font-weight: 400;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tme-section-caret {
+  flex: 0 0 auto;
+  color: var(--tme-text-muted);
+}
+
+// The summary IS the old state line (same testid, same words — C23): the
+// summary class owns the layout now; this keeps the state's small print.
+.tme-layer-bg-state {
   font-size: 0.8125rem;
-  overflow-wrap: anywhere;
 }
 
 .tme-layer-bg-actions {
@@ -363,6 +408,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 0.375rem;
+  margin-top: 0.25rem;
 }
 
 // The URL input flexes like the create/rename inputs; min-width: 0 keeps

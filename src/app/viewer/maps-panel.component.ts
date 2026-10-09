@@ -62,6 +62,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   effect,
   inject,
   computed,
@@ -75,6 +76,40 @@ import type { WorldMapData } from '../../core/api';
 import { MAP_LIBRARY } from '../graph/map-library';
 import type { LibraryEntry } from '../graph/map-library';
 import { GraphService } from '../graph/graph.service';
+
+// --- B-149 (REPAIRS §R9 item 1) floating-surface geometry (the layer-manager mirrors) ---
+// D81's wide-layout breakpoint — the drag surface (the floater head) is the
+// wide form only; the narrow sheet stayed in the stack's flow.
+const WIDE_LAYOUT_QUERY = '(min-width: 700px)';
+/** Header height fallback when the header element is unreadable (C32 spirit). */
+const HEADER_FALLBACK_PX = 48;
+/** Clear gap below the top chrome band when clamped under it. */
+const CHROME_CLEAR_GAP_PX = 8;
+
+/**
+ * B-149: one gesture's geometry snapshot — every rect is read ONCE (at the
+ * dragstart), so pointermove is pure arithmetic plus one direct style write
+ * (D2). The B-133 ClampFrame (the layer-manager's shape).
+ */
+interface ClampFrame {
+  readonly stageLeft: number;
+  readonly stageTop: number;
+  readonly stageRight: number;
+  readonly stageBottom: number;
+  readonly chromeLeft: number;
+  readonly chromeBottom: number;
+  readonly width: number;
+  readonly headerHeight: number;
+}
+
+/** B-149: a live drag — the frame plus the pointer's start and the last applied position. */
+interface DragFrame extends ClampFrame {
+  readonly startClientX: number;
+  readonly startClientY: number;
+  readonly origX: number;
+  readonly origY: number;
+  last: { x: number; y: number };
+}
 
 /**
  * B-138: the export filename — the map's NAME made filesystem-safe (a
@@ -97,15 +132,148 @@ function exportFilename(name: string): string {
     // the panel never occupies a stack slot (D91: it never occupies LAYOUT
     // at all — the surface overlays the stage on both layouts).
     '[class.tme-open]': 'open()',
-    // B-137: the panel has NO remembered position and NO maximize — the
-    // picker anchors bottom-right on wide (the layer-manager's default
-    // anchor form of the D91 float family; the packet asks for the regime,
-    // not the drag machinery — kept lean).
+    // B-149 (REPAIRS §R9 item 1): the wide floater joins the D91 float
+    // family chrome the other floaters carry — the drag handle's committed
+    // transform (the B-133 host classes) and the Maximize/Restore regime
+    // cap lift. Narrow ignores every one of them (the media query owns the
+    // worlds); the servant sheet keeps its rail flow byte-unchanged.
+    '[class.tme-maximized]': 'maximized()',
+    '[class.tme-placed]': 'floatTransform() !== null',
+    '[style.transform]': 'floatTransform()',
     '(document:keydown.escape)': 'onEscape()',
   },
 })
 export class MapsPanelComponent {
   protected readonly graph = inject(GraphService);
+
+  /** B-149: the drag writes the host's style directly — the element is needed. */
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+
+  /**
+   * B-149 (REPAIRS §R9 item 1): the wide floater's maximize state —
+   * component-local VIEW chrome (the layer-manager precedent: floating
+   * compact by default; Maximize lifts the height cap to the tall overlay
+   * form). Narrow never renders the regime chrome (the media query).
+   */
+  protected readonly maximized = signal(false);
+
+  /** B-149: the Maximize/Restore toggle (the template's only write path, R3). */
+  protected toggleMaximize(): void {
+    this.maximized.update((m) => !m);
+  }
+
+  /**
+   * B-149: the floating panel's rendered transform — `translate(x, y)` of
+   * the remembered viewport position (null while anchored: the SCSS anchor
+   * applies). The drag's direct style writes land on the same property;
+   * the signal commits once on release (the D91 family shape).
+   */
+  protected readonly floatTransform = computed<string | null>(() => {
+    if (!this.open()) return null;
+    const pos = this.graph.mapsPanelPosition();
+    return pos === null ? null : `translate(${pos.x}px, ${pos.y}px)`;
+  });
+
+  /** B-149: the drag currently in progress, or null — a plain field (D2). */
+  private drag: DragFrame | null = null;
+
+  /**
+   * B-149: dragstart on the floater header (the layer-manager machinery —
+   * the header's buttons keep their taps; one pointer owns the drag; the
+   * high-frequency pointermove listener exists only WHILE dragging, D2/D53).
+   * WIDE-ONLY by the D81 breakpoint literal (the drag surface is the wide
+   * floater's head; the narrow sheet's head stays plain chrome and the
+   * stack rules its reach — the property panel's !floating narrow gate's
+   * equivalent on a panel whose narrow form has no regime at all).
+   */
+  protected onDragStart(event: PointerEvent): void {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('button') !== null) return;
+    if (!event.isPrimary) return;
+    if (!this.open() || this.drag !== null) return;
+    if (!window.matchMedia(WIDE_LAYOUT_QUERY).matches) return; // the floater is the wide form only
+    const rect = this.host.nativeElement.getBoundingClientRect();
+    const frame = this.readFrame(rect.width);
+    if (frame === null) return; // no stage to clamp into — no drag (C32 spirit)
+    this.drag = {
+      ...frame,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      origX: rect.left,
+      origY: rect.top,
+      last: { x: rect.left, y: rect.top },
+    };
+    event.preventDefault();
+    window.addEventListener('pointermove', this.onDragMove);
+    window.addEventListener('pointerup', this.onDragEnd);
+    window.addEventListener('pointercancel', this.onDragEnd);
+  }
+
+  /** B-149: HIGH-FREQUENCY (D2) — reads frame scalars, writes the style transform only. */
+  private readonly onDragMove = (event: PointerEvent): void => {
+    const drag = this.drag;
+    if (drag === null || !event.isPrimary) return;
+    const pos = this.clampFloat(
+      drag.origX + (event.clientX - drag.startClientX),
+      drag.origY + (event.clientY - drag.startClientY),
+      drag,
+    );
+    drag.last = pos;
+    this.host.nativeElement.style.transform = `translate(${pos.x}px, ${pos.y}px)`;
+  };
+
+  /** B-149: discrete release — detach first, then commit the position ONCE. */
+  private readonly onDragEnd = (): void => {
+    window.removeEventListener('pointermove', this.onDragMove);
+    window.removeEventListener('pointerup', this.onDragEnd);
+    window.removeEventListener('pointercancel', this.onDragEnd);
+    const drag = this.drag;
+    this.drag = null;
+    if (drag === null) return;
+    this.graph.mapsPanelPosition.set(drag.last); // one signal write → the binding re-renders it
+  };
+
+  /** B-149: snapshot the clamp geometry (the layer-manager readFrame pattern). */
+  private readFrame(width: number): ClampFrame | null {
+    const stage =
+      this.host.nativeElement.closest('.tme-viewer')?.querySelector('.tme-stage') ?? null;
+    if (stage === null) return null;
+    const stageRect = stage.getBoundingClientRect();
+    const header = this.host.nativeElement.querySelector('.tme-maps-head');
+    const headerHeight =
+      header === null ? HEADER_FALLBACK_PX : header.getBoundingClientRect().height;
+    let chromeLeft = Number.POSITIVE_INFINITY;
+    let chromeBottom = Number.NEGATIVE_INFINITY;
+    for (const selector of ['.tme-chip', '.tme-breadcrumb']) {
+      for (const el of stage.querySelectorAll<HTMLElement>(selector)) {
+        if (el.offsetParent === null) continue;
+        const r = el.getBoundingClientRect();
+        chromeLeft = Math.min(chromeLeft, r.left);
+        chromeBottom = Math.max(chromeBottom, r.bottom);
+      }
+    }
+    return {
+      stageLeft: stageRect.left,
+      stageTop: stageRect.top,
+      stageRight: stageRect.right,
+      stageBottom: stageRect.bottom,
+      chromeLeft,
+      chromeBottom,
+      width,
+      headerHeight,
+    };
+  }
+
+  /** B-149: the stage-bounds clamp (the B-119 arithmetic, layer-manager twin). */
+  private clampFloat(x: number, y: number, frame: ClampFrame): { x: number; y: number } {
+    const clampedX = Math.min(Math.max(x, frame.stageLeft), frame.stageRight - frame.width);
+    const minY =
+      clampedX + frame.width > frame.chromeLeft
+        ? frame.chromeBottom + CHROME_CLEAR_GAP_PX
+        : frame.stageTop;
+    const clampedY = Math.min(Math.max(y, minY), frame.stageBottom - frame.headerHeight);
+    return { x: clampedX, y: clampedY };
+  }
 
   /**
    * B-137: the library store — the panel's data seam (list/get/save/delete;

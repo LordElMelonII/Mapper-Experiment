@@ -25,7 +25,13 @@
      both worlds); the panel renders ONLY while open (the B-117
      hide-while-closed form) — a wide floater / narrow in-stack sheet;
      the B-114 rail is the narrow form's collapse affordance (wide hides
-     it and always shows the body). R2: every command goes through the
+     it and always shows the body).
+     B-149 (REPAIRS §R9 item 1): the wide floater joins the D91 float
+     family's chrome — the head is the drag surface (remembered position,
+     clamped, D10) and carries the Maximize/Restore regime toggle beside
+     the close X; the panel's sheet rail converges to the route rail's
+     collapse idiom (title word + chevron, aria-expanded). R2: every
+     command goes through the
      MAP_LIBRARY store, the pure engines, or the service's loaded-map
      wrappers; the facade is never touched here. C23: plain words
      everywhere — the authored map names render, ids never do. F52/D53:
@@ -37,21 +43,45 @@
     aria-label="Manage maps"
     [class.tme-collapsed]="collapsed()"
   >
-    <header class="tme-maps-head">
+    <!-- B-149 (REPAIRS §R9 item 1): the wide floater's regime header — the
+         drag surface (pointerdown; buttons keep their taps; wide-form
+         only — the media query and the component's D81 gate own that
+         split) + the Maximize/Restore toggle (>= 44px, F52), the same
+         affordances every other floater carries at :700px+. Narrow: the
+         same head renders plain above the sheet rail (no drag, no regime
+         chrome — the narrow world's affordance is the rail below). -->
+    <header class="tme-maps-head" data-testid="tme-maps-float-head" (pointerdown)="onDragStart($event)">
       <h2 class="tme-title">Maps</h2>
-      <button
-        type="button"
-        class="tme-close"
-        data-testid="tme-maps-panel-close"
-        aria-label="Close map management"
-        (click)="close()"
-      >
-        ×
-      </button>
+      <div class="tme-head-actions">
+        <button
+          type="button"
+          class="tme-regime"
+          data-testid="tme-maps-panel-maximize"
+          [attr.aria-pressed]="maximized() ? 'true' : 'false'"
+          (click)="toggleMaximize()"
+        >
+          {{ maximized() ? 'Restore' : 'Maximize' }}
+        </button>
+        <button
+          type="button"
+          class="tme-close"
+          data-testid="tme-maps-panel-close"
+          aria-label="Close map management"
+          (click)="close()"
+        >
+          ×
+        </button>
+      </div>
     </header>
 
     <!-- B-114 (ruling 1): the sheet rail — one full-width >= 44px toggle
-         (F52), narrow-only (the media query hides it on wide). -->
+         (F52), narrow-only (the media query hides it on wide).
+         B-149 (REPAIRS §R9 item 1, the collapse idiom convergence): the
+         row renders the PANEL-LEVEL pattern every sheet rail carries —
+         the panel's own title word in the route rail's voice ('Route' +
+         the state chevron, aria-expanded honest) — never the old
+         Hide/Show action words (the editor rail's OWN collapse toggle
+         keeps those; it is not a floater). -->
     <button
       type="button"
       class="tme-sheet-rail"
@@ -60,7 +90,7 @@
       aria-controls="tme-maps-body"
       (click)="toggleRail()"
     >
-      <span class="tme-sheet-title">{{ collapsed() ? 'Show' : 'Hide' }}</span>
+      <span class="tme-sheet-title">Maps</span>
       <span class="tme-sheet-chevron" aria-hidden="true">▾</span>
     </button>
 

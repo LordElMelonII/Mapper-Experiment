@@ -603,6 +603,81 @@ test.describe('the layer-manager sheet, the Layer dropdown and Detach (PKG B-126
     expect(bad, 'console clean (housekeeping)').toEqual([]);
   });
 
+  // B-149 (REPAIRS §R9 item 5): the row's background sub-form hides behind a
+  // collapsed-by-default expander — the R-5 idiom (the property panel's
+  // section toggles) come to the sheet's rows. The NEW affordance's cell:
+  // collapsed renders ONLY the toggle with the live state summary; one tap
+  // reveals the fields (aria-expanded honest, >= 44px row); a second tap
+  // folds them away; per-layer honesty survives the expander (a background-
+  // less row still has no Remove once expanded).
+  test('background sub-form expander: collapsed by default, the live summary rides the toggle, one tap opens the fields (R9 item 5 / R-5 idiom)', async ({
+    page,
+  }) => {
+    const bad = collectConsole(page);
+    await activate(page, 'tme-layer-manage');
+    await expect(page.getByTestId('tme-layer-manager-body')).toBeVisible();
+
+    const fuyuki = layerRow(page, 'Fuyuki City');
+    const toggle = fuyuki.getByTestId('tme-layer-bg-toggle');
+    const tapIt = async (): Promise<void> => {
+      if (isPhone()) await toggle.tap();
+      else await toggle.click();
+    };
+
+    // Collapsed by DEFAULT: the toggle is a >= 44px row (F52), aria-expanded
+    // honest, carrying the LIVE state summary (Fuyuki boots with the harness
+    // asset patch — D69 — the un-stored arm speaks 'Uploaded image', C23);
+    // every field control of the sub-form is absent (count 0, not hidden
+    // offscreen).
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    const box = await toggle.boundingBox();
+    expect(box, 'the expander toggle is visible').not.toBeNull();
+    expect(box!.height, 'toggle height >= 44px (F52)').toBeGreaterThanOrEqual(44);
+    expect(box!.width, 'toggle width >= 44px (F52)').toBeGreaterThanOrEqual(44);
+    await expect(fuyuki.getByTestId('tme-layer-bg-state')).toHaveText('Uploaded image');
+    await expect(fuyuki.getByTestId('tme-layer-bg-url')).toHaveCount(0);
+    await expect(fuyuki.getByTestId('tme-layer-bg-set')).toHaveCount(0);
+    await expect(fuyuki.getByTestId('tme-layer-bg-remove')).toHaveCount(0);
+    await expect(fuyuki.getByTestId('tme-layer-bg-calibrate')).toHaveCount(0);
+
+    // ONE tap expands: the fields render (Set disabled while the input is
+    // empty — C30 honesty rides the expander; Remove present — Fuyuki HAS a
+    // background; the summary stays in the toggle, byte-identical).
+    await tapIt();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(fuyuki.getByTestId('tme-layer-bg-state')).toHaveText('Uploaded image');
+    await expect(fuyuki.getByTestId('tme-layer-bg-url')).toBeVisible();
+    await expect(fuyuki.getByTestId('tme-layer-bg-set')).toBeDisabled();
+    await expect(fuyuki.getByTestId('tme-layer-bg-remove')).toBeVisible();
+
+    // A second tap folds: the fields leave, the summary stays.
+    await tapIt();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(fuyuki.getByTestId('tme-layer-bg-url')).toHaveCount(0);
+    await expect(fuyuki.getByTestId('tme-layer-bg-set')).toHaveCount(0);
+
+    // Per-layer honesty under the expander: Misaki's summary says none and
+    // its expanded sub-form has NO Remove (the nothing-to-remove case never
+    // renders — D84's ruling, now one toggle deeper).
+    const misaki = layerRow(page, 'Misaki Town');
+    const misakiToggle = misaki.getByTestId('tme-layer-bg-toggle');
+    await expect(misakiToggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(misaki.getByTestId('tme-layer-bg-state')).toHaveText('No background');
+    if (isPhone()) await misakiToggle.tap();
+    else await misakiToggle.click();
+    await expect(misakiToggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(misaki.getByTestId('tme-layer-bg-remove')).toHaveCount(0);
+
+    // The expander never forces horizontal overflow (D53) at either width.
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow, 'no horizontal scroll (F52/D53)').toBeLessThanOrEqual(0);
+
+    await expectHeaders(page);
+    expect(bad, 'console clean (housekeeping)').toEqual([]);
+  });
+
   test('create, rename, reorder: row and nav move together; boundary buttons disabled (D82, touch-alone on phone)', async ({
     page,
   }) => {

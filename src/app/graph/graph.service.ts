@@ -1252,6 +1252,17 @@ export class GraphService implements OnDestroy {
   readonly layerManagerPosition = signal<{ x: number; y: number } | null>(null);
 
   /**
+   * B-149 (REPAIRS §R9 item 1): the Maps panel floater's remembered position
+   * — the B-133 position family's fifth member (the panel is the
+   * layer-manager's structural twin; R9 item 1 gives the floater the same
+   * drag handle). Frontend viewer chrome, in-memory only: written ONCE per
+   * drag end by the maps panel (never during the drag — D2), the
+   * remembered position always wins over any default anchor (D10), and the
+   * facade gains no command for it (R2 — the panelFloating class).
+   */
+  readonly mapsPanelPosition = signal<{ x: number; y: number } | null>(null);
+
+  /**
    * D91 (B-133): which half of the canvas the current selection's rendered
    * anchor sits on — the floating panels' best-effort avoid-the-selection
    * DEFAULT placement reads this (a panel without a remembered position

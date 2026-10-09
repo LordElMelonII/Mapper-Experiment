@@ -115,6 +115,82 @@
           <button type="button" class="tme-save" data-testid="tme-save" (click)="graph.saveMapToLibrary()">Save</button>
         </aside>
       }
+      <!-- B-103 selection chip (D2/D53/F52): template-bound to the selection
+           signal — visible only while a node is selected. The whole chip is ONE
+           >= 44px tap target that dismisses the selection (the x is the visual
+           dismiss affordance), so touch alone needs no hover (F52/D53);
+           touch-action: manipulation in SCSS kills double-tap zoom on the chrome
+           (§6.2). D86: the chip is NOT on the rail (it names the live selection
+           beside the canvas) — it stays on the stage and stays a clamp chrome
+           rect. B-149 (REPAIRS §R9 item 7): the chip now lives IN the header
+           band's flex flow — the band's wrap reserves its rows, so the chip,
+           the save dock and the hint pill can never overlap again (the old
+           fixed top offset collided with the docked band by 2px and with the
+           hint pill outright); margin-left:auto keeps it the top-right pill
+           and the wrap gives it its own row when the band is tight. -->
+      @if (graph.selection(); as sel) {
+        <button type="button" class="tme-chip" data-testid="tme-selection-chip" (click)="dismissSelection()">
+          <span data-testid="tme-selection-label">{{ sel.label }}</span>
+          <span class="tme-chip-dismiss" aria-hidden="true">×</span>
+        </button>
+      }
+
+      <!-- B-137 (D79): the one-time calibrate HINT — after a NEW map is
+           created (and only then): plain words (C23) stating the D79 default
+           scale and the explicit-action rule; informational, never blocking
+           (D10/D30 spirit). One >= 44px Dismiss tap target (F52); dismissal
+           is per-map, session-memory (the service's signal). Hidden while the
+           calibrate MODE band owns this top-center slot (the two never
+           compete — calibrating a placement is not calibrateScale, so the
+           hint can still be up; the band returns it after the mode ends).
+           B-149 (REPAIRS §R9 item 7): the hint rides the header band's flow
+           on a RESERVED full-width row (flex-basis 100%) — the old absolute
+           top-center slot collided with the docked band's save dock and the
+           chip; on its own row it overlaps nothing at any width. Commit-
+           neutral still holds (the header is an absolute overlay: the band's
+           growth costs canvas top, never a stage resize — the B-116
+           doctrine). -->
+      @if (graph.calibrateHint() !== null && !graph.calibrateMode()) {
+        <aside class="tme-hint" data-testid="tme-calibrate-hint" role="status" aria-label="Scale hint">
+          <span class="tme-hint-text">{{ graph.calibrateHint() }}</span>
+          <button
+            type="button"
+            class="tme-hint-dismiss"
+            data-testid="tme-calibrate-hint-dismiss"
+            aria-label="Dismiss the scale hint"
+            (click)="graph.dismissCalibrateHint()"
+          >
+            ×
+          </button>
+        </aside>
+      }
+
+      <!-- B-147 (REPAIRS R-7): the placement hint — the D79 pattern's second
+           instance: the same .tme-hint band, own testids, for the fresh-map
+           editor entry (nothing teaches that edit-mode canvas taps place
+           places). PRIORITY (the slot-competition idiom above generalized):
+           it renders only while the calibrate hint is NOT up — on a fresh map
+           the calibrate hint shows first, the placement hint appears after
+           that hint's dismissal/calibration (the top-edge pill population
+           never grows; one pill at a time). State is the service's PURE
+           computed (editor mode + the D79 fresh-set + not dismissed + not
+           done — the first successful placement marks it done); one >= 44px
+           Dismiss (F52), per-map session-memory (D79). B-149 (R9 item 7):
+           reserved row in the header band, like the calibrate hint above. -->
+      @if (graph.calibrateHint() === null && !graph.calibrateMode() && graph.placeHint() !== null) {
+        <aside class="tme-hint" data-testid="tme-place-hint" role="status" aria-label="Placement hint">
+          <span class="tme-hint-text" data-testid="tme-place-hint-text">{{ graph.placeHint() }}</span>
+          <button
+            type="button"
+            class="tme-hint-dismiss"
+            data-testid="tme-place-hint-dismiss"
+            aria-label="Dismiss the placement hint"
+            (click)="graph.dismissPlaceHint()"
+          >
+            ×
+          </button>
+        </aside>
+      }
     </header>
 
     <!-- B-128 (D85/F02): the breadcrumb bar — the ACTIVE layer's ancestor
@@ -144,20 +220,10 @@
       </nav>
     }
 
-    <!-- B-103 selection chip (D2/D53/F52): template-bound to the selection
-         signal — visible only while a node is selected. The whole chip is ONE
-         >= 44px tap target that dismisses the selection (the x is the visual
-         dismiss affordance), so touch alone needs no hover (F52/D53);
-         touch-action: manipulation in SCSS kills double-tap zoom on the chrome
-         (§6.2). D86: the chip is NOT on the rail (it names the live selection
-         beside the canvas) — it stays on the stage and stays a clamp chrome
-         rect. -->
-    @if (graph.selection(); as sel) {
-      <button type="button" class="tme-chip" data-testid="tme-selection-chip" (click)="dismissSelection()">
-        <span data-testid="tme-selection-label">{{ sel.label }}</span>
-        <span class="tme-chip-dismiss" aria-hidden="true">×</span>
-      </button>
-    }
+    <!-- B-103's selection chip and the B-137/B-147 hint pills moved INSIDE the
+         header band (B-149, REPAIRS §R9 item 7): the band's flex wrap is the
+         one reserved-row/collapse rule for the top edge — the chip, the save
+         dock and the one hint pill flow as rows and can never overlap. -->
 
     <!-- B-143 (REPAIRS.md §R3): the pin-setting node menu — the surface of the
          service's taphold/cxttap binding. One stage overlay among the stage's
@@ -250,54 +316,8 @@
       </div>
     }
 
-    <!-- B-137 (D79): the one-time calibrate HINT — after a NEW map is
-         created (and only then): plain words (C23) stating the D79 default
-         scale and the explicit-action rule; informational, never blocking
-         (D10/D30 spirit). One >= 44px Dismiss tap target (F52); dismissal
-         is per-map, session-memory (the service's signal). Hidden while the
-         calibrate MODE band owns this top-center slot (the two never
-         compete — calibrating a placement is not calibrateScale, so the
-         hint can still be up; the band returns it after the mode ends). -->
-    @if (graph.calibrateHint() !== null && !graph.calibrateMode()) {
-      <aside class="tme-hint" data-testid="tme-calibrate-hint" role="status" aria-label="Scale hint">
-        <span class="tme-hint-text">{{ graph.calibrateHint() }}</span>
-        <button
-          type="button"
-          class="tme-hint-dismiss"
-          data-testid="tme-calibrate-hint-dismiss"
-          aria-label="Dismiss the scale hint"
-          (click)="graph.dismissCalibrateHint()"
-        >
-          ×
-        </button>
-      </aside>
-    }
-
-    <!-- B-147 (REPAIRS R-7): the placement hint — the D79 pattern's second
-         instance: the same .tme-hint band, own testids, for the fresh-map
-         editor entry (nothing teaches that edit-mode canvas taps place
-         places). PRIORITY (the slot-competition idiom above generalized):
-         it renders only while the calibrate hint is NOT up — on a fresh map
-         the calibrate hint shows first, the placement hint appears after
-         that hint's dismissal/calibration (the top-edge pill population
-         never grows; one pill at a time). State is the service's PURE
-         computed (editor mode + the D79 fresh-set + not dismissed + not
-         done — the first successful placement marks it done); one >= 44px
-         Dismiss (F52), per-map session-memory (D79). -->
-    @if (graph.calibrateHint() === null && !graph.calibrateMode() && graph.placeHint() !== null) {
-      <aside class="tme-hint" data-testid="tme-place-hint" role="status" aria-label="Placement hint">
-        <span class="tme-hint-text" data-testid="tme-place-hint-text">{{ graph.placeHint() }}</span>
-        <button
-          type="button"
-          class="tme-hint-dismiss"
-          data-testid="tme-place-hint-dismiss"
-          aria-label="Dismiss the placement hint"
-          (click)="graph.dismissPlaceHint()"
-        >
-          ×
-        </button>
-      </aside>
-    }
+    <!-- B-137 (D79) / B-147 (R-7) hints: inside the header band (B-149, R9
+         item 7) — see the notes there. -->
 
     <!-- B-133 (D91): the four PANEL SURFACES — overlays over this stage.
          NARROW (the default): .tme-sheets is the bottom-sheet STACK anchored

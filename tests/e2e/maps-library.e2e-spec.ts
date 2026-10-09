@@ -39,7 +39,7 @@
 //              horizontal scroll at phone width.
 //
 // FX1 facts (data/worlds/fuyuki.ts): the seeded boot map is named
-// 'Fuyuki & Misaki (FX1)' (id fuyuki-misaki — an assertion key only, never
+// 'Fuyuki & Misaki' (id fuyuki-misaki — an assertion key only, never
 // rendered); its boot pin is 'emiya-residence' (the mapless boot + Open
 // must show NO pin — D40); 'Emiya Residence' is a known node label. The
 // harness library is session-memory: every page load seeds exactly one row
@@ -61,7 +61,7 @@ interface TmeE2EHook {
 const HOOK_ERROR = 'window.__TME_E2E__ missing — dev harness not loaded';
 
 /** FX1 facts the cells engineer against. */
-const SEEDED_NAME = 'Fuyuki & Misaki (FX1)';
+const SEEDED_NAME = 'Fuyuki & Misaki'; // B-149 R9 item 6 re-baseline: the '(FX1)' suffix was harness fixture-speak (R1 verbatim render).
 const EMIYA_ID = 'emiya-residence';
 const EMIYA_LABEL = 'Emiya Residence';
 
@@ -228,7 +228,7 @@ const openMaps = async (page: Page): Promise<void> => {
 /**
  * One library row in VIEW mode, addressed by its authored map NAME (C23 —
  * never an id). The name match is EXACT (an anchored regex on the row's
- * name span): a substring match would confuse 'Fuyuki & Misaki (FX1)' with
+ * name span): a substring match would confuse 'Fuyuki & Misaki' with
  * its ' (copy)' twin — two rows, strict-mode violation.
  */
 const escapeRe = (name: string): string => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -874,7 +874,7 @@ test.describe('the map library: the fork family (PKG B-139)', () => {
     // A fork row appeared: same WORDS as the parent (C23), the provenance line rendered.
     await expect(forkRowOf(page, SEEDED_NAME), 'the saved row is here — name AND provenance').toHaveCount(1);
     await expect(forkRowOf(page, SEEDED_NAME).getByTestId('tme-map-provenance')).toHaveText(
-      'Forked from Fuyuki & Misaki (FX1)',
+      'Forked from Fuyuki & Misaki',
     );
     const rows = await readLibraryList(page);
     expect(
@@ -946,8 +946,8 @@ test.describe('the map library: the fork family (PKG B-139)', () => {
     // C23: the words ARE the surface (ids never render) — both fork lines read identically.
     const lines = await page.getByTestId('tme-map-provenance').allTextContents();
     expect(lines, 'the provenance lines render (C23)').toEqual([
-      'Forked from Fuyuki & Misaki (FX1)',
-      'Forked from Fuyuki & Misaki (FX1)',
+      'Forked from Fuyuki & Misaki',
+      'Forked from Fuyuki & Misaki',
     ]);
     await expect(forkRowOf(page, SEEDED_NAME), 'both fork rows share the parent name AND words').toHaveCount(2);
 

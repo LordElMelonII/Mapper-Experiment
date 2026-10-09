@@ -28,7 +28,11 @@ const childrenOf = (id: string): string[] => idsOf(fuyukiMap.nodes.filter((n) =>
 describe('FX1 — fuyukiMap fixture (Fuyuki/Misaki two-layer demo map)', () => {
   it('validates clean against the frozen contract and is deep-frozen (F50, C30, C31)', () => {
     expect(fuyukiMap.id).toBe('fuyuki-misaki');
-    expect(fuyukiMap.name).toBe('Fuyuki & Misaki (FX1)');
+    // REPAIRS.md §R9 item 6 (B-149) — the deliberate re-baseline of the
+    // FX1-fidelity pin: the '(FX1)' suffix was harness fixture-speak and the
+    // picker renders stored names verbatim (R1, never a display transform),
+    // so the stored demo name speaks for itself now.
+    expect(fuyukiMap.name).toBe('Fuyuki & Misaki');
     // the fixture hardcodes the literal 2 (data-only file, no value imports per D57);
     // this pins it to the contract's current schema version (C31)
     expect(fuyukiMap.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
