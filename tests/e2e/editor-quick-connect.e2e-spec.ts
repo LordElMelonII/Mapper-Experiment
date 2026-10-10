@@ -81,6 +81,36 @@ const NEW_PLACE = 'New place'; // C23 default label, verbatim
  */
 const BG_MODEL_POINT: { x: number; y: number } = { x: -250, y: 450 };
 
+/**
+ * R28 R-9r (the node-grab finding, close-out pass 1): a DOM-clear drag
+ * start can still sit on a cy NODE — and a drag that grabs a node MOVES it
+ * (an editor write: the map goes dirty, D75/D77 — the gate's save-dock
+ * failure) even though the pan-verify correctly reads the grab as dead.
+ * The sweep excludes every rendered node body + slop: the FX1 cast
+ * (13 leaves + 2 districts — label-culling's projected list) plus the
+ * B-107 badge pseudo-node; the live selected/picked ids (the placed node)
+ * join in-page at sweep time. Edges stay the pan-verify's business (a
+ * dead, harmless grab — cy declines, nothing mutates).
+ */
+const DRAG_AVOID_NODE_IDS: readonly string[] = [
+  'district-miyama',
+  'district-shinto',
+  'emiya-residence',
+  'shopping-district',
+  'homurahara-academy',
+  'matou-residence',
+  'tohsaka-residence',
+  'ryuudou-temple',
+  'outskirts',
+  'fuyuki-bridge',
+  'fuyuki-station',
+  'harbor',
+  'kotomine-church',
+  'ghost-house',
+  'einzbern-castle',
+  'tme-badge-arc-fuyuki-station-misaki-town',
+];
+
 const isPhone = (): boolean => test.info().project.name === 'phone';
 
 /**
@@ -148,6 +178,18 @@ const readConnectMode = (page: Page): Promise<boolean> =>
     const hook = (window as unknown as { __TME_E2E__?: TmeE2EHook }).__TME_E2E__;
     if (hook === undefined) throw new Error(HOOK_ERROR);
     return hook.connectMode();
+  });
+
+/**
+ * R28 R-9r: the dodge drag's self-verification seam — the pan before/after a
+ * drag tells whether cy actually panned (a drag that grabbed an EDGE or sheet
+ * chrome delivers the full pointer stream and moves NOTHING; probe7).
+ */
+const readPan = (page: Page): Promise<{ x: number; y: number }> =>
+  page.evaluate((): { x: number; y: number } => {
+    const hook = (window as unknown as { __TME_E2E__?: TmeE2EHook }).__TME_E2E__;
+    if (hook === undefined) throw new Error(HOOK_ERROR);
+    return hook.pan();
   });
 
 const readPickedIds = (page: Page): Promise<string[]> =>
@@ -372,41 +414,87 @@ const dodgeBands = async (
     // The drag's START must be a clear CANVAS point — the stack can reach
     // past canvas-mid (probe-proven: a mousedown on the sheet pans nothing).
     // Only the down point matters (cytoscape captures the pointer; the track
-    // may cross bands). Find one live between the top chrome and the topmost
-    // band, across three x lanes.
-    const start = await page.evaluate(
-      ({ canvasBox, top, floor }): Point | null => {
+    // may cross bands).
+    //
+    // R28 R-9r (the 445-stage arc-grab discovery): DOM-clear is necessary
+    // but NOT sufficient. The phone stage shrank 505→445px between the R-5
+    // era and R-9 (R-6's root inset −8px + R-7's legend rail row −52px —
+    // the B-148r bisect's measured pair), which drops this corridor onto
+    // ARC renderings: a drag that grabs an edge pans NOTHING (edges are not
+    // draggable; the browser delivers the full pointer stream either way —
+    // cy declines; probe7 recorded IDENTICAL streams in dead vs live drags).
+    // The sweep therefore returns EVERY DOM-clear candidate and the drag is
+    // SELF-VERIFYING against the pan seam: a candidate whose pan delta
+    // stays < 5px was a dead grab — try the next candidate; exhausting all
+    // of them is the honest error, never a silent no-op dodge.
+    const candidates = await page.evaluate(
+      ({ canvasBox, top, floor, avoid }): Point[] => {
+        const hook = (window as unknown as { __TME_E2E__?: TmeE2EHook }).__TME_E2E__;
         const bands: { top: number }[] = [top.prop, top.route, top.rail].filter(
           (b): b is { top: number } => b !== null,
         );
         const minBand =
           bands.length === 0 ? Number.POSITIVE_INFINITY : Math.min(...bands.map((b) => b.top));
+        // R28 R-9r pass 2 (the node-grab finding): exclude cy node bodies —
+        // the live selected/picked ids join the static cast here (a drag
+        // that grabs a node MOVES it: dirty state, D75/D77).
+        const bodies: { x: number; y: number; w: number; h: number }[] = [];
+        if (hook !== undefined) {
+          const ids = [...avoid];
+          const sel = hook.selectedNodeId();
+          if (sel !== null) ids.push(sel);
+          ids.push(...hook.pickedNodeIds());
+          for (const id of ids) {
+            const b = hook.nodeRenderedBoundingBox(id);
+            if (b !== null) bodies.push(b);
+          }
+        }
+        const clearOfBodies = (x: number, y: number): boolean =>
+          bodies.every(
+            (b) =>
+              x < canvasBox.x + b.x - 14 ||
+              x > canvasBox.x + b.x + b.w + 14 ||
+              y < canvasBox.y + b.y - 14 ||
+              y > canvasBox.y + b.y + b.h + 14,
+          );
+        const hits: { x: number; y: number }[] = [];
         for (const fx of [0.5, 0.2, 0.8]) {
           for (let y = floor + 12; y < minBand - 12; y += 8) {
             const x = canvasBox.x + canvasBox.width * fx;
             const el = document.elementFromPoint(x, y);
-            if (el !== null && el.closest('.tme-canvas') !== null) return { x, y };
+            if (el !== null && el.closest('.tme-canvas') !== null && clearOfBodies(x, y))
+              hits.push({ x, y });
           }
         }
-        return null;
+        return hits;
       },
       {
         canvasBox: canvas,
         top: { prop: boxes.prop, route: boxes.route, rail: boxes.rail },
         floor: topFloor,
+        avoid: DRAG_AVOID_NODE_IDS,
       },
     );
-    if (start === null) {
+    if (candidates.length === 0) {
       throw new Error(
         `dodgeBands: no clear canvas drag start (topFloor=${topFloor}, bands=${boxes.rail?.top ?? 'x'}/${boxes.prop?.top ?? 'x'})`,
       );
     }
     // Drag up = content up (start.y + negative panDy); the map translates
     // uniformly, so every aim point clears the bands together.
-    await page.mouse.move(start.x, start.y);
-    await page.mouse.down();
-    await page.mouse.move(start.x, start.y + panDy, { steps: 4 });
-    await page.mouse.up();
+    const panBefore = await readPan(page);
+    for (const start of candidates) {
+      await page.mouse.move(start.x, start.y);
+      await page.mouse.down();
+      await page.mouse.move(start.x, start.y + panDy, { steps: 4 });
+      await page.mouse.up();
+      await settle(page);
+      const panAfter = await readPan(page);
+      if (Math.hypot(panAfter.x - panBefore.x, panAfter.y - panBefore.y) >= 5) return;
+    }
+    throw new Error(
+      `dodgeBands: ${candidates.length} DOM-clear drag start(s) grabbed nothing (pan delta < 5px — the 445-stage arc-grab class; topFloor=${topFloor}, bands=${boxes.rail?.top ?? 'x'}/${boxes.prop?.top ?? 'x'})`,
+    );
   }
 };
 

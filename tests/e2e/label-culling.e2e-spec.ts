@@ -317,6 +317,29 @@ test.describe('label culling (PKG B-113)', () => {
 
       const threshold = (await readZoom(p)) * FIT_CULL_FACTOR;
 
+      // R28 R-9r (phone-only staging, cited): the phone stage shrank
+      // 505→445px between the R-5 era and R-9 (R-6's root inset −8px +
+      // R-7's legend rail row −52px — the B-148r bisect's measured pair),
+      // so the selection's auto-opened route sheet (B-105) now tops its
+      // rail at y≈133.5 while the pinch line (PINCH_CENTER y=150
+      // canvas-relative) crosses it: the CDP fingers land on the sheet's
+      // title/rail (HTML), cy never sees the gesture, and the zoom never
+      // crosses the threshold (at the 505 stage the rail topped ≈151.5 —
+      // 1.5px below the pinch, which is why this cell passed at post-R-5).
+      // Collapse it first — the standing tapAimed-guard idiom (rail click
+      // + aria-expanded assert + 200 ms); a panel open/close moves no
+      // viewport (D91), so the threshold read stays in lockstep, and the
+      // collapsed rail sits at ~401, clear of the pinch. Desktop never
+      // runs this (its floater never crossed the pinch line).
+      if (
+        isPhone() &&
+        (await p.getByTestId('tme-sheet-rail').getAttribute('aria-expanded')) === 'true'
+      ) {
+        await p.getByTestId('tme-sheet-rail').click();
+        await expect(p.getByTestId('tme-sheet-rail')).toHaveAttribute('aria-expanded', 'false');
+        await p.waitForTimeout(200); // the collapse re-renders — a gesture in the same tick can still hit the body
+      }
+
       await zoomOutPast(p, threshold);
 
       // ONE blanket class on ALL nodes (ruling 2): map content (a hub leaf

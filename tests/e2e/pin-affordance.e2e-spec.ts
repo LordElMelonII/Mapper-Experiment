@@ -52,8 +52,8 @@ const BOOT_PIN_ID = 'emiya-residence'; // the harness boot pin (FX1, D40's expli
 const SET_TARGET_ID = 'shopping-district'; // the Set arm's leaf
 const ROUTE_TARGET_ID = 'outskirts'; // the route-from cell's second node
 const CONTAINER_ID = 'district-miyama'; // the C1/F27 refusal's compound parent
-const ABOVE_BAND_NODE_ID = 'kotomine-church'; // B-143r: rendered y≈195 — above a ONE-LEG sheet's rail (212), below the chip; the dismissal-contract cell's above-band node
-const SHORT_SHEET_NODE_ID = 'matou-residence'; // B-143r: a one-leg selection from the boot pin — its short sheet leaves the above-band node pressable
+const ABOVE_BAND_NODE_ID = 'kotomine-church'; // B-143r: the dismissal-contract cell's above-band node — rendered y≈164.8 on the 445px phone stage (R28 R-9r; the 505-era y≈195), inside the re-raised one-leg rail band (top ≈152) until stageSheetAway folds it
+const SHORT_SHEET_NODE_ID = 'matou-residence'; // B-143r: a one-leg selection from the boot pin — its short sheet leaves the above-band node pressable once folded (R28 R-9r: matou renders y≈200 on the 445px stage)
 const NEW_PLACE = 'New place'; // C23 default label of an unsaved placed node
 
 /**
@@ -264,6 +264,46 @@ const restoreBootViewport = async (page: Page): Promise<void> => {
 const dismissSelection = async (page: Page): Promise<void> => {
   const chip = page.getByTestId('tme-selection-chip');
   if (await chip.isVisible()) await activate(page, 'tme-selection-chip');
+};
+
+/**
+ * R28 R-9r re-baseline (phone-only staging, cited): the phone stage shrank
+ * 505→445px between the R-5 era and R-9 (R-6's root inset −8px + R-7's
+ * legend rail row −52px — the B-148r bisect's measured pair), so the
+ * one-leg sheet's rail now tops at y≈152 (the 505-era staging constants in
+ * this spec said 212) and the above-band node cast renders INSIDE the
+ * re-raised band (Kotomine y≈164.8, matou y≈200 — probe-measured): a
+ * long-press aimed there grabs the rail, not the node (the close-out
+ * gate's :565 failure). Fold the sheet before the press — the standing
+ * collapse idiom (the tapAimed guards' rail click + aria-expanded assert +
+ * 200 ms); the collapsed rail sits at ~401. Like any chrome tap it closes
+ * a parked menu (R-3's chrome-tap dismissal) — call it BEFORE opening a
+ * menu, never while one stands. Phone-only: the desktop floater regime
+ * has no rail band to fold.
+ *
+ * Pass-2 hardening (the close-out pass-1 failure at :590): the fold must
+ * never RACE the auto-expand — the selection→route→expand pipeline renders
+ * a frame or more AFTER the selecting tap, and a fold that reads
+ * aria-expanded before the flip silently skips (the press below then hit
+ * the expanded rail, and the hold's release toggled the sheet closed —
+ * the failure snapshot's folded rail with no menu). So: settle two frames
+ * first, and while a selection stands (content is coming), POLL until the
+ * expand lands before folding.
+ */
+const stageSheetAway = async (page: Page): Promise<void> => {
+  if (!isPhone()) return;
+  await settle(page); // the selection's auto-expand renders a frame later — never race it
+  const rail = page.getByTestId('tme-sheet-rail');
+  if (await page.getByTestId('tme-selection-chip').isVisible()) {
+    await expect
+      .poll(() => rail.getAttribute('aria-expanded'), { timeout: 2_000 })
+      .toBe('true');
+  }
+  if ((await rail.getAttribute('aria-expanded')) === 'true') {
+    await rail.click();
+    await expect(rail).toHaveAttribute('aria-expanded', 'false');
+    await page.waitForTimeout(200); // the collapse re-renders — a press in the same tick can still hit the body
+  }
 };
 
 // --- The phone CDP twin (the interactions.e2e-spec.ts machinery) -------------
@@ -554,14 +594,15 @@ test.describe('pin-setting node menu (PKG B-143, REPAIRS §R3)', () => {
       // CHROME dismissal — B-143r addendum d: "any tap elsewhere" includes
       // viewer chrome, not just the canvas. Staging (phone geometry, all
       // measured): a ONE-LEG selection (matou, 22 min from the boot pin)
-      // raises a short sheet whose rail tops at y=212 — BELOW Kotomine
-      // Church's rendered center (y≈195), so the menu's press reaches the
-      // canvas; the chip — stage-top chrome — then closes the parked menu.
-      // (The press must NOT run under a two-leg selection: the tall sheet's
-      // rail reaches y=187 and swallows the point — the resume debug's
-      // finding. The release-tap re-selects Kotomine and re-raises the tall
-      // sheet only AFTER the menu stands.)
+      // raises a short sheet. R28 R-9r (the 445px stage): the one-leg rail
+      // now tops at y≈152 and Kotomine Church renders at y≈164.8 — INSIDE
+      // the band (the 505-era constants — rail 212, Kotomine 195, tall-rail
+      // 187 — no longer hold), so the sheet is FOLDED before the press
+      // (stageSheetAway — a pre-menu chrome tap, legal; the release-tap
+      // re-selects Kotomine and re-raises the sheet only AFTER the menu
+      // stands); the chip — stage-top chrome — then closes the parked menu.
       await tapPoint(p, await nodeScreenPoint(p, SHORT_SHEET_NODE_ID));
+      await stageSheetAway(p);
       await openNodeMenuOnNode(p, ABOVE_BAND_NODE_ID);
       await expect(p.getByTestId('tme-node-menu')).toBeVisible();
       await dismissSelection(p);
@@ -569,10 +610,28 @@ test.describe('pin-setting node menu (PKG B-143, REPAIRS §R3)', () => {
 
       // DIFFERENT-NODE dismissal + the byte-identical rule: the menu opens
       // on an unpinned leaf (Set only — the Clear arm belongs to the pinned
-      // node alone), then a tap on Kotomine Church — above the one-leg
+      // node alone), then a tap on Kotomine Church — clear of the one-leg
       // sheet's rail the release-tap just re-raised — closes the menu AND
-      // selects. This block ends the cell: the Kotomine selection's tall
-      // sheet is the one geometry the above-band point cannot press through.
+      // selects. This block ends the cell.
+      //
+      // R28 R-9r (phone staging, probe-measured — probe9b): on the 445px
+      // stage the width-limited world fit renders EVERY leaf at y
+      // 164.8–273.4, all inside the re-raised sheet (rail top 152, body to
+      // 445) — NO leaf is tappable at the fit, and the sheet cannot be
+      // folded while the menu stands (the rail tap is chrome and would
+      // dismiss it — R-3's own rule). The staging therefore zooms ×1.25²
+      // through the rail's zoom-in chrome (legal — no menu stands yet)
+      // BEFORE the shopping press: Kotomine's center lifts to (369.7,
+      // 132.3) — CANVAS-probed, 19.7px above the re-raised rail, 56px
+      // below the chip band (75.6), clear of the parked menu plate (185+).
+      // Phone-ONLY (the pass-1 desktop finding: the ungated zoom displaced
+      // the desktop tap — its branch keeps the original staging
+      // byte-identical). Every assertion below is byte-identical.
+      if (isPhone()) {
+        for (let i = 0; i < 2; i++) await activate(p, 'tme-zoom-in');
+        await settle(p);
+      }
+      await stageSheetAway(p);
       await openNodeMenuOnNode(p, SET_TARGET_ID);
       await expect(p.getByTestId('tme-node-menu-clear')).toHaveCount(0);
       await tapPoint(p, await nodeScreenPoint(p, ABOVE_BAND_NODE_ID));

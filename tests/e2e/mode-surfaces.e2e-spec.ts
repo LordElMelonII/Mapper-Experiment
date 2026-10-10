@@ -56,6 +56,10 @@ import { expect, test, type Locator, type Page, type Point } from '@playwright/t
 
 interface TmeE2EHook {
   nodeRenderedPosition(id: string): { x: number; y: number } | null;
+  /** R28 R-9r: the dodge lane sweep excludes cy node bodies (the node-grab finding). */
+  nodeRenderedBoundingBox(id: string): { x: number; y: number; w: number; h: number } | null;
+  /** R28 R-9r: the live selected id joins the dodge lane exclusion list. */
+  selectedNodeId(): string | null;
   edgeIds(): string[];
   zoom(): number;
   pan(): { x: number; y: number };
@@ -513,7 +517,7 @@ test.describe('map-driven mode surfaces (PKG B-124)', () => {
     const canvas = await page.getByTestId('tme-canvas').boundingBox();
     if (canvas === null) throw new Error('canvas host not visible');
     const pickTarget = await nodeScreenPoint(page, HIGH_PASTURE_ID);
-    const panDx = canvas.x + canvas.width - 60 - pickTarget.x;
+    let panDx = canvas.x + canvas.width - 60 - pickTarget.x;
     let panDy = 0;
     const chipLoc = page.getByTestId('tme-selection-chip');
     if ((await chipLoc.count()) > 0) {
@@ -527,28 +531,192 @@ test.describe('map-driven mode surfaces (PKG B-124)', () => {
         panDy = chip.y + chip.height + 16 - pickTarget.y;
       }
     }
-    const propPanel = await page.getByTestId('tme-property-panel').boundingBox();
-    const routeSheet = await page.getByTestId('tme-route-panel').boundingBox();
-    // Both pick targets must clear the panels — OLD_MILL is picked first, so
-    // a dodge computed against high-pasture alone can leave it covered.
+    // R28 R-9r (the dead-`.top` finding, probe10): locator.boundingBox()
+    // returns {x,y,width,height} — there is no `top`, so the panel terms
+    // below compared against NaN and NEVER fired: the "both pick targets
+    // must clear the panels" lift (B-133's D91 review fix) has been
+    // silently dead code since it landed. The 505-era stage passed only
+    // because old-mill rendered above the property sheet by luck; on the
+    // 445px stage it sits INSIDE the sheet (rendered 286.5 vs sheet top
+    // 259.5), no drag ran at all (panDx +18.3, panDy 0 — thresholds
+    // unmet), and the first pick tapped the sheet's header: the poll read
+    // []. The phone arm reads panel tops IN-PAGE now (gBCR — the
+    // coveringBands transforms discipline); the desktop arm keeps the
+    // original lines byte-identical per the phone-only-staging rule
+    // (its `.top` reads are equally dead — recorded here, never repaired:
+    // the desktop geometry never needed the lift).
     const pickTargets = [OLD_MILL_ID, HIGH_PASTURE_ID];
-    for (const id of pickTargets) {
-      const t = await nodeScreenPoint(page, id);
-      if (propPanel !== null && t.y > propPanel.top - 16) {
-        panDy = Math.min(panDy, propPanel.top - 16 - t.y);
+    if (isPhone()) {
+      const panelTops = await page.evaluate((): { prop: number | null; route: number | null } => {
+        const topOf = (tid: string): number | null => {
+          const el = document.querySelector(`[data-testid="${tid}"]`);
+          if (el === null) return null;
+          const r = el.getBoundingClientRect();
+          return r.width === 0 && r.height === 0 ? null : r.top;
+        };
+        return { prop: topOf('tme-property-panel'), route: topOf('tme-route-panel') };
+      });
+      // Both pick targets must clear the panels — OLD_MILL is picked
+      // first, so a dodge computed against high-pasture alone can leave
+      // it covered.
+      for (const id of pickTargets) {
+        const t = await nodeScreenPoint(page, id);
+        if (panelTops.prop !== null && t.y > panelTops.prop - 16) {
+          panDy = Math.min(panDy, panelTops.prop - 16 - t.y);
+        }
+        if (panelTops.route !== null && t.y > panelTops.route - 16) {
+          panDy = Math.min(panDy, panelTops.route - 16 - t.y);
+        }
       }
-      if (routeSheet !== null && t.y > routeSheet.top - 16) {
-        panDy = Math.min(panDy, routeSheet.top - 16 - t.y);
+      // R28 R-9r (the revived-lift chip conflict, probe10 arithmetic): the
+      // now-LIVE rail lift (−99 at this state) drops high-pasture into the
+      // chip's band — and a chip tap dismisses the selection and EXITS
+      // connect mode (the B-127 note) — while no single vertical pan can
+      // satisfy both constraints (old-mill must rise above the collapsed
+      // rail; high-pasture must stay clear of the chip). The dodge gains
+      // its x-arm: a lifted target landing in the chip's x-band is pulled
+      // LEFT of the chip instead.
+      if ((await chipLoc.count()) > 0) {
+        const chip = await chipLoc.boundingBox();
+        if (chip !== null) {
+          for (const id of pickTargets) {
+            const t = await nodeScreenPoint(page, id);
+            const liftedY = t.y + Math.min(panDy, 0);
+            if (t.x + 22 > chip.x && liftedY + 22 > chip.y && liftedY - 22 < chip.y + chip.height) {
+              panDx = Math.min(panDx, chip.x - 36 - t.x);
+            }
+          }
+        }
+      }
+    } else {
+      const propPanel = await page.getByTestId('tme-property-panel').boundingBox();
+      const routeSheet = await page.getByTestId('tme-route-panel').boundingBox();
+      // Both pick targets must clear the panels — OLD_MILL is picked first, so
+      // a dodge computed against high-pasture alone can leave it covered.
+      for (const id of pickTargets) {
+        const t = await nodeScreenPoint(page, id);
+        if (propPanel !== null && t.y > propPanel.top - 16) {
+          panDy = Math.min(panDy, propPanel.top - 16 - t.y);
+        }
+        if (routeSheet !== null && t.y > routeSheet.top - 16) {
+          panDy = Math.min(panDy, routeSheet.top - 16 - t.y);
+        }
       }
     }
     if (panDx < -8 || panDy < -8 || panDy > 8) {
-      const dragY = canvas.y + canvas.height / 2;
-      await page.mouse.move(canvas.x + canvas.width * 0.6, dragY);
-      await page.mouse.down();
-      await page.mouse.move(canvas.x + canvas.width * 0.6 + Math.min(panDx, 0), dragY + panDy, {
-        steps: 4,
-      });
-      await page.mouse.up();
+      // R28 R-9r (the 445-stage rail-swallow, phone-only staging): the
+      // legacy fixed start (0.6·width, canvas mid ≈ y222) landed INSIDE the
+      // collapsed route rail's band (≈203.5–247.5) on the phone stage
+      // post-shrink (505→445px — R-6's root inset −8px + R-7's legend rail
+      // row −52px, the B-148r bisect's measured pair): the drag grabbed the
+      // rail (HTML), panned nothing, OLD_MILL stayed under the property
+      // sheet, and the pick tapped chrome (the poll read []). Phone now
+      // sweeps candidate dragY lanes through the clear corridor between the
+      // header floor and the live topmost band (tops read IN-PAGE — the
+      // transforms note in the quick-connect guard's coveringBands), and
+      // each drag is SELF-VERIFYING against the pan seam: a candidate whose
+      // pan delta stays < 5px was a dead grab (the rail, or an arc at the
+      // cy level — edges are not draggable) — try the next lane; exhausting
+      // the lanes is the honest error, never a silent no-dodge. Desktop
+      // keeps the legacy fixed start byte-identical (its geometry never
+      // swallowed the drag).
+      if (isPhone()) {
+        const panBefore = await readPan(page);
+        const lanes = await page.evaluate(
+          (
+            canvasBox: { x: number; y: number; width: number; height: number },
+          ): Point[] => {
+            const hook = (window as unknown as { __TME_E2E__?: TmeE2EHook }).__TME_E2E__;
+            const boxOf = (tid: string): { top: number; bottom: number } | null => {
+              const el = document.querySelector(`[data-testid="${tid}"]`);
+              if (el === null) return null;
+              const r = el.getBoundingClientRect();
+              return r.width === 0 && r.height === 0
+                ? null
+                : { top: r.top, bottom: r.bottom };
+            };
+            const bands = [
+              boxOf('tme-property-panel'),
+              boxOf('tme-route-panel'),
+              boxOf('tme-sheet-rail'),
+            ].filter((b): b is { top: number; bottom: number } => b !== null);
+            const minBand =
+              bands.length === 0
+                ? Number.POSITIVE_INFINITY
+                : Math.min(...bands.map((b) => b.top));
+            const floor = Math.max(
+              ...[boxOf('tme-header'), boxOf('tme-breadcrumb'), boxOf('tme-selection-chip')].map(
+                (b) => (b === null ? 0 : b.bottom),
+              ),
+              0,
+            );
+            // R28 R-9r pass 2 (the node-grab finding, editor-quick-connect's
+            // save-dock class): a DOM-clear lane can still sit on a cy node —
+            // grabbing it MOVES the node (dirty, D75/D77). Exclude every
+            // rendered body of the demo's active-layer cast + the live
+            // selected/picked ids.
+            const bodies: { x: number; y: number; w: number; h: number }[] = [];
+            if (hook !== undefined) {
+              const ids = ['vale-gate', 'high-pasture', 'old-mill'];
+              const sel = hook.selectedNodeId();
+              if (sel !== null) ids.push(sel);
+              ids.push(...hook.pickedNodeIds());
+              for (const id of ids) {
+                const b = hook.nodeRenderedBoundingBox(id);
+                if (b !== null) bodies.push(b);
+              }
+            }
+            const clearOfBodies = (x: number, y: number): boolean =>
+              bodies.every(
+                (b) =>
+                  x < canvasBox.x + b.x - 14 ||
+                  x > canvasBox.x + b.x + b.w + 14 ||
+                  y < canvasBox.y + b.y - 14 ||
+                  y > canvasBox.y + b.y + b.h + 14,
+              );
+            const hits: { x: number; y: number }[] = [];
+            for (const fx of [0.6, 0.3, 0.8]) {
+              for (let y = floor + 12; y < minBand - 12; y += 8) {
+                const x = canvasBox.x + canvasBox.width * fx;
+                const el = document.elementFromPoint(x, y);
+                if (el !== null && el.closest('.tme-canvas') !== null && clearOfBodies(x, y))
+                  hits.push({ x, y });
+              }
+            }
+            return hits;
+          },
+          canvas,
+        );
+        if (lanes.length === 0) {
+          throw new Error('mode-surfaces dodge: no clear canvas drag lane in the corridor');
+        }
+        let panned = false;
+        for (const start of lanes) {
+          await page.mouse.move(start.x, start.y);
+          await page.mouse.down();
+          await page.mouse.move(start.x + Math.min(panDx, 0), start.y + panDy, { steps: 4 });
+          await page.mouse.up();
+          await settle(page);
+          const panAfter = await readPan(page);
+          if (Math.hypot(panAfter.x - panBefore.x, panAfter.y - panBefore.y) >= 5) {
+            panned = true;
+            break;
+          }
+        }
+        if (!panned) {
+          throw new Error(
+            `mode-surfaces dodge: ${lanes.length} DOM-clear drag lane(s) grabbed nothing (pan delta < 5px — the 445-stage rail/arc-grab class)`,
+          );
+        }
+      } else {
+        const dragY = canvas.y + canvas.height / 2;
+        await page.mouse.move(canvas.x + canvas.width * 0.6, dragY);
+        await page.mouse.down();
+        await page.mouse.move(canvas.x + canvas.width * 0.6 + Math.min(panDx, 0), dragY + panDy, {
+          steps: 4,
+        });
+        await page.mouse.up();
+      }
     }
 
     // Pick the two other vale leaves — touch alone.
