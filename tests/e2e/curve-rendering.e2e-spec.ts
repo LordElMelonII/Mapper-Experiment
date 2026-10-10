@@ -178,6 +178,31 @@ const activate = async (page: Page, testId: string): Promise<void> => {
   else await locator.click();
 };
 
+// B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1): at >=1024 the rail's per-layer
+// nav is shell-gated OFF — the switch rides the LAYER MANAGER's row-name
+// button (layer-manager.component) through the belt's Layers tool entry;
+// below 1024 the rail's per-layer button stands byte-identical (R29 ruling
+// 1). Presence-probed against the live DOM, never a mirrored breakpoint. The
+// manager closes after the shell-path switch so no sheet stays open over the
+// stage the cell then taps (selectLayer's explicit fit runs on the row
+// click, D85/D81).
+const switchToMisaki = async (page: Page): Promise<void> => {
+  const railButton = page.getByTestId('tme-layer-layer-misaki');
+  if (await railButton.count()) {
+    await activate(page, 'tme-layer-layer-misaki');
+    return;
+  }
+  await page.getByTestId('tme-layers-tool').click();
+  await expect(page.getByTestId('tme-layer-manager')).toBeVisible();
+  await page
+    .locator('.tme-layer-row')
+    .filter({ has: page.locator('[data-testid="tme-layer-name"]', { hasText: 'Misaki Town' }) })
+    .getByTestId('tme-layer-name')
+    .click();
+  await page.getByTestId('tme-layer-manager-close').click();
+  await expect(page.getByTestId('tme-layer-manager')).toBeHidden();
+};
+
 /**
  * Tap the DEMO EDGE exactly on its rendered curve (test-side math, R1): the
  * junction anchor J = M + 5·zoom·n̂ px, where M is the endpoints' rendered
@@ -262,7 +287,8 @@ test.describe('curve rendering — unbundled-bezier (PKG B-111)', () => {
     // declared mode is disallowed and no other mode exists (price.ts:52 —
     // every mode is gated on `allowed === true`), so it prices ∞ in every
     // currency and never enters a shortest path.
-    await activate(page, 'tme-layer-layer-misaki');
+    // B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1): the regime-aware switch.
+    await switchToMisaki(page);
     await expect.poll(() => readPosition(page, MISAKI_ID)).not.toBeNull();
     await tapNode(page, MISAKI_ID);
     await expect(page.getByTestId('tme-leg')).toHaveCount(2);

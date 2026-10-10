@@ -125,6 +125,30 @@ const activate = async (locator: Locator): Promise<void> => {
   else await locator.click();
 };
 
+// B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1): at >=1024 the rail's per-layer
+// nav is shell-gated OFF — the switch rides the LAYER MANAGER's row-name
+// button (layer-manager.component) through the belt's Layers tool entry;
+// below 1024 the rail's per-layer button stands byte-identical (R29 ruling
+// 1). Presence-probed against the live DOM, never a mirrored breakpoint. The
+// manager closes after the shell-path switch so no sheet stays open over the
+// stage (selectLayer's explicit fit runs on the row click, D85/D81).
+const switchToMisaki = async (page: Page): Promise<void> => {
+  const railButton = page.getByTestId('tme-layer-layer-misaki');
+  if (await railButton.count()) {
+    await activate(railButton);
+    return;
+  }
+  await page.getByTestId('tme-layers-tool').click();
+  await expect(page.getByTestId('tme-layer-manager')).toBeVisible();
+  await page
+    .locator('.tme-layer-row')
+    .filter({ has: page.locator('[data-testid="tme-layer-name"]', { hasText: 'Misaki Town' }) })
+    .getByTestId('tme-layer-name')
+    .click();
+  await page.getByTestId('tme-layer-manager-close').click();
+  await expect(page.getByTestId('tme-layer-manager')).toBeHidden();
+};
+
 const readBadgeText = (page: Page): Promise<string | null> =>
   page.evaluate((arcId): string | null => {
     // page.evaluate callbacks are serialized: the hook lookup is inlined
@@ -200,7 +224,7 @@ test.describe('cross-layer endpoint badges (PKG B-107 — C3/C10, R1/D72)', () =
     expect(fuyuki).not.toMatch(CARDINAL_WORD);
 
     // The far side's badge too — C10 holds on every layer, not just the first.
-    await activate(page.getByTestId('tme-layer-layer-misaki'));
+    await switchToMisaki(page);
     await expect.poll(() => readLabels(page)).toEqual(['Misaki Town']);
     const misaki = await readBadgeText(page);
     expect(misaki).not.toBeNull();
@@ -213,7 +237,7 @@ test.describe('cross-layer endpoint badges (PKG B-107 — C3/C10, R1/D72)', () =
     // The same arc's badge re-anchors to whichever endpoint is on the ACTIVE
     // layer — on Misaki it sits at misaki-town and reads toward Fuyuki
     // Station, with the same core-priced cost (R1/D72: symmetric 300 min).
-    await activate(page.getByTestId('tme-layer-layer-misaki'));
+    await switchToMisaki(page);
     await expect.poll(() => readLabels(page)).toEqual(['Misaki Town']);
     const text = await readBadgeText(page);
     expect(text).toContain('Fuyuki Station');
@@ -226,7 +250,7 @@ test.describe('cross-layer endpoint badges (PKG B-107 — C3/C10, R1/D72)', () =
   }) => {
     expect(await readEdgeStyle(page, CROSS_LAYER_ARC)).toBeNull(); // not on Fuyuki
 
-    await activate(page.getByTestId('tme-layer-layer-misaki'));
+    await switchToMisaki(page);
     await expect.poll(() => readLabels(page)).toEqual(['Misaki Town']);
     expect(await readEdgeStyle(page, CROSS_LAYER_ARC)).toBeNull(); // not on Misaki either
   });
@@ -237,7 +261,7 @@ test.describe('cross-layer endpoint badges (PKG B-107 — C3/C10, R1/D72)', () =
     const fuyuki = await readLabels(page);
     expect([...fuyuki].sort()).toEqual([...FUYUKI_LABELS].sort());
 
-    await activate(page.getByTestId('tme-layer-layer-misaki'));
+    await switchToMisaki(page);
     await expect.poll(() => readLabels(page)).toEqual(['Misaki Town']);
   });
 
@@ -626,7 +650,7 @@ test.describe('badge-tap arc management + badge re-pricing (PKG B-108 — findin
     // The cross-layer C2 loop, live: with the only inter-layer arc blocked,
     // pin → Misaki Town is ok:false with the core's reason VERBATIM (C17 —
     // the same endpoints whose badge just dropped its cost).
-    await activate(page.getByTestId('tme-layer-layer-misaki'));
+    await switchToMisaki(page);
     await expect.poll(() => readLabels(page)).toEqual(['Misaki Town']);
     await tapNode(page, MISAKI_ID);
     await expect(page.getByTestId('tme-arc-panel')).toBeHidden(); // mutual exclusion
@@ -703,7 +727,7 @@ test.describe('badge-tap arc management + badge re-pricing (PKG B-108 — findin
     await activate(page.getByTestId('tme-arc-block'));
     await expect.poll(() => readBadgeText(page)).toBe('Misaki Town · train · blocked: Line suspended');
 
-    await activate(page.getByTestId('tme-layer-layer-misaki'));
+    await switchToMisaki(page);
     await expect.poll(() => readLabels(page)).toEqual(['Misaki Town']);
     await tapNode(page, MISAKI_ID);
     await expect(page.getByTestId('tme-unreachable')).toHaveText(BLOCKED_REASON_TEXT);

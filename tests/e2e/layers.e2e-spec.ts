@@ -72,6 +72,31 @@ const activate = async (page: Page, testId: string): Promise<void> => {
   else await locator.click();
 };
 
+// B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1): at >=1024 the rail's per-layer
+// nav is shell-gated OFF — the layer switch rides the LAYER MANAGER's
+// row-name button (the switch surface, layer-manager.component) through the
+// belt's Layers tool entry; below 1024 the rail's per-layer button stands
+// byte-identical (R29 ruling 1). Presence-probed against the live DOM, never
+// a mirrored breakpoint. The manager closes after the shell-path switch so
+// the isolation/round-trip reads run on a clear stage (selectLayer's
+// explicit fit runs on the row click, D85/D81).
+const switchLayer = async (page: Page, railTestId: string, layerName: string): Promise<void> => {
+  const railButton = page.getByTestId(railTestId);
+  if (await railButton.count()) {
+    await activate(page, railTestId);
+    return;
+  }
+  await page.getByTestId('tme-layers-tool').click();
+  await expect(page.getByTestId('tme-layer-manager')).toBeVisible();
+  await page
+    .locator('.tme-layer-row')
+    .filter({ has: page.locator('[data-testid="tme-layer-name"]', { hasText: layerName }) })
+    .getByTestId('tme-layer-name')
+    .click();
+  await page.getByTestId('tme-layer-manager-close').click();
+  await expect(page.getByTestId('tme-layer-manager')).toBeHidden();
+};
+
 /**
  * PKG B-142 (REPAIRS R-2) re-baseline: the phone boot now stages AT the pin
  * (the boot-posture zoom, the pin-centered viewport). This spec's cells pin
@@ -136,9 +161,9 @@ test.describe('layers & structures (PKG B-104)', () => {
     await expect.poll(() => readLineStyle(page, BLOCKED_ARC)).toBe('dashed');
     await expect.poll(() => readLineStyle(page, SOLID_ARC)).toBe('solid');
 
-    await activate(page, 'tme-layer-layer-misaki');
+    await switchLayer(page, 'tme-layer-layer-misaki', 'Misaki Town'); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(readLabels.bind(null, page)).not.toContain('Emiya Residence');
-    await activate(page, 'tme-layer-layer-fuyuki');
+    await switchLayer(page, 'tme-layer-layer-fuyuki', 'Fuyuki City'); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     // C2: the blocked bridge is STILL drawn dashed after the round-trip —
     // layer switching never drops or restyles it away from dashed.
     await expect.poll(() => readLineStyle(page, BLOCKED_ARC)).toBe('dashed');
@@ -175,7 +200,7 @@ test.describe('layers & structures (PKG B-104)', () => {
   test('Misaki layer: no background element; Fuyuki labels gone (F01/D16 isolation, D69)', async ({
     page,
   }) => {
-    await activate(page, 'tme-layer-layer-misaki');
+    await switchLayer(page, 'tme-layer-layer-misaki', 'Misaki Town'); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect(page.getByTestId('tme-bg')).toHaveCount(0); // FX1's Misaki carries none (D69)
     await expect.poll(readLabels.bind(null, page)).toContain('Misaki Town');
     await expect.poll(readLabels.bind(null, page)).not.toContain('Emiya Residence');
@@ -189,9 +214,9 @@ test.describe('layers & structures (PKG B-104)', () => {
     const before = await readPosition(page, PIN_NODE);
     if (before === null) throw new Error('pin node not rendered');
 
-    await activate(page, 'tme-layer-layer-misaki');
+    await switchLayer(page, 'tme-layer-layer-misaki', 'Misaki Town'); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(readLabels.bind(null, page)).toContain('Misaki Town');
-    await activate(page, 'tme-layer-layer-fuyuki');
+    await switchLayer(page, 'tme-layer-layer-fuyuki', 'Fuyuki City'); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(readLabels.bind(null, page)).toContain('Emiya Residence');
 
     // Preset layout is deterministic from authored positions (F19) — the pin

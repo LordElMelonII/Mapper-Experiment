@@ -96,6 +96,54 @@ const tap = async (locator: ReturnType<Page['locator']>): Promise<void> => {
   else await locator.click();
 };
 
+// B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1): at >=1024 the rail's per-layer
+// nav and its Manage entry are shell-gated OFF — the layer switch rides the
+// LAYER MANAGER's row-name button (the switch surface, layer-manager.component)
+// and the manager opens through the belt's Layers tool (tme-layers-tool);
+// below 1024 the rail surfaces stand byte-identical (R29 ruling 1).
+// Presence-probed against the live DOM — the regime truth, never a mirrored
+// breakpoint. The manager-state-aware switch leaves an ALREADY-OPEN sheet
+// open (the pre-shell rail switch never touched it). The phone-arm code
+// paths (the in-test Chromium twin) are untouched — sub-1024 keeps the rail.
+
+/** The manager's open-state probe (the enterCalibrateViaSheet idiom). */
+const managerOpen = async (page: Page): Promise<boolean> => {
+  const body = page.getByTestId('tme-layer-manager-body');
+  return (await body.count()) > 0 && (await body.isVisible());
+};
+
+/** Open the layer manager through the live regime's entry (B-D1). */
+const openManager = async (page: Page): Promise<void> => {
+  if (await managerOpen(page)) return;
+  const beltTool = page.getByTestId('tme-layers-tool');
+  if (await beltTool.count()) await tap(beltTool);
+  else await tap(page.getByTestId('tme-layer-manage'));
+  await expect(page.getByTestId('tme-layer-manager-body')).toBeVisible();
+};
+
+/** The rail's per-layer button ids by authored layer name (FX1). */
+const RAIL_LAYER_BUTTON: Readonly<Record<string, string>> = {
+  'Fuyuki City': 'tme-layer-layer-fuyuki',
+  'Misaki Town': 'tme-layer-layer-misaki',
+};
+
+/** Switch layers in the live regime (B-D1): the rail's per-layer button
+ *  below 1024 (the original .click() input path, both projects byte-equal),
+ *  the manager's row-name button at >=1024 (an already-open manager stays
+ *  open; one opened for the switch closes after it — the pre-shell chrome
+ *  state; selectLayer's explicit fit runs either way, D85/D81). */
+const switchLayer = async (page: Page, name: string): Promise<void> => {
+  const rail = page.getByTestId(RAIL_LAYER_BUTTON[name] ?? '');
+  if (await rail.count()) {
+    await rail.click();
+    return;
+  }
+  const wasOpen = await managerOpen(page);
+  if (!wasOpen) await openManager(page);
+  await layerRow(page, name).getByTestId('tme-layer-name').click();
+  if (!wasOpen) await tap(page.getByTestId('tme-layer-manager-close'));
+};
+
 /**
  * Wait two animation frames: a sheet open/close or a background swap changes
  * the stage synchronously, but ResizeObserver-driven paths run just before
@@ -190,8 +238,8 @@ const setUrlOn = async (page: Page, rowName: string, url: string): Promise<void>
  *  entry hides behind the row's collapsed expander — expand first. */
 const enterCalibrateViaSheet = async (page: Page, rowName: string): Promise<void> => {
   const body = page.getByTestId('tme-layer-manager-body');
-  const open = (await body.count()) > 0 && (await body.isVisible());
-  if (!open) await tap(page.getByTestId('tme-layer-manage'));
+  const open = await managerOpen(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime probe
+  if (!open) await openManager(page); // B-D1: the regime-aware entry
   await expect(body).toBeVisible();
   await expandBgForm(page, rowName); // B-149 (R9 item 5): expand-first re-baseline
   await tap(layerRow(page, rowName).getByTestId('tme-layer-bg-calibrate'));
@@ -628,9 +676,9 @@ test.describe('background calibrate (PKG B-135, D93/D92/D75/D90/C24/F07/F52/D53)
     // The loadMap-shaped re-read: leave the layer and come back — the ARM
     // renders verbatim (same center, same scale), and the switch dirties
     // nothing (D75: the save already landed it).
-    await page.getByTestId('tme-layer-layer-misaki').click();
+    await switchLayer(page, MISAKI_ROW); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect(page.getByTestId('tme-bg')).toHaveCount(0);
-    await page.getByTestId('tme-layer-layer-fuyuki').click();
+    await switchLayer(page, FUYUKI_ROW); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(() => bgPlaced(page), { timeout: 5_000 }).toBe(true);
     const returned = await readSeams(page);
     expect(returned.arm, 'the tuned arm survives the round trip verbatim').toEqual(tuned);
@@ -659,7 +707,7 @@ test.describe('background calibrate (PKG B-135, D93/D92/D75/D90/C24/F07/F52/D53)
     // A NEW source on the same layer (the sheet reopens over the session;
     // the D93 fresh-start resets the placement and the session ends — the
     // thing being calibrated is gone).
-    await tap(page.getByTestId('tme-layer-manage'));
+    await openManager(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware entry
     await expect(page.getByTestId('tme-layer-manager-body')).toBeVisible();
     await setUrlOn(page, FUYUKI_ROW, SVG_URL);
     await expect.poll(() => bgPlacedFor(page, 64, 64), { timeout: 5_000 }).toBe(true);
@@ -694,7 +742,7 @@ test.describe('background calibrate (PKG B-135, D93/D92/D75/D90/C24/F07/F52/D53)
     const bad = collectConsole(page);
 
     await expect.poll(() => bgPlaced(page), { timeout: 5_000 }).toBe(true);
-    await tap(page.getByTestId('tme-layer-manage'));
+    await openManager(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware entry
     await expect(page.getByTestId('tme-layer-manager-body')).toBeVisible();
 
     // Fuyuki (active, harness background): ENABLED. Misaki (inactive, no
@@ -750,9 +798,9 @@ test.describe('background calibrate (PKG B-135, D93/D92/D75/D90/C24/F07/F52/D53)
 
     // Misaki holds exactly ONE positioned node (FX1) — a zero-area bbox: set
     // its background and switch to it; the D84 stage-contain fallback renders.
-    await tap(page.getByTestId('tme-layer-manage'));
+    await openManager(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware entry
     await setUrlOn(page, MISAKI_ROW, SVG_URL);
-    await page.getByTestId('tme-layer-layer-misaki').click();
+    await switchLayer(page, MISAKI_ROW); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(() => bgFallback(page), { timeout: 5_000 }).toBe(true);
     const pinned = await pinNodePositions(page, [MISAKI_ID]);
     const misakiSeams = await readSeams(page);
@@ -811,7 +859,7 @@ test.describe('background calibrate (PKG B-135, D93/D92/D75/D90/C24/F07/F52/D53)
 
     // The entry: a >= 44px tap target in the sheet; the journey runs
     // touch-alone from there.
-    await tap(page.getByTestId('tme-layer-manage'));
+    await openManager(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware entry
     await expandBgForm(page, FUYUKI_ROW); // B-149 (R9 item 5): the entry hides behind the expander
     const calibrate = layerRow(page, FUYUKI_ROW).getByTestId('tme-layer-bg-calibrate');
     await expect(calibrate).toBeEnabled();
@@ -859,7 +907,7 @@ test.describe('background calibrate (PKG B-135, D93/D92/D75/D90/C24/F07/F52/D53)
     expect((await readSeams(page)).calibrate, 'Done exits the mode').toBe(false);
 
     // Re-entry works (the sheet reopens; the entry is still enabled).
-    await tap(page.getByTestId('tme-layer-manage'));
+    await openManager(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware entry
     await expandBgForm(page, FUYUKI_ROW); // B-149 (R9 item 5): idempotent — a no-op while still expanded
     await expect(layerRow(page, FUYUKI_ROW).getByTestId('tme-layer-bg-calibrate')).toBeEnabled();
 

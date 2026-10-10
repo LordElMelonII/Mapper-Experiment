@@ -241,6 +241,33 @@ const activate = (page: Page, testId: string): Promise<void> => {
   return isPhone() ? locator.tap() : locator.click();
 };
 
+/**
+ * B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1): at >=1024 the rail's per-layer
+ * nav is shell-gated OFF — the mid-pick layer switch rides the LAYER
+ * MANAGER's row-name button (the switch surface, layer-manager.component)
+ * through the belt's Layers tool entry; below 1024 the rail button stands
+ * byte-identical (R29 ruling 1). Presence-probed against the live DOM, never
+ * a mirrored breakpoint. The manager closes after the shell-path switch so
+ * the kept pick's commit tap runs on a clear stage (selectLayer's explicit
+ * fit runs on the row click, D85/D81 — the pick itself is untouched).
+ */
+const switchToMisaki = async (page: Page): Promise<void> => {
+  const railButton = page.getByTestId(LAYER_MISAKI);
+  if (await railButton.count()) {
+    await activate(page, LAYER_MISAKI);
+    return;
+  }
+  await page.getByTestId('tme-layers-tool').click();
+  await expect(page.getByTestId('tme-layer-manager')).toBeVisible();
+  await page
+    .locator('.tme-layer-row')
+    .filter({ has: page.locator('[data-testid="tme-layer-name"]', { hasText: 'Misaki Town' }) })
+    .getByTestId('tme-layer-name')
+    .click();
+  await page.getByTestId('tme-layer-manager-close').click();
+  await expect(page.getByTestId('tme-layer-manager')).toBeHidden();
+};
+
 /** Screen-px point of a node's rendered center (seam read + canvas box). */
 const nodeScreenPoint = async (page: Page, id: string): Promise<Point> => {
   await settle(page);
@@ -820,7 +847,7 @@ test.describe('draw-arc: the third editor tool (PKG B-122, §5 Phase 3 M2)', () 
     // refusal fence is RETIRED (D85); the old refusal message never renders.
     await tapPoint(page, await nodeScreenPoint(page, CASTLE_ID));
     await expect.poll(readDrawSourceId.bind(null, page)).toBe(CASTLE_ID);
-    await activate(page, LAYER_MISAKI);
+    await switchToMisaki(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(readLabels.bind(null, page)).toEqual(['Misaki Town']);
     await expect
       .poll(readDrawFeedback.bind(null, page))
@@ -1026,7 +1053,7 @@ test.describe('draw-arc: the third editor tool (PKG B-122, §5 Phase 3 M2)', () 
     const draftedBefore = await readDraftedIds(page);
     await enterArcTool(page);
     await tapPoint(page, await nodeScreenPoint(page, CASTLE_ID));
-    await activate(page, LAYER_MISAKI);
+    await switchToMisaki(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(readLabels.bind(null, page)).toEqual(['Misaki Town']);
     // The kept pick NARRATES — the banner is the mid-pick surface (the F17
     // un-fence, D85; the old refusal message is retired).
@@ -1063,7 +1090,7 @@ test.describe('draw-arc: the third editor tool (PKG B-122, §5 Phase 3 M2)', () 
     // post-switch sheet both cover stages of these taps — coverage-guarded.
     await tapNodeAimed(page, OUTSKIRTS_ID);
     await expect.poll(readDrawSourceId.bind(null, page)).toBe(OUTSKIRTS_ID);
-    await activate(page, LAYER_MISAKI);
+    await switchToMisaki(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(readLabels.bind(null, page)).toEqual(['Misaki Town']);
     await expect
       .poll(readDrawFeedback.bind(null, page))

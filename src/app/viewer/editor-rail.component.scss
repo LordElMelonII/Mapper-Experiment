@@ -398,3 +398,155 @@
     color: var(--tme-text);
   }
 }
+
+// ---------------------------------------------------------------------------
+// B-D1 (R29, PROPOSAL-D §2.1) — the >=1024px ICON TOOLBELT. Everything in
+// this block is NEW chrome for the third regime; below 1024 not one byte
+// changes (the template's shellWide gates keep the sub-1024 DOM identical,
+// and no rule here applies). The 56px column basis and --tme-rail-w are
+// owned by map-viewer's SCSS (the region owner); this file owns the belt's
+// INTERNAL form: 24px glyphs on >=44px targets (the parity floor is
+// hit-SIZE, F52), the belt's section order (flex order over the unchanged
+// DOM), the Route|Layers divider, hover-only tooltips, and the collapse
+// toggle's retirement.
+@media (min-width: 1024px) {
+  :host {
+    // 56px column minus 2x4px padding = 48px of button width — above the
+    // 44px floor with room for the joined segmented borders.
+    padding: 0.375rem 0.25rem;
+    gap: 0.25rem;
+  }
+
+  // The belt never scrolls its own axis: the legend's expansion plate
+  // (legend.component) is an absolutely-positioned child of this flow —
+  // an overflow clip here would clip the plate (an auto axis forces the
+  // other to auto). The belt is ~9 stacked 44px controls; a window too
+  // short for it spills (visible), never traps the plate.
+  .tme-rail-body {
+    overflow: visible;
+  }
+
+  // The belt's section order (the DOM keeps D86's; order is presentation):
+  // tools (editor mode only) -> Route -> [divider] Layers -> Maps ->
+  // Legend; the zoom cluster follows as the body's host sibling.
+  .tme-tools {
+    order: 1;
+  }
+
+  .tme-route-toggle {
+    order: 2;
+  }
+
+  .tme-layer-tool {
+    order: 3;
+  }
+
+  .tme-layers {
+    order: 4;
+  }
+
+  tme-legend {
+    order: 5;
+  }
+
+  // The icon form: every belt button centers a 24px glyph in its >=44px
+  // target. position:relative hosts the tooltip ::after (and the Layers
+  // divider ::before) with ZERO layout shift.
+  .tme-tool,
+  .tme-route-toggle,
+  .tme-layer-tool,
+  .tme-layer-button.tme-maps-nav,
+  .tme-zoom-button {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    font-size: 1.5rem; // the 24px glyph (PROPOSAL-D §2.1); 'Fit' keeps its word
+    line-height: 1;
+  }
+
+  // The NEW Layers tool — the belt's layer-manager entry (the per-layer
+  // nav and Manage are template-gated off at >=1024). Same chrome as the
+  // belt buttons; the divider above it separates Route|Layers.
+  .tme-layer-tool {
+    min-width: 44px; // F52: >= 44px tap target
+    min-height: 44px;
+    margin-block: 0.4375rem; // breathing room around the divider
+    border: 1px solid rgba(230, 235, 242, 0.35);
+    border-radius: 8px;
+    background: rgba(20, 23, 28, 0.85);
+    color: var(--tme-text-secondary);
+    font:
+      600 1.5rem/1 system-ui,
+      -apple-system,
+      sans-serif;
+    cursor: pointer;
+    touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+  }
+
+  .tme-layer-tool.tme-active {
+    border-color: var(--tme-accent-gold);
+    color: var(--tme-accent-gold);
+  }
+
+  // The Route|Layers divider — a hairline band above the Layers tool,
+  // belt-width, no layout of its own (the segmented buttons' own borders
+  // stay untouched).
+  .tme-layer-tool::before {
+    content: '';
+    position: absolute;
+    top: -0.28125rem;
+    left: 2px;
+    right: 2px;
+    border-top: 1px solid rgba(174, 189, 211, 0.25);
+  }
+
+  // B-D1: the collapse toggle retires — collapsing a 56px belt is
+  // pointless (the packet's call). display:none, SCSS-only: the element
+  // stays in the DOM, byte-identical below 1024.
+  .tme-rail-toggle {
+    display: none;
+  }
+
+  // A collapse made below 1024 must not persist into the shell (its expand
+  // affordance is gone here): the belt re-shows the body/zoom and the
+  // region keeps the 56px basis (map-viewer's >=1024 block fixes
+  // flex-basis for .tme-collapsed too). Re-showing only — the flag itself
+  // is untouched, so narrowing again restores the collapsed strip.
+  :host(.tme-collapsed) .tme-rail-body,
+  :host(.tme-collapsed) .tme-zoom {
+    display: flex;
+  }
+
+  // The hover-only tooltip (PROPOSAL-D §2.1): CSS ::after off data-tip,
+  // fenced to pointer-fine hover devices — ZERO rendering on touch (D53:
+  // no touch device ever sees it), ZERO layout shift (absolute, right of
+  // the belt). The native title stays the semantic fallback; the visible
+  // label is this plate. Font-size resets the inherited 1.5rem glyph size.
+  @media (hover: hover) and (pointer: fine) {
+    .tme-tool:hover::after,
+    .tme-route-toggle:hover::after,
+    .tme-layer-tool:hover::after,
+    .tme-layer-button.tme-maps-nav:hover::after,
+    .tme-zoom-button:hover::after {
+      content: attr(data-tip);
+      position: absolute;
+      left: calc(100% + 0.625rem);
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 30; // above the sheet stack (15) and the belt; below nothing on the belt
+      padding: 0.25rem 0.5rem;
+      border: 1px solid rgba(174, 189, 211, 0.4);
+      border-radius: var(--tme-radius-sm, 8px);
+      background: rgba(20, 23, 28, 0.95);
+      color: var(--tme-text);
+      font:
+        600 0.8125rem/1.3 system-ui,
+        -apple-system,
+        sans-serif;
+      white-space: nowrap;
+      pointer-events: none; // a label, not a hit target
+    }
+  }
+}

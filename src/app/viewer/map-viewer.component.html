@@ -97,6 +97,53 @@
         <span class="tme-sep" aria-hidden="true">·</span>
       }
       <span data-testid="tme-unit">{{ graph.snapshot()?.unit ?? '' }}</span>
+      <!-- B-D1 (R29, PROPOSAL-D §2.1): the mode toggle's HEADER home —
+           DUAL-HOME with the rail's copy: exactly ONE instance renders per
+           regime through the shellWide gates (the rail copy is
+           @if(!shellWide()), this one @if(shellWide()) — never two, so the
+           testid stays unique in every rendered tree, R29 ruling 2). The
+           markup contract is the rail's verbatim (testid, tme-active,
+           aria-pressed, the hasMap disabled gate, the Editing/Edit words);
+           the click routes through the ONE service write path
+           toggleEditorMode() (R3). The save-dock pill idiom (B-116): a
+           transient band pill inside the pointer-events:none header —
+           pointer-events:auto makes it a real >= 44px control (F52). -->
+      @if (graph.shellWide()) {
+        <button
+          type="button"
+          class="tme-header-mode"
+          data-testid="tme-editor-toggle"
+          [class.tme-active]="graph.editorMode()"
+          [attr.aria-pressed]="graph.editorMode() ? 'true' : 'false'"
+          [disabled]="!graph.hasMap()"
+          (click)="graph.toggleEditorMode()"
+        >
+          {{ graph.editorMode() ? 'Editing' : 'Edit' }}
+        </button>
+        <!-- B-D1: the per-layer dim's HEADER home — the rail dim row's
+             markup contract verbatim (the tme-dim/tme-dim-label/
+             tme-dim-slider/tme-dim-value testids, the range's
+             min/max/step/[value]/[disabled]/(input) bindings — the same
+             setActiveLayerDim seam), styled as the compact header pill.
+             One instance per regime (the rail copy is shell-gated off at
+             >=1024). -->
+        <div class="tme-dim tme-header-dim" data-testid="tme-dim">
+          <label class="tme-dim-label" for="tme-dim-slider">Dim</label>
+          <input
+            class="tme-dim-slider"
+            id="tme-dim-slider"
+            data-testid="tme-dim-slider"
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            [value]="graph.activeLayerDim()"
+            [disabled]="!graph.activeLayerHasBackground()"
+            (input)="setDim($event)"
+          />
+          <span class="tme-dim-value" data-testid="tme-dim-value">{{ graph.activeLayerDim() }}</span>
+        </div>
+      }
       <!-- B-116 (F45/D75) via the B-133 review (D91): the save dock — the
            app-bar pill form. It lived in the rail until the review showed a
            rail-flow dock resizes the narrow band on every dirty flip (the

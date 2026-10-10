@@ -58,6 +58,31 @@ const activate = async (page: Page, testId: string): Promise<void> => {
   else await locator.click();
 };
 
+// B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1): at >=1024 the rail's per-layer
+// nav is shell-gated OFF — the layer switch rides the LAYER MANAGER's
+// row-name button (the switch surface, layer-manager.component) through
+// the belt's Layers tool entry; below 1024 the rail button stands
+// byte-identical (R29 ruling 1). Presence-probed against the live DOM,
+// never a mirrored breakpoint. The manager closes after the shell-path
+// switch (the pre-shell chrome state); the seam reads below are
+// viewport-agnostic (selectLayer's explicit fit runs either way).
+const switchLayer = async (page: Page, railTestId: string, layerName: string): Promise<void> => {
+  const railButton = page.getByTestId(railTestId);
+  if (await railButton.count()) {
+    await activate(page, railTestId);
+    return;
+  }
+  await page.getByTestId('tme-layers-tool').click();
+  await expect(page.getByTestId('tme-layer-manager')).toBeVisible();
+  await page
+    .locator('.tme-layer-row')
+    .filter({ has: page.locator('[data-testid="tme-layer-name"]', { hasText: layerName }) })
+    .getByTestId('tme-layer-name')
+    .click();
+  await page.getByTestId('tme-layer-manager-close').click();
+  await expect(page.getByTestId('tme-layer-manager')).toBeHidden();
+};
+
 // FX1 facts, re-derived from data/worlds/fuyuki.ts (the verifier's own count):
 // 13 leaves + 2 district containers on layer-fuyuki; 1 hub on layer-misaki.
 const FUYUKI_LABELS = [
@@ -90,7 +115,7 @@ test.describe('P2 M1 verifier seams (C3/C19/FX1/F03/D53)', () => {
   test('header keeps the PIN layer while the viewer shows Misaki (C19/C22 snapshot seam)', async ({
     page,
   }) => {
-    await activate(page, 'tme-layer-layer-misaki');
+    await switchLayer(page, 'tme-layer-layer-misaki', 'Misaki Town'); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(() => readLabels(page)).toEqual(['Misaki Town']); // viewer switched
 
     // The snapshot is pin-scoped: the viewer's layer switch must not leak into
@@ -105,11 +130,11 @@ test.describe('P2 M1 verifier seams (C3/C19/FX1/F03/D53)', () => {
   }) => {
     expect(await readEdgeStyle(page, CROSS_LAYER_ARC)).toBeNull(); // not on Fuyuki
 
-    await activate(page, 'tme-layer-layer-misaki');
+    await switchLayer(page, 'tme-layer-layer-misaki', 'Misaki Town'); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(() => readLabels(page)).toEqual(['Misaki Town']);
     expect(await readEdgeStyle(page, CROSS_LAYER_ARC)).toBeNull(); // not on Misaki either
 
-    await activate(page, 'tme-layer-layer-fuyuki');
+    await switchLayer(page, 'tme-layer-layer-fuyuki', 'Fuyuki City'); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(() => readLabels(page)).toContain('Emiya Residence');
     expect(await readEdgeStyle(page, CROSS_LAYER_ARC)).toBeNull(); // and after the round-trip
   });
@@ -120,10 +145,10 @@ test.describe('P2 M1 verifier seams (C3/C19/FX1/F03/D53)', () => {
     const fuyuki = await readLabels(page);
     expect([...fuyuki].sort()).toEqual([...FUYUKI_LABELS].sort());
 
-    await activate(page, 'tme-layer-layer-misaki');
+    await switchLayer(page, 'tme-layer-layer-misaki', 'Misaki Town'); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(() => readLabels(page)).toEqual(['Misaki Town']);
 
-    await activate(page, 'tme-layer-layer-fuyuki');
+    await switchLayer(page, 'tme-layer-layer-fuyuki', 'Fuyuki City'); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(() => readLabels(page)).toHaveLength(FUYUKI_LABELS.length); // rebuild, not append
     const roundTrip = await readLabels(page);
     expect([...roundTrip].sort()).toEqual([...FUYUKI_LABELS].sort());
@@ -178,9 +203,9 @@ test.describe('P2 M1 verifier seams (C3/C19/FX1/F03/D53)', () => {
     else await page.mouse.click(pos.x, pos.y);
     await expect(page.getByTestId('tme-selection-chip')).toBeVisible();
 
-    await activate(page, 'tme-layer-layer-misaki');
+    await switchLayer(page, 'tme-layer-layer-misaki', 'Misaki Town'); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(() => readLabels(page)).toEqual(['Misaki Town']);
-    await activate(page, 'tme-layer-layer-fuyuki');
+    await switchLayer(page, 'tme-layer-layer-fuyuki', 'Fuyuki City'); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(() => readLabels(page)).toHaveLength(FUYUKI_LABELS.length);
 
     expect(bad, 'no console errors/warnings/pageerrors during the sweep').toEqual([]);

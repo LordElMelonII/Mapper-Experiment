@@ -142,6 +142,31 @@ const settle = (page: Page): Promise<void> =>
       }),
   );
 
+// B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1): at >=1024 the rail's per-layer
+// nav is shell-gated OFF — the layer switch rides the LAYER MANAGER's
+// row-name button (the switch surface, layer-manager.component) through
+// the belt's Layers tool entry; below 1024 the rail button stands
+// byte-identical (R29 ruling 1). Presence-probed against the live DOM,
+// never a mirrored breakpoint. The manager closes after the shell-path
+// switch (the pre-shell chrome state); selectLayer's rebuild + explicit
+// refit run on the row click either way (the cull asserts below).
+const switchLayer = async (page: Page, railTestId: string, layerName: string): Promise<void> => {
+  const railButton = page.getByTestId(railTestId);
+  if (await railButton.count()) {
+    await railButton.click();
+    return;
+  }
+  await page.getByTestId('tme-layers-tool').click();
+  await expect(page.getByTestId('tme-layer-manager')).toBeVisible();
+  await page
+    .locator('.tme-layer-row')
+    .filter({ has: page.locator('[data-testid="tme-layer-name"]', { hasText: layerName }) })
+    .getByTestId('tme-layer-name')
+    .click();
+  await page.getByTestId('tme-layer-manager-close').click();
+  await expect(page.getByTestId('tme-layer-manager')).toBeHidden();
+};
+
 /** Tap a canvas node through its rendered position — settle FIRST, then read
  * (panel open/close and rail toggles re-fit asynchronously; positions read
  * before the re-fit are pre-fit coordinates that miss). */
@@ -342,14 +367,14 @@ test.describe('P2 M4 verifier sweep (D-P2M4)', () => {
     expect(await readNodeHasClass(page, STATION_ID, CULL_CLASS)).toBe(true);
 
     // Layer switch: rebuild + EXPLICIT fit → the Misaki default view is not culled.
-    await page.getByTestId('tme-layer-layer-misaki').click();
+    await switchLayer(page, 'tme-layer-layer-misaki', 'Misaki Town'); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(() => readPosition(page, 'misaki-town')).not.toBeNull();
     await expect
       .poll(() => readNodeHasClass(page, 'misaki-town', CULL_CLASS), 'fresh layer projection is not culled')
       .toBe(false);
 
     // Back to Fuyuki: the explicit selectLayer fit re-bases there too.
-    await page.getByTestId('tme-layer-layer-fuyuki').click();
+    await switchLayer(page, 'tme-layer-layer-fuyuki', 'Fuyuki City'); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(() => readPosition(page, STATION_ID)).not.toBeNull();
     await expect
       .poll(() => readNodeHasClass(page, STATION_ID, CULL_CLASS), 'the layer-switch refit un-culls (explicit in selectLayer)')
@@ -630,9 +655,9 @@ test.describe('P2 M4 verifier sweep (D-P2M4)', () => {
     }
 
     // Layer switch while culled (rebuild + refit inside the zoom storm).
-    await page.getByTestId('tme-layer-layer-misaki').click();
+    await switchLayer(page, 'tme-layer-layer-misaki', 'Misaki Town'); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(() => readPosition(page, 'misaki-town')).not.toBeNull();
-    await page.getByTestId('tme-layer-layer-fuyuki').click();
+    await switchLayer(page, 'tme-layer-layer-fuyuki', 'Fuyuki City'); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(() => readPosition(page, STATION_ID)).not.toBeNull();
 
     expect(bad, 'no console errors/warnings/pageerrors during the M4 sweep').toEqual([]);

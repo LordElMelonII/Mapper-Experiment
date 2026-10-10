@@ -110,6 +110,25 @@ const restoreBootViewport = async (page: Page): Promise<void> => {
   if (isPhone()) await page.getByTestId('tme-zoom-fit').tap();
 };
 
+/**
+ * B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1): this spec's subject is the
+ * WIDE-column rail (the mode toggle + per-layer nav + Manage + the collapse
+ * cycle + the wide clamp) — at >=1024 that chrome is shell-gated OFF (the
+ * 56px belt replaces it; the collapse toggle is display:none, the per-layer
+ * nav and Manage never render, R29 ruling 2). The wide column's home regime
+ * is now the 700–1023 medium band, where it stands BYTE-FOR-BYTE (R29 ruling
+ * 1) — so the desktop cells stage there first and every assertion below
+ * runs unchanged against the same chrome the pre-shell desktop run saw. The
+ * phone arm (390px, sub-1024) is untouched — the helper self-gates on the
+ * live viewport width, never a project name.
+ */
+const stageAtWideChromeViewport = async (page: Page): Promise<void> => {
+  const width = page.viewportSize()?.width ?? 0;
+  if (width < 1024) return;
+  await page.setViewportSize({ width: 900, height: 720 }); // the medium band
+  await settle(page); // the shell flip re-render lands before the next paint
+};
+
 const HOOK_ERROR = 'window.__TME_E2E__ missing — dev harness not loaded';
 
 const readZoom = (page: Page): Promise<number> =>
@@ -304,6 +323,7 @@ test.describe('the editor rail: one responsive control surface (PKG B-127, D86/F
     page,
   }) => {
     const bad = collectConsole(page);
+    await stageAtWideChromeViewport(page); // B-D1: the wide column's home regime is the medium band
     await settle(page);
     await expectHeaders(page);
 
@@ -397,6 +417,7 @@ test.describe('the editor rail: one responsive control surface (PKG B-127, D86/F
     page,
   }) => {
     const bad = collectConsole(page);
+    await stageAtWideChromeViewport(page); // B-D1: the collapse cycle lives below 1024 (the belt has none)
     await settle(page);
     await expectHeaders(page);
     const toggle = page.getByTestId('tme-rail-toggle');
@@ -559,6 +580,7 @@ test.describe('the editor rail: one responsive control surface (PKG B-127, D86/F
     page,
   }) => {
     const bad = collectConsole(page);
+    await stageAtWideChromeViewport(page); // B-D1: the rail's mid-pick switch + Manage entry live below 1024
     await settle(page);
     await expectHeaders(page);
 
@@ -628,6 +650,7 @@ test.describe('the editor rail: one responsive control surface (PKG B-127, D86/F
   }) => {
     test.skip(isPhone(), 'the wide-layout preserve rule is the desktop project (SCSS 700px breakpoint)');
     const bad = collectConsole(page);
+    await stageAtWideChromeViewport(page); // B-D1: the wide clamp/collapse pairing lives below 1024
     await settle(page);
     await expectHeaders(page);
 

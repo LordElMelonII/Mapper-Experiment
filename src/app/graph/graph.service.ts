@@ -816,6 +816,18 @@ const ZOOM_STEP = 1.25;
 const WIDE_LAYOUT_QUERY = '(min-width: 700px)';
 
 /**
+ * B-D1 (R29, PROPOSAL-D §2.1): the SHELL-wide query — the ≥1024px desktop
+ * toolbelt regime. This is a THIRD, chrome-only breakpoint: <700px the phone
+ * chrome, 700–1023px today's wide chrome (byte-for-byte), ≥1024 the toolbelt
+ * shell (the icon belt, the header mode-toggle/dim homes, the 1/2/3 tool
+ * keys). It feeds ONLY the `shellWide` signal the templates gate on — it is
+ * DELIBERATELY never consumed by notifyResize's discriminator: D81's 700px
+ * WIDE_LAYOUT_QUERY stays the one viewport-behavior authority (preserve vs
+ * refit classification is unchanged by the shell).
+ */
+const SHELL_WIDE_QUERY = '(min-width: 1024px)';
+
+/**
  * B-117 (api.ts `parent` contract, §5 Phase 3 M1): the CONTAINER kinds —
  * every kind that may hold compound children. The property panel's parent
  * picker offers exactly these (same layer), and never 'waypoint' (D21: the
@@ -1176,6 +1188,44 @@ export class GraphService implements OnDestroy {
    * / drag DOM math (the consumer); the service holds signals and read-only
    * projection reads — one remembered position PER PANEL KIND.
    */
+
+  /**
+   * B-D1 (R29, PROPOSAL-D §2.1): the SHELL regime flag — true at
+   * `@media (min-width: 1024px)` (the desktop toolbelt shell), false at every
+   * narrower width (phone <700, today's wide chrome 700–1023). Initialized
+   * from matchMedia and kept live by its `change` listener (bound in the
+   * constructor, removed in ngOnDestroy — the document-listener precedent).
+   * Frontend viewer chrome of the `panelFloating` class: in-memory, no
+   * facade/R2 surface, NEVER a resize-classification input (SHELL_WIDE_QUERY
+   * never reaches notifyResize — D81's 700px discriminator stands). The
+   * DUAL-HOME elements (editor mode toggle, per-layer dim) and the belt-only
+   * chrome (layers tool) gate their templates on this so exactly ONE
+   * instance per testid renders in every regime (R29 ruling 2: phone
+   * locators never go ambiguous).
+   */
+  readonly shellWide = signal(
+    typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia(SHELL_WIDE_QUERY).matches, // C32: no matchMedia ⇒ false (never a throw)
+  );
+
+  /**
+   * B-D1: the shellWide flag's live source — null when matchMedia is absent
+   * (the signal then stays at its boot value; the C32 fallback).
+   */
+  private readonly shellWideQuery: MediaQueryList | null =
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia(SHELL_WIDE_QUERY)
+      : null;
+
+  /**
+   * B-D1: the shellWide change listener, a stable reference so ngOnDestroy
+   * removes exactly what the constructor added (the armEscapeTopSurface
+   * precedent).
+   */
+  private readonly onShellWideChange = (event: MediaQueryListEvent): void => {
+    this.shellWide.set(event.matches);
+  };
 
   /**
    * B-119: whether the F40 property panel FLOATS (the compact remembered-
@@ -1713,6 +1763,12 @@ export class GraphService implements OnDestroy {
     // handler can dismiss anything.
     document.addEventListener('keydown', this.armEscapeTopSurface, true);
 
+    // B-D1 (R29): the shell regime's live mirror — matchMedia's own change
+    // event flips `shellWide` across the 1024px crossing (boot value set at
+    // the field). Removed with the cy destroy in ngOnDestroy (the listener
+    // -accumulation law); degrade silently when matchMedia is absent (C32).
+    this.shellWideQuery?.addEventListener('change', this.onShellWideChange);
+
     // D53: canvas input binds through cytoscape's UNIFIED pointer/touch events
     // — 'tap' etc. of UserInputDeviceEventNameExt in the installed
     // @types/cytoscape 3.21.9 (index.d.ts: tapstart/tapdrag/tapend/taphold
@@ -2080,6 +2136,7 @@ export class GraphService implements OnDestroy {
     // removal is the precedent; an extension re-mount must never accumulate
     // listeners).
     document.removeEventListener('keydown', this.armEscapeTopSurface, true);
+    this.shellWideQuery?.removeEventListener('change', this.onShellWideChange); // B-D1
     this.cy.destroy();
   }
 
@@ -3153,6 +3210,18 @@ export class GraphService implements OnDestroy {
     this.editorMode.set(false);
     this.cy.autoungrabify(true);
     this.clearDrawPick(); // B-122: the editor exit clears the pending pick
+  }
+
+  /**
+   * B-D1 (R29, PROPOSAL-D §2.1): the editor mode toggle's ONE write path —
+   * both homes of the DUAL-HOME control (the rail's copy below 1024px, the
+   * header pill at ≥1024) call exactly this, never their own branch (R3:
+   * one seam; the rail's former inline enter/exit branch is retired into
+   * it). Pure dispatch over the two single-writer methods above.
+   */
+  toggleEditorMode(): void {
+    if (this.editorMode()) this.exitEditor();
+    else this.enterEditor();
   }
 
   /**

@@ -76,8 +76,25 @@ const NEW_PLACE = 'New place'; // C23 default label of an unsaved placed node
  *     rail strip (canvas y 461+).
  * `modelScreenPoint` asserts the live landing in-canvas before every tap
  * (B-143r: this cell's silent failure mode was an off-canvas click).
+ * B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1, R23 staged-geometry): at >=1024
+ * the cell places at the SAME hole, LOWER (y −40 → 120) — the shell's header
+ * band homes the editor-mode pill at the canvas's top-left, and the −40
+ * placement rendered the placed node INSIDE that band (measured live: node
+ * y≈12, the parked menu y 26–111 over the pill y 8–62, z-17 by design), so
+ * the mode-exit tap at the cell's end could never land. At y 120 the node
+ * renders y≈179 and the parked menu (y 193–278) clears the pill and every
+ * floater. The PHONE ARM KEEPS THE VETTED −40 POINT byte-identical — its
+ * clear-of-content vetting (the B-109 scan) stands and the phone chrome
+ * never moves under the shell (sub-1024 keeps the rail).
  */
 const PLACE_MODEL_POINT: { x: number; y: number } = { x: -250, y: -40 };
+
+/** B-D1 (PROPOSAL-D §2.1 + B-D1): the placement point for the live regime —
+ *  the shell's lowered point at >=1024 (clear of the header band's pill,
+ *  measured above), the vetted −40 hole below it (the phone twin included:
+ *  its clear-of-content geometry is untouched law). */
+const placeModelPointFor = (page: Page): { x: number; y: number } =>
+  (page.viewportSize()?.width ?? 0) >= 1024 ? { x: -250, y: 120 } : PLACE_MODEL_POINT;
 
 /**
  * The container-refusal aim: a point INSIDE the Miyama district's compound
@@ -538,7 +555,9 @@ test.describe('pin-setting node menu (PKG B-143, REPAIRS §R3)', () => {
       // auto-floated surfaces).
       await activate(p, 'tme-editor-toggle');
       await settle(p);
-      await tapPoint(p, await modelScreenPoint(p, PLACE_MODEL_POINT));
+      // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware placement point (the
+      // shell's lowered hole at >=1024; the vetted −40 hole below it).
+      await tapPoint(p, await modelScreenPoint(p, placeModelPointFor(p)));
       // C5/D75 id discovery — POLLED (the editor-place-move.e2e-spec.ts
       // convention: the placement→selection write lands within the click
       // dispatch, but the poll converts any engine-side delay into a

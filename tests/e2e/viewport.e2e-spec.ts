@@ -32,14 +32,43 @@ const readPosition = (page: Page, id: string): Promise<{ x: number; y: number } 
 
 const isPhone = (): boolean => test.info().project.name === 'phone';
 
-/** Every layer button remains visible and >= 44px in BOTH dimensions (F52). */
+/**
+ * Every layer-switch control remains visible and >= 44px in BOTH dimensions
+ * (F52). B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1): the switch surface is
+ * regime-bound — the rail's per-layer buttons below 1024; at >=1024 the
+ * belt's Layers tool (the entry) plus the manager's row-name buttons (the
+ * switches), swept through an open-close cycle that restores the prior
+ * chrome state.
+ */
 const expectLayerButtonsUsable = async (page: Page): Promise<void> => {
-  for (const layerId of ['tme-layer-layer-fuyuki', 'tme-layer-layer-misaki']) {
-    const box = await page.getByTestId(layerId).boundingBox();
-    if (box === null) throw new Error(`${layerId} not visible`);
-    expect(box.height, `${layerId} height >= 44px (F52)`).toBeGreaterThanOrEqual(44);
-    expect(box.width, `${layerId} width >= 44px (F52)`).toBeGreaterThanOrEqual(44);
+  const railIds = ['tme-layer-layer-fuyuki', 'tme-layer-layer-misaki'];
+  if (await page.getByTestId(railIds[0]).count()) {
+    for (const layerId of railIds) {
+      const box = await page.getByTestId(layerId).boundingBox();
+      if (box === null) throw new Error(`${layerId} not visible`);
+      expect(box.height, `${layerId} height >= 44px (F52)`).toBeGreaterThanOrEqual(44);
+      expect(box.width, `${layerId} width >= 44px (F52)`).toBeGreaterThanOrEqual(44);
+    }
+    return;
   }
+  const toolBox = await page.getByTestId('tme-layers-tool').boundingBox();
+  if (toolBox === null) throw new Error('tme-layers-tool not visible');
+  expect(toolBox.height, 'tme-layers-tool height >= 44px (F52)').toBeGreaterThanOrEqual(44);
+  expect(toolBox.width, 'tme-layers-tool width >= 44px (F52)').toBeGreaterThanOrEqual(44);
+  await page.getByTestId('tme-layers-tool').click();
+  await expect(page.getByTestId('tme-layer-manager')).toBeVisible();
+  for (const name of ['Fuyuki City', 'Misaki Town']) {
+    const nameButton = page
+      .locator('.tme-layer-row')
+      .filter({ has: page.locator('[data-testid="tme-layer-name"]', { hasText: name }) })
+      .getByTestId('tme-layer-name');
+    const box = await nameButton.boundingBox();
+    if (box === null) throw new Error(`${name} row-name button not visible`);
+    expect(box.height, `${name} row-name height >= 44px (F52)`).toBeGreaterThanOrEqual(44);
+    expect(box.width, `${name} row-name width >= 44px (F52)`).toBeGreaterThanOrEqual(44);
+  }
+  await page.getByTestId('tme-layer-manager-close').click();
+  await expect(page.getByTestId('tme-layer-manager')).toBeHidden();
 };
 
 test.describe('viewport resilience (PKG B-104)', () => {

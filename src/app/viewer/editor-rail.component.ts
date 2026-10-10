@@ -115,13 +115,24 @@ export class EditorRailComponent {
   }
 
   /**
-   * B-116 (§5 Phase 3 M1): the editor toggle — enters/exits editor mode
-   * through the service's single write paths (R2/R3: one signal write, the
-   * template follows).
+   * B-116 (§5 Phase 3 M1): the editor toggle — B-D1 (R29): both homes of
+   * the DUAL-HOME control (this rail copy below 1024px, the header pill at
+   * >=1024) call the service's ONE write path `toggleEditorMode()` (R2/R3:
+   * one seam, the former inline enter/exit branch retired into it).
    */
   protected toggleEditor(): void {
-    if (this.graph.editorMode()) this.graph.exitEditor();
-    else this.graph.enterEditor();
+    this.graph.toggleEditorMode();
+  }
+
+  /**
+   * B-D1 (R29, PROPOSAL-D §2.1): a belt attribute's shell-gated value —
+   * the plain word (C23) at >=1024, `null` below it so the sub-1024 DOM
+   * stays byte-identical (Angular drops null-bound attributes; the round's
+   * byte-for-byte law). One helper feeds every icon button's
+   * aria-label/title/data-tip trio.
+   */
+  protected beltWord(word: string): string | null {
+    return this.graph.shellWide() ? word : null;
   }
 
   /**

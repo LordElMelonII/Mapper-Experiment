@@ -108,6 +108,43 @@ const activate = async (locator: Locator): Promise<void> => {
 const activateTestId = (page: Page, testId: string): Promise<void> =>
   activate(page.getByTestId(testId));
 
+// B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1): at >=1024 the rail's per-layer
+// nav and its Manage entry are shell-gated OFF — the layer switch rides the
+// LAYER MANAGER's row-name button (the switch surface, layer-manager.component)
+// and the manager opens through the belt's Layers tool (tme-layers-tool);
+// below 1024 the rail surfaces stand byte-identical (R29 ruling 1).
+// Presence-probed against the live DOM, never a mirrored breakpoint. The
+// manager closes after the shell-path switch so the badge/tap reads run on a
+// clear stage (selectLayer's explicit fit runs on the row click, D85/D81 —
+// the kept draw pick and the portal wiring are untouched).
+
+/** Open the layer manager through the live regime's entry (B-D1). */
+const openLayerManager = async (page: Page): Promise<void> => {
+  const beltTool = page.getByTestId('tme-layers-tool');
+  if (await beltTool.count()) await activateTestId(page, 'tme-layers-tool');
+  else await activateTestId(page, 'tme-layer-manage');
+  await expect(page.getByTestId('tme-layer-manager')).toBeVisible();
+};
+
+/** Switch layers in the live regime (B-D1): the rail's per-layer button
+ *  below 1024, the manager's row-name button at >=1024 (opened for the
+ *  switch, closed after it — the pre-shell chrome state). */
+const switchLayer = async (page: Page, railTestId: string, layerName: string): Promise<void> => {
+  const railButton = page.getByTestId(railTestId);
+  if (await railButton.count()) {
+    await activate(railButton);
+    return;
+  }
+  await openLayerManager(page);
+  await page
+    .locator('.tme-layer-row')
+    .filter({ has: page.locator('[data-testid="tme-layer-name"]', { hasText: layerName }) })
+    .getByTestId('tme-layer-name')
+    .click();
+  await activateTestId(page, 'tme-layer-manager-close');
+  await expect(page.getByTestId('tme-layer-manager')).toBeHidden();
+};
+
 /**
  * PKG B-145 (R-5) re-baseline helper: the property panel's advanced fields
  * render behind collapsed-by-default section toggles — a pick cell expands
@@ -282,7 +319,7 @@ test.describe('portals: badges, the entry gesture, the breadcrumb, and the F17 u
     // The badge label is the TARGET layer's authored NAME (C23) and the save
     // dock lights (F45: wiring marks only dirty).
     await expect(page.getByTestId('tme-save-dock')).toBeVisible();
-    await activateTestId(page, 'tme-layer-manage');
+    await openLayerManager(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware entry
     const misakiRow = rowByName(page, 'Misaki Town');
     await expect(misakiRow.getByTestId('tme-layer-portal')).toHaveText(
       `Entered from ${CASTLE_LABEL} (Fuyuki City)`,
@@ -303,7 +340,7 @@ test.describe('portals: badges, the entry gesture, the breadcrumb, and the F17 u
     await expandSection(page, 'portal');
     await page.getByTestId('tme-node-portal').selectOption({ label: 'None' });
     await expect.poll(() => readPortalBadgeText(page, CASTLE_ID)).toBeNull();
-    await activateTestId(page, 'tme-layer-manage');
+    await openLayerManager(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware entry
     await expect(misakiRow.getByTestId('tme-layer-portal')).toHaveText(
       'No entry from another layer',
     );
@@ -334,7 +371,12 @@ test.describe('portals: badges, the entry gesture, the breadcrumb, and the F17 u
     // The viewport switched ONLY (D85): the canvas shows the target layer…
     await expect.poll(() => readLabels(page)).toEqual(['Misaki Town']);
     // …the nav highlight moved…
-    await expect(page.getByTestId(LAYER_MISAKI_BTN)).toHaveClass(/tme-active/);
+    // B-D1 (PROPOSAL-D §2.1 + B-D1): the nav highlight lives on the rail's
+    // per-layer buttons below 1024; at >=1024 the shell gates the rail nav
+    // off — the active-crumb assert below carries the proof in both regimes.
+    if (await page.getByTestId(LAYER_MISAKI_BTN).count()) {
+      await expect(page.getByTestId(LAYER_MISAKI_BTN)).toHaveClass(/tme-active/);
+    }
     // …the breadcrumb chain derives from the wiring, active crumb last…
     await expect.poll(() => readChain(page)).toEqual(['layer-fuyuki', 'layer-misaki']);
     const crumbs = page.getByTestId('tme-crumb');
@@ -375,7 +417,7 @@ test.describe('portals: badges, the entry gesture, the breadcrumb, and the F17 u
 
     // Mid-pick layer switch (the nav tap): the pick is KEPT and NARRATED —
     // the old refusal message never renders (D85).
-    await activateTestId(page, LAYER_MISAKI_BTN);
+    await switchLayer(page, LAYER_MISAKI_BTN, 'Misaki Town'); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(() => readLabels(page)).toEqual(['Misaki Town']);
     await expect.poll(() => readDrawFeedback(page)).toBe(KEPT_PICK_LINE);
     await expect(page.getByTestId('tme-draw-feedback')).toContainText('Drawing from');
@@ -397,7 +439,7 @@ test.describe('portals: badges, the entry gesture, the breadcrumb, and the F17 u
     // C3: the arc is BADGED at its on-layer endpoint — Misaki's end names the
     // far destination; switching back shows the other end.
     await expect.poll(() => readBadgeText(page, created[0])).toContain(CASTLE_LABEL);
-    await activateTestId(page, LAYER_FUYUKI_BTN);
+    await switchLayer(page, LAYER_FUYUKI_BTN, 'Fuyuki City'); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(() => readBadgeText(page, created[0])).toContain('Misaki Town');
     await activateTestId(page, 'tme-save');
     await expect(page.getByTestId('tme-save-dock')).toBeHidden();

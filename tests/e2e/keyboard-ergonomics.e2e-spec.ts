@@ -95,6 +95,21 @@ const activate = async (page: Page, testId: string): Promise<void> => {
 };
 
 /**
+ * B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1): at >=1024 the rail's Manage
+ * entry is shell-gated OFF — the layer manager opens through the belt's
+ * Layers tool (tme-layers-tool); below 1024 the rail's Manage stands
+ * byte-identical (R29 ruling 1). Presence-probed against the live DOM, never
+ * a mirrored breakpoint. The Escape precedence under test (the service's
+ * z-stack read) is entry-path-agnostic — the same sheet opens either way.
+ */
+const openLayerManager = async (page: Page): Promise<void> => {
+  const beltTool = page.getByTestId('tme-layers-tool');
+  if (await beltTool.count()) await beltTool.click();
+  else await activate(page, 'tme-layer-manage');
+  await expect(page.getByTestId('tme-layer-manager')).toBeVisible();
+};
+
+/**
  * One FX1 node's SCREEN point (rendered position + the canvas host box —
  * the pin-affordance spec's real-pixel idiom), picked among the candidate
  * ids so the point sits INSIDE the canvas and OUTSIDE every listed open
@@ -185,7 +200,7 @@ test.describe('keyboard ergonomics (PKG B-148, REPAIRS R-8)', () => {
     // it paints above the layer manager at every breakpoint.
     await activate(page, 'tme-maps-toggle');
     await expect(page.getByTestId('tme-maps-panel')).toBeVisible();
-    await activate(page, 'tme-layer-manage');
+    await openLayerManager(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware manager entry
     await expect(page.getByTestId('tme-layer-manager')).toBeVisible();
 
     // ONE press = ONE dismissal: the top-most (the Maps panel) closes; the

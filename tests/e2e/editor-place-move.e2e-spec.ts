@@ -155,6 +155,31 @@ const activate = async (locator: Locator): Promise<void> => {
   else await locator.click();
 };
 
+// B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1): at >=1024 the rail's per-layer
+// nav is shell-gated OFF — the switch rides the LAYER MANAGER's row-name
+// button (the switch surface, layer-manager.component) through the belt's
+// Layers tool entry; below 1024 the rail's per-layer button stands
+// byte-identical (R29 ruling 1). Presence-probed against the live DOM (the
+// helper serves BOTH the desktop shell page and the phone twin — the regime,
+// not the project, decides). The manager closes after the shell-path switch
+// so the persistence reads run on a clear stage.
+const switchToLayer = async (page: Page, railTestId: string, layerName: string): Promise<void> => {
+  const railButton = page.getByTestId(railTestId);
+  if (await railButton.count()) {
+    await activate(railButton);
+    return;
+  }
+  await page.getByTestId('tme-layers-tool').click();
+  await expect(page.getByTestId('tme-layer-manager')).toBeVisible();
+  await page
+    .locator('.tme-layer-row')
+    .filter({ has: page.locator('[data-testid="tme-layer-name"]', { hasText: layerName }) })
+    .getByTestId('tme-layer-name')
+    .click();
+  await page.getByTestId('tme-layer-manager-close').click();
+  await expect(page.getByTestId('tme-layer-manager')).toBeHidden();
+};
+
 /** Screen-px point of a node's rendered center (seam read + canvas box). */
 const nodeScreenPoint = async (page: Page, id: string): Promise<Point> => {
   await settle(page);
@@ -554,10 +579,12 @@ test.describe('editor mode: place, move, and the F45 save bar (PKG B-116)', () =
 
       // R4 persistence proof: a layer switch re-derives the projection from
       // the AUTHORED map — had the drag not persisted, the node would snap
-      // back to its pre-drag position here.
-      await activate(p.getByTestId('tme-layer-layer-misaki'));
+      // back to its pre-drag position here. B-D1 (PROPOSAL-D §2.1 + B-D1):
+      // the regime-aware switch (rail button below 1024, manager row-name in
+      // the shell).
+      await switchToLayer(p, 'tme-layer-layer-misaki', 'Misaki Town');
       await expect.poll(() => readLabels(p)).toEqual(['Misaki Town']);
-      await activate(p.getByTestId('tme-layer-layer-fuyuki'));
+      await switchToLayer(p, 'tme-layer-layer-fuyuki', 'Fuyuki City');
       await expect.poll(() => readLabels(p)).toContain(NEW_PLACE);
       const modelAfterRebuild = expectModelPosition(await readModelPosition(p, placedId));
       expect(modelAfterRebuild).toEqual(dragged);

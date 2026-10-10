@@ -546,3 +546,115 @@ span.tme-crumb-active {
     color: var(--tme-text);
   }
 }
+
+// ---------------------------------------------------------------------------
+// B-D1 (R29, PROPOSAL-D §2.1) — the >=1024 SHELL: the rail region becomes
+// the 56px toolbelt column and the DUAL-HOME chrome (mode toggle, dim)
+// renders its header homes (template-gated by shellWide; their rail copies
+// are gated off — one instance per testid per rendered tree, R29 ruling 2).
+// The D81 700px breakpoint stays the layout authority: this query is
+// chrome-only and never feeds resize classification (SHELL_WIDE_QUERY).
+// NOTHING else changes at >=1024 in this packet (the context dock is D-2).
+
+// The header MODE pill — the save-dock idiom (B-116): a transient band pill
+// inside the pointer-events:none header, pointer-events:auto making it a
+// real control. The markup contract is the rail toggle's verbatim; the
+// active state keeps the gold accent (R3 signal-bound).
+.tme-header-mode {
+  pointer-events: auto; // the header is pointer-events:none; the pill is a real control
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px; // F52: >= 44px tap target
+  padding: 0 0.875rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.9);
+  color: var(--tme-text-secondary);
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+.tme-header-mode.tme-active {
+  border-color: var(--tme-accent-gold);
+  color: var(--tme-accent-gold);
+}
+
+.tme-header-mode:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+// The header DIM pill — the rail dim row's contract as a compact band pill
+// (the save-dock idiom). The slider keeps the native control discipline
+// (B-146: color-scheme + accent-color only, no appearance overrides — the
+// value<->position mapping stays browser-intrinsic) and the F52 floor
+// (>= 44x44, swept by the tap-targets enumeration like every input).
+.tme-header-dim {
+  pointer-events: auto; // the header is pointer-events:none; the pill is a real control
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  max-width: 100%;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.9);
+  color: var(--tme-text-secondary);
+  touch-action: manipulation; // §6.2
+}
+
+.tme-header-dim .tme-dim-label {
+  display: inline-flex;
+  align-items: center;
+  color: var(--tme-text-secondary);
+}
+
+.tme-header-dim .tme-dim-slider {
+  width: 96px; // compact pill form; >= the 44px floor both dims
+  min-width: 44px; // F52: the sweep asserts it
+  min-height: 44px;
+  margin: 0;
+  color-scheme: dark; // B-146: the UA's dark form-control palette
+  accent-color: var(--tme-accent-gold); // the thumb/track re-homed to the gold token
+  touch-action: none; // a thumb drag must never pan anything (the rail slider's value)
+}
+
+.tme-header-dim .tme-dim-value {
+  display: inline-flex;
+  align-items: center;
+  min-width: 2.5em; // the readout never re-wraps as its digits change
+  color: var(--tme-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 1024px) {
+  // The belt column: 56px, collapsed form included (a sub-1024 collapse
+  // must not persist into the shell — the belt SCSS re-shows its body).
+  .tme-rail {
+    flex-basis: 56px;
+  }
+
+  .tme-rail.tme-collapsed {
+    flex-basis: 56px;
+  }
+
+  // The floaters' left anchor follows the belt (the D91 custom-property
+  // seam — a fixed-position element cannot read a sibling's box).
+  .tme-viewer {
+    --tme-rail-w: 56px;
+  }
+
+  .tme-viewer:has(> .tme-rail.tme-collapsed) {
+    --tme-rail-w: 56px;
+  }
+}
+
+// B-148 pattern (B-D1): the header homes brighten on pointer-fine hover —
+// border/text tokens only, no layout shift, nothing on touch.
+@media (hover: hover) and (pointer: fine) {
+  .tme-header-mode:hover:not(.tme-active):not(:disabled) {
+    border-color: var(--tme-hairline);
+    color: var(--tme-text);
+  }
+}

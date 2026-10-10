@@ -27,7 +27,7 @@ Both failures share a root: the UI treats every edit as a *form submission*. Map
 
 ## 2. Rework 1 — the desktop shell (wide regime only)
 
-**Trigger:** `@media (min-width: 1024px)` — the wide media query that today merely reorders the rail (verified: the rail's wide query moves it first, the left column). Phone/medium keeps today's chrome byte-for-byte.
+**Trigger:** `@media (min-width: 1024px)` — a NEW third breakpoint (correction at execution, D-1 2026-10-10: today's rail-reordering query is the 700px `WIDE_LAYOUT_QUERY`; 1024px did not exist in the tree). After D-1: <700px the phone chrome · 700–1023px today's wide chrome (the rail reorder) byte-for-byte · ≥1024 the D shell. The D81 700px discriminator stays the viewport-behavior authority — the shell query is chrome-only. Phone/medium keeps today's chrome byte-for-byte.
 
 ### 2.1 The shell
 

@@ -166,6 +166,44 @@ const settle = (page: Page): Promise<void> =>
       }),
   );
 
+// B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1): at >=1024 the rail's per-layer
+// nav, its Manage entry and the collapse toggle are shell-gated OFF — the
+// layer switch rides the LAYER MANAGER's row-name button (the switch
+// surface) through the belt's Layers tool, and the rail collapse/expand
+// cycle lives in the 700–1023 medium band (the wide column's home regime,
+// byte-for-byte per R29 ruling 1). Presence-probed against the live DOM,
+// never a mirrored breakpoint; the manager closes after a shell-path switch
+// (the pre-shell chrome state; selectLayer's explicit fit runs on the row
+// click, D85/D81 — exactly the fit-site inventory this spec pins).
+
+/** Narrow a >=1024 desktop page into the medium band (the collapse cycle's
+ *  home regime); a no-op below 1024 (the phone arm never hits it). */
+const stageAtWideChromeViewport = async (page: Page): Promise<void> => {
+  const width = page.viewportSize()?.width ?? 0;
+  if (width < 1024) return;
+  await page.setViewportSize({ width: 900, height: 720 }); // the medium band
+  await settle(page); // the shell flip re-render lands before the next paint
+};
+
+/** Switch layers in the live regime (B-D1): the rail's per-layer button
+ *  below 1024, the manager's row-name button at >=1024. */
+const switchLayer = async (page: Page, railTestId: string, layerName: string): Promise<void> => {
+  const railButton = page.getByTestId(railTestId);
+  if (await railButton.count()) {
+    await railButton.click();
+    return;
+  }
+  await page.getByTestId('tme-layers-tool').click();
+  await expect(page.getByTestId('tme-layer-manager')).toBeVisible();
+  await page
+    .locator('.tme-layer-row')
+    .filter({ has: page.locator('[data-testid="tme-layer-name"]', { hasText: layerName }) })
+    .getByTestId('tme-layer-name')
+    .click();
+  await page.getByTestId('tme-layer-manager-close').click();
+  await expect(page.getByTestId('tme-layer-manager')).toBeHidden();
+};
+
 const tapNode = async (page: Page, id: string): Promise<void> => {
   await settle(page);
   const pos = expectPositioned(await readPosition(page, id), id);
@@ -345,6 +383,7 @@ test.describe('D91 verifier cells (PKG B-133; the D81 close re-derived)', () => 
   }) => {
     test.skip(isPhone(), 'the wide-layout clamp rule is the desktop project');
     const bad = collectConsole(page);
+    await stageAtWideChromeViewport(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the collapse cycle lives below 1024
     await settle(page);
     await expectHeaders(page);
     const zoomBefore = await readZoom(page);
@@ -491,7 +530,7 @@ test.describe('D91 verifier cells (PKG B-133; the D81 close re-derived)', () => 
     // viewer-internal (no facade write), so the core snapshot header stays
     // 'Fuyuki City' (asserted verbatim at the end: view-layer switches do
     // not rewrite core strings, R1).
-    await page.getByTestId(MISAKI_LAYER_BUTTON).click();
+    await switchLayer(page, MISAKI_LAYER_BUTTON, 'Misaki Town'); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await settle(page);
     const misakiZoom = await readZoom(page);
     expect(misakiZoom, 'selectLayer re-fit ran (zoom re-based on the new layer)').not.toBe(fitZoom);
@@ -505,7 +544,7 @@ test.describe('D91 verifier cells (PKG B-133; the D81 close re-derived)', () => 
 
     // Switching back re-fits the SAME content at the SAME canvas size — the
     // fit is deterministic ⇒ the pristine fuyuki viewport returns byte-equal.
-    await page.getByTestId(FUYUKI_LAYER_BUTTON).click();
+    await switchLayer(page, FUYUKI_LAYER_BUTTON, 'Fuyuki City'); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await settle(page);
     expect(await readZoom(page), 'the return fit restores the pristine zoom byte-equal').toBe(fitZoom);
     const panBack = await readPan(page);

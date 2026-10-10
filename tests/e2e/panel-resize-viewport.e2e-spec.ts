@@ -174,6 +174,23 @@ const settle = (page: Page): Promise<void> =>
       }),
   );
 
+/**
+ * B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1): the wide-clamp cells below pair
+ * panel floats with the rail COLLAPSE/EXPAND cycle — at >=1024 the collapse
+ * toggle is display:none (a 56px belt has nothing to collapse), so the
+ * cycle's home regime is the 700–1023 medium band, where the wide column
+ * and its toggle stand byte-for-byte (R29 ruling 1). The desktop cells stage
+ * there first; every assertion runs unchanged against the same chrome the
+ * pre-shell desktop run saw. Self-gates on the live viewport width (the
+ * phone arm never hits it).
+ */
+const stageAtWideChromeViewport = async (page: Page): Promise<void> => {
+  const width = page.viewportSize()?.width ?? 0;
+  if (width < 1024) return;
+  await page.setViewportSize({ width: 900, height: 720 }); // the medium band
+  await settle(page); // the shell flip re-render lands before the next paint
+};
+
 /** Tap a canvas node through its rendered position (seam + canvas box). */
 const tapNode = async (page: Page, id: string): Promise<void> => {
   await settle(page);
@@ -365,6 +382,7 @@ test.describe('panel transitions and rail resizes (PKG B-133, D91)', () => {
   }) => {
     test.skip(isPhone(), 'the wide-layout clamp rule is the desktop project');
     const bad = collectConsole(page);
+    await stageAtWideChromeViewport(page); // B-D1: the collapse cycle lives below 1024
     await settle(page);
     await expectHeaders(page);
     const zoomBefore = await readZoom(page);
@@ -473,6 +491,7 @@ test.describe('panel transitions and rail resizes (PKG B-133, D91)', () => {
   }) => {
     test.skip(isPhone(), 'the wide-layout clamp rule is the desktop project');
     const bad = collectConsole(page);
+    await stageAtWideChromeViewport(page); // B-D1: the collapse cycle lives below 1024
     await settle(page);
     await expectHeaders(page);
     const zoomBefore = await readZoom(page);

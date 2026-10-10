@@ -120,6 +120,30 @@ const activate = async (page: Page, testId: string): Promise<void> => {
   else await locator.click();
 };
 
+// B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1): at >=1024 the rail's per-layer
+// nav is shell-gated OFF — the layer switch rides the LAYER MANAGER's
+// row-name button (the switch surface, layer-manager.component) through
+// the belt's Layers tool entry; below 1024 the rail button stands
+// byte-identical (R29 ruling 1). Presence-probed against the live DOM,
+// never a mirrored breakpoint. The manager closes after the shell-path
+// switch so the route target's tap runs on a clear stage.
+const switchToMisaki = async (page: Page): Promise<void> => {
+  const railButton = page.getByTestId('tme-layer-layer-misaki');
+  if (await railButton.count()) {
+    await activate(page, 'tme-layer-layer-misaki');
+    return;
+  }
+  await page.getByTestId('tme-layers-tool').click();
+  await expect(page.getByTestId('tme-layer-manager')).toBeVisible();
+  await page
+    .locator('.tme-layer-row')
+    .filter({ has: page.locator('[data-testid="tme-layer-name"]', { hasText: 'Misaki Town' }) })
+    .getByTestId('tme-layer-name')
+    .click();
+  await page.getByTestId('tme-layer-manager-close').click();
+  await expect(page.getByTestId('tme-layer-manager')).toBeHidden();
+};
+
 const legRow = (page: Page, index: number): Locator => page.getByTestId('tme-leg').nth(index);
 
 test.describe('route sidebar (PKG B-105)', () => {
@@ -165,7 +189,8 @@ test.describe('route sidebar (PKG B-105)', () => {
   }) => {
     // Switch the viewer to the target's layer first — the route must survive
     // the target living on the other plane (routing is layer-agnostic, C3).
-    await activate(page, 'tme-layer-layer-misaki');
+    // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch.
+    await switchToMisaki(page);
     await expect.poll(() => readPosition(page, MISAKI_ID)).not.toBeNull();
 
     await tapNode(page, MISAKI_ID);

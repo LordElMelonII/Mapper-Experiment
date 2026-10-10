@@ -66,7 +66,14 @@ const readHeaderText = (page: Page): Promise<string> =>
     const header = document.querySelector('[data-testid="tme-header"]');
     if (header === null) throw new Error('tme-header missing');
     const clone = header.cloneNode(true) as HTMLElement;
-    for (const pill of clone.querySelectorAll('.tme-hint, .tme-save-dock')) {
+    // B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1): the >=1024 shell homes the
+    // mode-toggle pill (.tme-header-mode) and the per-layer dim pill
+    // (.tme-header-dim) INSIDE the header band — CONTROL chrome a user reads
+    // as knobs, never as the snapshot row; stripped with the same
+    // clone-and-exclude law (assertion calls byte-identical, the R23 law).
+    for (const pill of clone.querySelectorAll(
+      '.tme-hint, .tme-save-dock, .tme-header-mode, .tme-header-dim',
+    )) {
       pill.remove();
     }
     return (clone.textContent ?? '').replace(/\s+/g, ' ').trim();

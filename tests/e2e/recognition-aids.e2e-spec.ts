@@ -76,6 +76,21 @@ const settle = (page: Page): Promise<void> =>
       }),
   );
 
+/**
+ * B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1): the collapsed-rail cell below
+ * drives the rail COLLAPSE cycle — at >=1024 the collapse toggle is
+ * display:none (a 56px belt has nothing to collapse), so the cycle's home
+ * regime is the 700–1023 medium band, where the wide column and its toggle
+ * stand byte-for-byte (R29 ruling 1). The desktop arm stages there first.
+ * Self-gates on the live viewport width (the phone arm never hits it).
+ */
+const stageAtWideChromeViewport = async (page: Page): Promise<void> => {
+  const width = page.viewportSize()?.width ?? 0;
+  if (width < 1024) return;
+  await page.setViewportSize({ width: 900, height: 720 }); // the medium band
+  await settle(page); // the shell flip re-render lands before the next paint
+};
+
 const canvasBox = async (page: Page) => {
   const box = await page.getByTestId('tme-canvas').boundingBox();
   if (box === null) throw new Error('canvas host not visible');
@@ -183,7 +198,10 @@ test.describe('node-kind legend (PKG B-147, R-7 item 1)', () => {
   test('the collapsed rail hides the legend (it lives in the body flow, not a standing band)', async ({ page }) => {
     // R-5 precedent: count-based collapse asserts are false on desktop (the
     // panel template keeps rendering off-screen slices) — assert GEOMETRY:
-    // collapsed, the legend must not overlap the canvas.
+    // collapsed, the legend must not overlap the canvas. B-D1 (PROPOSAL-D
+    // §2.1 + B-D1): the collapse cycle lives below 1024 — stage the desktop
+    // arm at the medium band first.
+    await stageAtWideChromeViewport(page);
     await activate(page, 'tme-rail-toggle');
     await expect(page.getByTestId('tme-rail-toggle')).toHaveText('Show');
     await settle(page);

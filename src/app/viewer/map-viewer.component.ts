@@ -163,6 +163,10 @@ export class MapViewerComponent implements AfterViewInit, OnDestroy {
    * service viewport commands (zoomIn/zoomOut/fitToView — never a second
    * viewport arithmetic, R1/D81; the trio reads mounted and degrades
    * silently headless, C32).
+   * B-D1 (R29, PROPOSAL-D §2.1 keyboard package; R-8 rehoused): 1/2/3 pick
+   * the editor tools (node/waypoint/arc) through the segmented control's
+   * ONE write path setEditorTool — EDITOR-MODE-GATED: in view mode the keys
+   * are ignored like arrows (the tool control never renders there, D76).
    * The guards: (a) a form field holding focus eats its own keys — the
    * handler no-ops whenever an input/textarea/select is the focused element
    * (belt: such a keydown does not bubble through this div anyway — the host
@@ -196,6 +200,12 @@ export class MapViewerComponent implements AfterViewInit, OnDestroy {
       case '0':
         this.graph.fitToView();
         break;
+      case '1':
+      case '2':
+      case '3':
+        if (!this.graph.editorMode()) return; // view mode: ignored, like arrows (B-D1)
+        this.graph.setEditorTool(event.key === '1' ? 'node' : event.key === '2' ? 'waypoint' : 'arc');
+        break;
       default:
         return; // arrows and the rest: nothing on the canvas moves (F46)
     }
@@ -210,6 +220,16 @@ export class MapViewerComponent implements AfterViewInit, OnDestroy {
    */
   protected selectLayer(layerId: string): void {
     this.graph.selectLayer(layerId);
+  }
+
+  /**
+   * B-D1 (R29, PROPOSAL-D §2.1): the header dim pill's input path — the
+   * rail dim row's exact seam (the editor-rail twin): the service's single
+   * write path setActiveLayerDim per committed input tick (R2/R3); the
+   * template re-binds from the re-read, never a local echo (D2).
+   */
+  protected setDim(event: Event): void {
+    this.graph.setActiveLayerDim((event.target as HTMLInputElement).valueAsNumber);
   }
 
   /**

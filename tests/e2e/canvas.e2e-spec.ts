@@ -54,6 +54,46 @@ const activate = async (locator: Locator): Promise<void> => {
   else await locator.click();
 };
 
+// B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1): at >=1024 the rail's per-layer
+// nav and its Manage entry are shell-gated OFF — the layer list/switch rides
+// the LAYER MANAGER's row-name buttons (the switch surface,
+// layer-manager.component) and the manager opens through the belt's Layers
+// tool (tme-layers-tool); below 1024 the rail's per-layer buttons stand
+// byte-identical (R29 ruling 1). Presence-probed against the live DOM — the
+// regime truth, never a mirrored breakpoint.
+
+/** A manager row by its NAME button's text (the portals rowByName idiom —
+ *  the row can quote other layers in its portal line, the name never does). */
+const rowByName = (page: Page, name: string): Locator =>
+  page
+    .locator('.tme-layer-row')
+    .filter({ has: page.locator('[data-testid="tme-layer-name"]', { hasText: name }) });
+
+/** Open the layer manager through the live regime's entry (B-D1). */
+const openLayerManager = async (page: Page): Promise<void> => {
+  const beltTool = page.getByTestId('tme-layers-tool');
+  if (await beltTool.count()) await beltTool.click();
+  else await page.getByTestId('tme-layer-manage').click();
+  await expect(page.getByTestId('tme-layer-manager')).toBeVisible();
+};
+
+/** Switch layers in the live regime (B-D1): the rail's per-layer button below
+ *  1024, the manager's row-name button at >=1024 — closed after the shell
+ *  switch so the chrome state matches the pre-shell flow (no sheet left open;
+ *  selectLayer's explicit fit runs on the row click, D85/D81). */
+const switchLayer = async (page: Page, layerId: string, layerName: string): Promise<void> => {
+  const railButton = page.getByTestId(`tme-layer-${layerId}`);
+  if (await railButton.count()) {
+    await activate(railButton);
+    return;
+  }
+  await openLayerManager(page);
+  await rowByName(page, layerName).getByTestId('tme-layer-name').click();
+  await expect(page.getByTestId('tme-layer-manager')).toBeVisible();
+  await page.getByTestId('tme-layer-manager-close').click();
+  await expect(page.getByTestId('tme-layer-manager')).toBeHidden();
+};
+
 test.describe('map canvas harness (PKG B-102)', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
@@ -68,8 +108,17 @@ test.describe('map canvas harness (PKG B-102)', () => {
   });
 
   test('layer switcher lists both FX1 layers (F01/FX1)', async ({ page }) => {
-    await expect(page.getByTestId('tme-layer-layer-fuyuki')).toHaveText('Fuyuki City');
-    await expect(page.getByTestId('tme-layer-layer-misaki')).toHaveText('Misaki Town');
+    // B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1): the switcher's surface at
+    // >=1024 is the manager's row-name buttons (the belt has no per-layer
+    // nav); below 1024 the rail buttons stand (R29 ruling 1).
+    if (await page.getByTestId('tme-layer-layer-fuyuki').count()) {
+      await expect(page.getByTestId('tme-layer-layer-fuyuki')).toHaveText('Fuyuki City');
+      await expect(page.getByTestId('tme-layer-layer-misaki')).toHaveText('Misaki Town');
+    } else {
+      await openLayerManager(page);
+      await expect(rowByName(page, 'Fuyuki City').getByTestId('tme-layer-name')).toHaveText('Fuyuki City');
+      await expect(rowByName(page, 'Misaki Town').getByTestId('tme-layer-name')).toHaveText('Misaki Town');
+    }
   });
 
   test('header shows pin location and pin layer name verbatim (R1, FX1)', async ({ page }) => {
@@ -84,7 +133,9 @@ test.describe('map canvas harness (PKG B-102)', () => {
   test('tapping the Misaki switcher swaps the rendered node set (F01/D16, F52/D53)', async ({ page }) => {
     // Fuyuki first: the pin's layer, with its 13 leaves + 2 district boxes.
     await expect.poll(readLabels.bind(null, page)).toContain('Emiya Residence');
-    await activate(page.getByTestId('tme-layer-layer-misaki'));
+    // B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1): the regime-aware switch (the
+    // rail button below 1024, the manager's row-name button in the shell).
+    await switchLayer(page, 'layer-misaki', 'Misaki Town');
     // Misaki Town is the misaki layer's single node — and the Fuyuki set is
     // GONE, proving one plane at a time (F01/D16, no layer blending).
     await expect.poll(readLabels.bind(null, page)).toContain('Misaki Town');
@@ -132,9 +183,17 @@ test.describe('map canvas harness (PKG B-102)', () => {
     await expect(page.getByTestId('tme-snapshot-layer')).toHaveText('Fuyuki City');
     await expect(page.getByTestId('tme-unit')).toHaveText('min');
 
-    // F01/FX1: both layer switcher buttons present with exact names.
-    await expect(page.getByTestId('tme-layer-layer-fuyuki')).toHaveText('Fuyuki City');
-    await expect(page.getByTestId('tme-layer-layer-misaki')).toHaveText('Misaki Town');
+    // F01/FX1: both layers are switchable from first paint — the rail's
+    // per-layer buttons below 1024 (R29 ruling 1), the manager's row-name
+    // buttons in the >=1024 shell (B-D1 re-baseline, PROPOSAL-D §2.1 + B-D1).
+    if (await page.getByTestId('tme-layer-layer-fuyuki').count()) {
+      await expect(page.getByTestId('tme-layer-layer-fuyuki')).toHaveText('Fuyuki City');
+      await expect(page.getByTestId('tme-layer-layer-misaki')).toHaveText('Misaki Town');
+    } else {
+      await openLayerManager(page);
+      await expect(rowByName(page, 'Fuyuki City').getByTestId('tme-layer-name')).toHaveText('Fuyuki City');
+      await expect(rowByName(page, 'Misaki Town').getByTestId('tme-layer-name')).toHaveText('Misaki Town');
+    }
 
     // C2: the blocked bridge is dashed from the very first paint.
     await expect.poll(readLineStyle.bind(null, page, 'arc-emiya-residence-fuyuki-bridge')).toBe('dashed');

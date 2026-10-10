@@ -3,16 +3,26 @@
      (swatch + kind word). Static taxonomy — the rows never change with
      state; the collapse is component-local view chrome (B-114). The
      section is INSIDE the rail body's flow (the host places it), so the
-     collapsed rail hides it with everything else. -->
+     collapsed rail hides it with everything else.
+     B-D1 (R29, PROPOSAL-D §2.1): at ≥1024 the toggle is ONE BELT ICON
+     (glyph + shell-gated aria-label/title/data-tip — the word never
+     renders as visible text in the belt) and the expanded rows render as
+     an absolutely-positioned PLATE to the RIGHT of the belt (SCSS):
+     reference material floats over the canvas, the belt keeps its 56px.
+     Below 1024 the flow form is byte-identical (the shell-gated
+     attributes render null). -->
 <section class="tme-legend" data-testid="tme-legend" aria-label="Node kind legend">
   <button
     type="button"
     class="tme-legend-toggle"
     data-testid="tme-legend-toggle"
     [attr.aria-expanded]="expanded() ? 'true' : 'false'"
+    [attr.aria-label]="beltWord('Legend')"
+    [attr.title]="beltWord('Legend')"
+    [attr.data-tip]="beltWord('Legend')"
     (click)="toggle()"
   >
-    {{ expanded() ? 'Hide legend' : 'Legend' }}
+    {{ shellWide() ? '▤' : expanded() ? 'Hide legend' : 'Legend' }}
   </button>
   @if (expanded()) {
     <ul class="tme-legend-rows">

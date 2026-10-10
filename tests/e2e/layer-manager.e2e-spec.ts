@@ -226,6 +226,59 @@ const activate = async (page: Page, testId: string): Promise<void> => {
   else await locator.click();
 };
 
+// B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1): at >=1024 the rail's per-layer
+// nav and its Manage entry are shell-gated OFF — the layer list/switch rides
+// THIS SHEET's row-name buttons (the row NAME is the switch surface,
+// layer-manager.component) and the manager opens through the belt's Layers
+// tool (tme-layers-tool); below 1024 the rail surfaces stand byte-identical
+// (R29 ruling 1). Presence-probed against the live DOM, never a mirrored
+// breakpoint. The one phone-arm Manage site (the bottom-sheet cell) keeps
+// its rail literal — sub-1024 keeps the rail.
+
+/** The manager's open-state probe. */
+const managerOpen = async (page: Page): Promise<boolean> => {
+  const body = page.getByTestId('tme-layer-manager-body');
+  return (await body.count()) > 0 && (await body.isVisible());
+};
+
+/** Open the layer manager through the live regime's entry (B-D1). */
+const openManager = async (page: Page): Promise<void> => {
+  if (await managerOpen(page)) return;
+  const beltTool = page.getByTestId('tme-layers-tool');
+  if (await beltTool.count()) await activate(page, 'tme-layers-tool');
+  else await activate(page, 'tme-layer-manage');
+  await expect(page.getByTestId('tme-layer-manager-body')).toBeVisible();
+};
+
+/** Switch layers in the live regime (B-D1): the rail's per-layer button
+ *  below 1024, the manager's row-name button at >=1024 (an already-open
+ *  manager stays open; one opened for the switch closes after it — the
+ *  pre-shell chrome state; selectLayer's explicit fit runs either way,
+ *  D85/D81). */
+const switchLayer = async (page: Page, layerId: string, layerName: string): Promise<void> => {
+  const railButton = page.getByTestId(`tme-layer-${layerId}`);
+  if (await railButton.count()) {
+    await railButton.click();
+    return;
+  }
+  const wasOpen = await managerOpen(page);
+  if (!wasOpen) await openManager(page);
+  await layerRow(page, layerName).getByTestId('tme-layer-name').click();
+  if (!wasOpen) await activate(page, 'tme-layer-manager-close');
+};
+
+/**
+ * The layer-list surface's names in array order (B-D1): the rail's per-layer
+ * buttons below 1024, the manager's row-name buttons at >=1024 — both render
+ * layerNames() in DOM order (D82's one truth), so the reorder assertions
+ * read the same list through whichever surface the regime renders.
+ */
+const surfaceLayerNames = async (page: Page): Promise<string[]> => {
+  const navButtons = page.locator('nav.tme-layers .tme-layer-button:not(.tme-manage):not(.tme-maps-nav)');
+  if ((await navButtons.count()) > 0) return navButtons.allInnerTexts();
+  return page.locator('.tme-layer-row [data-testid="tme-layer-name"]').allInnerTexts();
+};
+
 /**
  * PKG B-145 (R-5) re-baseline helper: the advanced property-panel fields
  * (Parent/Layer/Opens layer/Aliases/Block access) render behind
@@ -236,8 +289,22 @@ const activate = async (page: Page, testId: string): Promise<void> => {
  */
 const expandSection = async (page: Page, section: string): Promise<void> => {
   const toggle = page.getByTestId(`tme-node-section-${section}`);
-  if ((await toggle.getAttribute('aria-expanded')) !== 'true') {
-    await activate(page, `tme-node-section-${section}`);
+  // B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1): in the shell the layer
+  // switches ride the manager cycle (belt tool → row-name → close), and the
+  // fresh-node panel open that follows can land its per-node section
+  // RE-SEED a CD tick AFTER the selection — a conditional tap inside that
+  // window races the re-seed (probe-proven live: the toggle's flip applied
+  // ~200 ms after the click, and the re-seed can overwrite it entirely).
+  // The R-9r fold-race precedent: settle the re-render first, verify after
+  // each tap, and allow ONE bounded re-tap — idempotent when already
+  // expanded, never a blind loop.
+  await settle(page);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if ((await toggle.getAttribute('aria-expanded')) !== 'true') {
+      await activate(page, `tme-node-section-${section}`);
+      await settle(page);
+    }
+    if ((await toggle.getAttribute('aria-expanded')) === 'true') break;
   }
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
 };
@@ -481,14 +548,6 @@ const collectConsole = (page: Page): string[] => {
 /** One sheet row, addressed by its authored layer NAME (C23 — never an id). */
 const layerRow = (page: Page, name: string) => page.locator('.tme-layer-row', { hasText: name });
 
-/** The nav's LAYER-button labels in DOM order (array order — the one truth).
- *  B-137: the nav also carries the Maps affordance (the Manage twin) — excluded
- *  like Manage: this helper reads the map's layer buttons only. */
-const navLayerNames = (page: Page): Promise<string[]> =>
-  page
-    .locator('nav.tme-layers .tme-layer-button:not(.tme-manage):not(.tme-maps-nav)')
-    .allInnerTexts();
-
 test.describe('the layer-manager sheet, the Layer dropdown and Detach (PKG B-126, D82/D83/F54)', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
@@ -513,7 +572,9 @@ test.describe('the layer-manager sheet, the Layer dropdown and Detach (PKG B-126
     const panBefore = await readPan(page);
 
     // Manage opens the sheet — a region column on wide (rail hidden, body shown).
-    await activate(page, 'tme-layer-manage');
+    // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware entry (the belt's
+    // Layers tool at >=1024, the rail's Manage below).
+    await openManager(page);
     await expect(page.getByTestId('tme-layer-manager')).toBeVisible();
     await expect(page.getByTestId('tme-layer-manager-body')).toBeVisible();
     await expect(page.getByTestId('tme-layer-rail')).toBeHidden(); // wide neutralizes the rail (B-114)
@@ -535,7 +596,7 @@ test.describe('the layer-manager sheet, the Layer dropdown and Detach (PKG B-126
     await expectHeaders(page);
 
     // Escape closes too (one discrete keydown; a no-op when closed).
-    await activate(page, 'tme-layer-manage');
+    await openManager(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware entry
     await expect(page.getByTestId('tme-layer-manager')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('tme-layer-manager')).toBeHidden();
@@ -614,7 +675,7 @@ test.describe('the layer-manager sheet, the Layer dropdown and Detach (PKG B-126
     page,
   }) => {
     const bad = collectConsole(page);
-    await activate(page, 'tme-layer-manage');
+    await openManager(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware entry
     await expect(page.getByTestId('tme-layer-manager-body')).toBeVisible();
 
     const fuyuki = layerRow(page, 'Fuyuki City');
@@ -682,7 +743,7 @@ test.describe('the layer-manager sheet, the Layer dropdown and Detach (PKG B-126
     page,
   }) => {
     const bad = collectConsole(page);
-    await activate(page, 'tme-layer-manage');
+    await openManager(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware entry
     await expect(page.getByTestId('tme-layer-manager-body')).toBeVisible();
 
     // CREATE: a name + Add — the row appears, the nav button appears, the
@@ -690,7 +751,14 @@ test.describe('the layer-manager sheet, the Layer dropdown and Detach (PKG B-126
     await page.getByTestId('tme-layer-create-input').fill(CREATED_LAYER_NAME);
     await activate(page, 'tme-layer-create');
     await expect(layerRow(page, CREATED_LAYER_NAME)).toBeVisible();
-    await expect(page.locator('nav.tme-layers', { hasText: CREATED_LAYER_NAME })).toBeVisible();
+    // B-D1 (PROPOSAL-D §2.1 + B-D1): the list surface is regime-bound — the
+    // rail's nav below 1024, the manager's row-name buttons at >=1024 (both
+    // render the same array, D82's one truth).
+    if (await page.getByTestId('tme-layer-' + FUYUKI_LAYER_ID).count()) {
+      await expect(page.locator('nav.tme-layers', { hasText: CREATED_LAYER_NAME })).toBeVisible();
+    } else {
+      await expect(layerRow(page, CREATED_LAYER_NAME).getByTestId('tme-layer-name')).toBeVisible();
+    }
     await expect(page.getByTestId('tme-layer-create-input')).toHaveValue('');
 
     // RENAME: Edit toggles the row into its input; Save renames row AND nav.
@@ -699,18 +767,22 @@ test.describe('the layer-manager sheet, the Layer dropdown and Detach (PKG B-126
     await activate(page, 'tme-layer-rename-save');
     await expect(layerRow(page, RENAMED_LAYER_NAME)).toBeVisible();
     await expect(layerRow(page, CREATED_LAYER_NAME)).toHaveCount(0);
-    await expect(
-      page.locator('nav.tme-layers button', { hasText: RENAMED_LAYER_NAME }),
-    ).toBeVisible();
+    if (await page.getByTestId('tme-layer-' + FUYUKI_LAYER_ID).count()) {
+      await expect(
+        page.locator('nav.tme-layers button', { hasText: RENAMED_LAYER_NAME }),
+      ).toBeVisible();
+    } else {
+      await expect(layerRow(page, RENAMED_LAYER_NAME).getByTestId('tme-layer-name')).toBeVisible();
+    }
 
     // REORDER: the last row's Up commits — the nav order swaps WITH the rows
     // (array order is the one truth). Boundary facts: first Up / last Down disabled.
     await expect
-      .poll(async () => navLayerNames(page), { timeout: 5_000 })
+      .poll(async () => surfaceLayerNames(page), { timeout: 5_000 })
       .toEqual(['Fuyuki City', 'Misaki Town', RENAMED_LAYER_NAME]);
     await layerRow(page, RENAMED_LAYER_NAME).getByTestId('tme-layer-up').click();
     await expect
-      .poll(async () => navLayerNames(page), { timeout: 5_000 })
+      .poll(async () => surfaceLayerNames(page), { timeout: 5_000 })
       .toEqual(['Fuyuki City', RENAMED_LAYER_NAME, 'Misaki Town']);
     await expect(layerRow(page, 'Fuyuki City').getByTestId('tme-layer-up')).toBeDisabled();
     await expect(layerRow(page, 'Misaki Town').getByTestId('tme-layer-down')).toBeDisabled();
@@ -729,7 +801,7 @@ test.describe('the layer-manager sheet, the Layer dropdown and Detach (PKG B-126
     test.skip(isPhone(), 'the informed-cascade cell is the desktop project (the packet cell list)');
     const bad = collectConsole(page);
     await expectHeaders(page);
-    await activate(page, 'tme-layer-manage');
+    await openManager(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware entry
     const impactBefore = await readImpact(page, MISAKI_LAYER_ID);
     expect(impactBefore, 'engineering: the engine answers for layer-misaki').not.toBeNull();
 
@@ -780,17 +852,30 @@ test.describe('the layer-manager sheet, the Layer dropdown and Detach (PKG B-126
     await expectHeaders(page);
 
     // Make Misaki Town the ACTIVE layer (the nav stays the switcher), then
-    // delete it from the sheet — it IS the active layer.
-    await activate(page, 'tme-layer-' + MISAKI_LAYER_ID);
-    await expect(page.getByTestId('tme-layer-' + MISAKI_LAYER_ID)).toHaveClass(/tme-active/);
-    await activate(page, 'tme-layer-manage');
+    // delete it from the sheet — it IS the active layer. B-D1 (PROPOSAL-D
+    // §2.1 + B-D1): the regime-aware switch (the manager's row-name button
+    // at >=1024 — a switch-made manager CLOSES behind it, so the sheet opens
+    // first here); the ACTIVE proof reads the live regime's surface — the
+    // rail button's tme-active class below 1024, the row's Active marker in
+    // the shell (both mirror the same signal, R3).
+    await switchLayer(page, MISAKI_LAYER_ID, 'Misaki Town');
+    await openManager(page); // B-D1: the regime-aware entry (idempotent)
+    if (await page.getByTestId('tme-layer-' + MISAKI_LAYER_ID).count()) {
+      await expect(page.getByTestId('tme-layer-' + MISAKI_LAYER_ID)).toHaveClass(/tme-active/);
+    } else {
+      await expect(layerRow(page, 'Misaki Town').getByTestId('tme-layer-active-marker')).toBeVisible();
+    }
     await layerRow(page, 'Misaki Town').getByTestId('tme-layer-delete').click();
     await activate(page, 'tme-layer-delete-confirm');
     await expect(layerRow(page, 'Misaki Town')).toHaveCount(0);
 
     // D69: the active layer reset to the survivors' FIRST layer — the nav
     // highlight moved AND the canvas shows it (the fuyuki projection).
-    await expect(page.getByTestId('tme-layer-' + FUYUKI_LAYER_ID)).toHaveClass(/tme-active/);
+    if (await page.getByTestId('tme-layer-' + FUYUKI_LAYER_ID).count()) {
+      await expect(page.getByTestId('tme-layer-' + FUYUKI_LAYER_ID)).toHaveClass(/tme-active/);
+    } else {
+      await expect(layerRow(page, 'Fuyuki City').getByTestId('tme-layer-active-marker')).toBeVisible();
+    }
     await expect
       .poll(async () => readLabels(page), { timeout: 5_000 })
       .toContain('Emiya Residence');
@@ -840,12 +925,13 @@ test.describe('the layer-manager sheet, the Layer dropdown and Detach (PKG B-126
     // the endpoints now (C3) — no arc edit anywhere.
     expect(await readBadgeText(page, CASTLE_ARC_ID), 'the castle arc re-badged cross-layer (C3 derives)').not.toBeNull();
 
-    // Switching layers shows it on the NEW one.
-    await activate(page, 'tme-layer-' + MISAKI_LAYER_ID);
+    // Switching layers shows it on the NEW one. B-D1 (PROPOSAL-D §2.1 +
+    // B-D1): the regime-aware switch.
+    await switchLayer(page, MISAKI_LAYER_ID, 'Misaki Town');
     await expect
       .poll(async () => readLabels(page), { timeout: 5_000 })
       .toContain('Outskirts');
-    await activate(page, 'tme-layer-' + FUYUKI_LAYER_ID);
+    await switchLayer(page, FUYUKI_LAYER_ID, 'Fuyuki City');
     await expect
       .poll(async () => readLabels(page), { timeout: 5_000 })
       .not.toContain('Outskirts');
@@ -937,7 +1023,7 @@ test.describe('the layer-manager sheet, the Layer dropdown and Detach (PKG B-126
 
     // The cascade delete of layer-misaki kills outskirts with the layer —
     // NO dying id remains in the log (removed ids LEAVE, D82 ruling 4).
-    await activate(page, 'tme-layer-manage');
+    await openManager(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware entry
     await layerRow(page, 'Misaki Town').getByTestId('tme-layer-delete').click();
     await activate(page, 'tme-layer-delete-confirm');
     await expect(layerRow(page, 'Misaki Town')).toHaveCount(0);

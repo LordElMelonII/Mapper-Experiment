@@ -148,7 +148,24 @@
             </div>
           } @else {
             <div class="tme-layer-name-row">
-              <span class="tme-layer-name" data-testid="tme-layer-name">{{ layer.name }}</span>
+              <!-- B-D1 (R29, PROPOSAL-D §2.1): the row NAME is the switch —
+                   graph.selectLayer through the service's single write path
+                   (the breadcrumb's exact precedent; the explicit fit stands,
+                   D85/D81). Renders at ALL widths (one behavior, no regime
+                   fork): it is the >=1024 belt's ONLY layer-switch surface
+                   (the per-layer rail nav is shell-gated off there), and at
+                   narrower widths it simply adds the manager to the nav.
+                   The testid stays ON the button (text unchanged), the
+                   Active marker keeps naming the live row, and the rename
+                   Edit arm below is untouched. -->
+              <button
+                type="button"
+                class="tme-layer-name"
+                data-testid="tme-layer-name"
+                (click)="graph.selectLayer(layer.id)"
+              >
+                {{ layer.name }}
+              </button>
               @if (graph.activeLayer() === layer.id) {
                 <span class="tme-active-marker" data-testid="tme-layer-active-marker">Active</span>
               }

@@ -23,7 +23,8 @@
 // material, not an action surface; the rail is the author's persistent
 // chrome and its D86 section order is standing law — the legend joins the
 // body's flow at the END, it re-orders nothing).
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { GraphService } from '../graph/graph.service';
 
 /** One legend row: the kind's plain word (C23) + its swatch class (the SCSS styles from the tokens). */
 interface LegendRow {
@@ -49,5 +50,23 @@ export class LegendComponent {
   protected readonly expanded = signal(false);
   protected toggle(): void {
     this.expanded.update((open) => !open);
+  }
+
+  /**
+   * B-D1 (R29, PROPOSAL-D §2.1): the SHELL regime read — at ≥1024 the
+   * toggle renders as one belt icon (glyph visible, word in the shell-gated
+   * attributes). The legend stays presentation chrome: this is the same
+   * viewer-chrome regime signal the rail gates on (the panelFloating
+   * class), read-only here — no service state is written (R2/R4 hold).
+   */
+  protected readonly shellWide = inject(GraphService).shellWide;
+
+  /**
+   * B-D1: a belt attribute's shell-gated value — the plain word (C23) at
+   * ≥1024, null below it (Angular drops the attribute: the sub-1024 DOM is
+   * byte-identical). The rail's beltWord twin.
+   */
+  protected beltWord(word: string): string | null {
+    return this.shellWide() ? word : null;
   }
 }

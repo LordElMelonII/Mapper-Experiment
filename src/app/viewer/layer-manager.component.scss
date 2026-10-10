@@ -296,8 +296,27 @@
   gap: 0.5rem;
 }
 
+// B-D1 (R29, PROPOSAL-D §2.1): the row NAME is the SWITCH — a real button
+// (>= 44px, F52; the tap-targets sweep enumerates it now) in the sheet's
+// control language. The quiet border keeps the row readable while making
+// the affordance discoverable by tap alone (D53: nothing here depends on
+// hover); the active row is named by the marker beside it, not by this
+// button's state (the marker's ruling 2 note stands).
 .tme-layer-name {
+  display: inline-flex;
+  align-items: center;
+  min-width: 44px; // F52: >= 44px tap target
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: var(--tme-text);
+  font: inherit;
   font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
 }
 
 // Ruling 2: the active layer's row marker — the nav stays the switcher;
@@ -496,6 +515,7 @@
   .tme-close:hover,
   .tme-sheet-rail:hover,
   .tme-manager-head:hover,
+  .tme-layer-name:hover, // B-D1: the row-name switch joins the pointer brightening family
   .tme-button:hover:not(.tme-add):not(.tme-save):not(.tme-delete):not(:disabled) {
     border-color: var(--tme-hairline);
     color: var(--tme-text);

@@ -13,24 +13,40 @@
      phone rail: the map stays the primary surface, D53). F52/D53: every
      control >= 44px and touch-alone; the collapse toggle (>= 44px) reduces
      the rail to a slim strip carrying only the expand affordance. C23:
-     plain words or +/−/Fit glyphs. -->
+     plain words or +/−/Fit glyphs.
+     B-D1 (R29, PROPOSAL-D §2.1) — the THIRD regime: at >=1024px this host
+     becomes the 56px vertical ICON TOOLBELT. The words become glyphs with
+     aria-label/title/data-tip (all shell-gated: below 1024 the DOM is
+     byte-identical — the attributes render null); the mode toggle and the
+     dim row LEAVE the belt (their header homes render in map-viewer through
+     the same shellWide gates — ONE instance per testid per regime, R29
+     ruling 2); the per-layer nav and Manage leave too (the belt's single
+     Layers icon opens the manager, whose row names are the switch surface);
+     the collapse toggle hides (a 56px belt has nothing to collapse). The
+     D81 700px breakpoint stays the layout authority; the shell query never
+     feeds resize classification. -->
 <div class="tme-rail-body" id="tme-rail-body">
   <!-- B-116 (§5 Phase 3 M1/D53/F52): the editor toggle — one >= 44px tap
        target whose pressed state (aria-pressed + the gold tme-active class
        bound to the editorMode signal, R3) tells the author that canvas taps
        place nodes and node drags persist. Plain words (C23); touch alone
-       operates it (tap, no hover). -->
-  <button
-    type="button"
-    class="tme-editor-toggle"
-    data-testid="tme-editor-toggle"
-    [class.tme-active]="graph.editorMode()"
-    [attr.aria-pressed]="graph.editorMode() ? 'true' : 'false'"
-    [disabled]="!graph.hasMap()"
-    (click)="toggleEditor()"
-  >
-    {{ graph.editorMode() ? 'Editing' : 'Edit' }}
-  </button>
+       operates it (tap, no hover). B-D1: DUAL-HOME — this copy renders only
+       below 1024px; at >=1024 the header pill in map-viewer carries the
+       same testid/contract (never two instances). Both homes call the ONE
+       service write path toggleEditorMode() (R3). -->
+  @if (!graph.shellWide()) {
+    <button
+      type="button"
+      class="tme-editor-toggle"
+      data-testid="tme-editor-toggle"
+      [class.tme-active]="graph.editorMode()"
+      [attr.aria-pressed]="graph.editorMode() ? 'true' : 'false'"
+      [disabled]="!graph.hasMap()"
+      (click)="toggleEditor()"
+    >
+      {{ graph.editorMode() ? 'Editing' : 'Edit' }}
+    </button>
+  }
 
   <!-- B-120 (D76/F52/D53): the editor's segmented TOOL control — what an
        editor-mode background/compound-box tap places: Node (default) or
@@ -38,7 +54,10 @@
        Editor chrome only (view mode never renders it). One >= 44px segment
        per tool; the pressed state (aria-pressed + the gold tme-active class
        bound to the editorTool signal, R3) makes the active placement kind
-       visible — no invisible affordance (D53). Plain words (C23). -->
+       visible — no invisible affordance (D53). Plain words (C23).
+       B-D1: at >=1024 the words become glyphs (24px) with shell-gated
+       aria-label/title/data-tip — the testid, the active/pressed bindings
+       and the click path are unchanged. -->
   @if (graph.editorMode()) {
     <div class="tme-tools" role="group" aria-label="Editor tools" data-testid="tme-editor-tools">
       <button
@@ -47,9 +66,12 @@
         data-testid="tme-tool-node"
         [class.tme-active]="graph.editorTool() === 'node'"
         [attr.aria-pressed]="graph.editorTool() === 'node' ? 'true' : 'false'"
+        [attr.aria-label]="beltWord('Node')"
+        [attr.title]="beltWord('Node')"
+        [attr.data-tip]="beltWord('Node')"
         (click)="setEditorTool('node')"
       >
-        Node
+        {{ graph.shellWide() ? '●' : 'Node' }}
       </button>
       <button
         type="button"
@@ -57,9 +79,12 @@
         data-testid="tme-tool-waypoint"
         [class.tme-active]="graph.editorTool() === 'waypoint'"
         [attr.aria-pressed]="graph.editorTool() === 'waypoint' ? 'true' : 'false'"
+        [attr.aria-label]="beltWord('Waypoint')"
+        [attr.title]="beltWord('Waypoint')"
+        [attr.data-tip]="beltWord('Waypoint')"
         (click)="setEditorTool('waypoint')"
       >
-        Waypoint
+        {{ graph.shellWide() ? '◆' : 'Waypoint' }}
       </button>
       <button
         type="button"
@@ -67,9 +92,12 @@
         data-testid="tme-tool-arc"
         [class.tme-active]="graph.editorTool() === 'arc'"
         [attr.aria-pressed]="graph.editorTool() === 'arc' ? 'true' : 'false'"
+        [attr.aria-label]="beltWord('Arc')"
+        [attr.title]="beltWord('Arc')"
+        [attr.data-tip]="beltWord('Arc')"
         (click)="setEditorTool('arc')"
       >
-        Arc
+        {{ graph.shellWide() ? '◠' : 'Arc' }}
       </button>
     </div>
   }
@@ -77,29 +105,35 @@
   <!-- F01/F02: the layer switcher — one >= 44px button per layer (F52).
        B-126 (D82): the compact switcher keeps its Manage affordance at the
        end — the layer-manager sheet's only entry (plain word, C23; the nav
-       stays the switcher, the sheet manages). -->
+       stays the switcher, the sheet manages).
+       B-D1: BOTH the per-layer buttons and Manage render only below 1024 —
+       at >=1024 the belt's Layers icon (below) is the manager entry and the
+       manager's row names are the switch surface (layer-manager.component);
+       template gates, never CSS hiding, so no testid ever renders twice. -->
   <nav class="tme-layers" aria-label="Map layers">
-    @for (layer of graph.layerNames(); track layer.id) {
+    @if (!graph.shellWide()) {
+      @for (layer of graph.layerNames(); track layer.id) {
+        <button
+          type="button"
+          class="tme-layer-button"
+          [class.tme-active]="layer.id === graph.activeLayer()"
+          [attr.data-testid]="'tme-layer-' + layer.id"
+          (click)="selectLayer(layer.id)"
+        >
+          {{ layer.name }}
+        </button>
+      }
       <button
         type="button"
-        class="tme-layer-button"
-        [class.tme-active]="layer.id === graph.activeLayer()"
-        [attr.data-testid]="'tme-layer-' + layer.id"
-        (click)="selectLayer(layer.id)"
+        class="tme-layer-button tme-manage"
+        data-testid="tme-layer-manage"
+        [class.tme-active]="graph.layerManagerOpen()"
+        [attr.aria-pressed]="graph.layerManagerOpen() ? 'true' : 'false'"
+        (click)="toggleLayerManager()"
       >
-        {{ layer.name }}
+        Manage
       </button>
     }
-    <button
-      type="button"
-      class="tme-layer-button tme-manage"
-      data-testid="tme-layer-manage"
-      [class.tme-active]="graph.layerManagerOpen()"
-      [attr.aria-pressed]="graph.layerManagerOpen() ? 'true' : 'false'"
-      (click)="toggleLayerManager()"
-    >
-      Manage
-    </button>
 
     <!-- B-137 (§5 M4/D40): the Maps panel's affordance — the D82 Manage
          pattern exactly (a nav sibling, present in BOTH worlds; the phone
@@ -107,16 +141,21 @@
          mode, no standing chrome anywhere). Pressed state mirrors the
          signal (R3), plain word (C23), >= 44px (F52). The mapless state
          keeps it reachable: the nav renders with no layer buttons and
-         Manage/Maps remain (the picker is never stranded, D40). -->
+         Manage/Maps remain (the picker is never stranded, D40).
+         B-D1: at >=1024 it is a belt icon (glyph + shell-gated word
+         attributes); the testid and click path are unchanged. -->
     <button
       type="button"
       class="tme-layer-button tme-maps-nav"
       data-testid="tme-maps-toggle"
       [class.tme-active]="graph.mapsPanelOpen()"
       [attr.aria-pressed]="graph.mapsPanelOpen() ? 'true' : 'false'"
+      [attr.aria-label]="beltWord('Maps')"
+      [attr.title]="beltWord('Maps')"
+      [attr.data-tip]="beltWord('Maps')"
       (click)="toggleMapsPanel()"
     >
-      Maps
+      {{ graph.shellWide() ? '▦' : 'Maps' }}
     </button>
   </nav>
 
@@ -128,17 +167,45 @@
        is that world's summon — do not duplicate it here (the packet's
        no-duplicate rule), so the media query hides this button below 700px
        and the phone bottom-rail regime keeps its two bands. >= 44px (F52),
-       pressed state mirrors the signal (R3), plain word (C23). -->
+       pressed state mirrors the signal (R3), plain word (C23).
+       B-D1: at >=1024 it is a belt icon (glyph + shell-gated word
+       attributes); the testid and click path are unchanged. -->
   <button
     type="button"
     class="tme-route-toggle"
     data-testid="tme-route-toggle"
     [class.tme-active]="graph.routePanelOpen()"
     [attr.aria-pressed]="graph.routePanelOpen() ? 'true' : 'false'"
+    [attr.aria-label]="beltWord('Route')"
+    [attr.title]="beltWord('Route')"
+    [attr.data-tip]="beltWord('Route')"
     (click)="toggleRoutePanel()"
   >
-    Route
+    {{ graph.shellWide() ? '→' : 'Route' }}
   </button>
+
+  <!-- B-D1 (R29, PROPOSAL-D §2.1): the belt's LAYERS tool — at >=1024 the
+       single layer-manager entry (the per-layer nav and Manage are gated
+       off above; the manager's row names are the switch surface, the
+       breadcrumb keeps chain navigation). New testid, belt-only render
+       (never a duplicate), aria-pressed mirrors layerManagerOpen (R3), the
+       plain word in the shell-gated label attributes (C23); the divider
+       above it (SCSS border) is the belt's Route|Layers separation. -->
+  @if (graph.shellWide()) {
+    <button
+      type="button"
+      class="tme-layer-tool"
+      data-testid="tme-layers-tool"
+      [class.tme-active]="graph.layerManagerOpen()"
+      [attr.aria-pressed]="graph.layerManagerOpen() ? 'true' : 'false'"
+      [attr.aria-label]="beltWord('Layers')"
+      [attr.title]="beltWord('Layers')"
+      [attr.data-tip]="beltWord('Layers')"
+      (click)="toggleLayerManager()"
+    >
+      ≡
+    </button>
+  }
 
   <!-- B-147 (REPAIRS R-7): the node-kind legend — the canvas taxonomy's key
        (the recognition finding: no glossary anywhere). Static rows (the
@@ -149,7 +216,9 @@
        section (the body scrolls its own overflow), narrow it wraps into the
        first band (a legend toggle is one more wrapped control — no third
        band, the B-129 rail-band arithmetic intact: the collapsed strip
-       still hides it with the body). -->
+       still hides it with the body).
+       B-D1: at >=1024 its toggle is one belt icon and the expanded rows
+       render as an absolute plate RIGHT of the belt (legend.component). -->
   <tme-legend />
 </div>
 
@@ -173,23 +242,28 @@
      (compact, flex-shrinkable) because the body's two wrapped bands are
      the B-129 rail-band arithmetic's basis — a third band would starve
      the stage floor / panel caps (the phone bottom-rail regime stays
-     untouched; measured against the B-104/D81/§6.2 narrow cells). -->
-<div class="tme-dim" data-testid="tme-dim">
-  <label class="tme-dim-label" for="tme-dim-slider">Dim</label>
-  <input
-    class="tme-dim-slider"
-    id="tme-dim-slider"
-    data-testid="tme-dim-slider"
-    type="range"
-    min="0"
-    max="1"
-    step="0.05"
-    [value]="graph.activeLayerDim()"
-    [disabled]="!graph.activeLayerHasBackground()"
-    (input)="setDim($event)"
-  />
-  <span class="tme-dim-value" data-testid="tme-dim-value">{{ graph.activeLayerDim() }}</span>
-</div>
+     untouched; measured against the B-104/D81/§6.2 narrow cells).
+     B-D1: DUAL-HOME — this copy renders only below 1024px; at >=1024 the
+     header pill in map-viewer carries the same testids/bindings (never
+     two instances, R29 ruling 2). -->
+@if (!graph.shellWide()) {
+  <div class="tme-dim" data-testid="tme-dim">
+    <label class="tme-dim-label" for="tme-dim-slider">Dim</label>
+    <input
+      class="tme-dim-slider"
+      id="tme-dim-slider"
+      data-testid="tme-dim-slider"
+      type="range"
+      min="0"
+      max="1"
+      step="0.05"
+      [value]="graph.activeLayerDim()"
+      [disabled]="!graph.activeLayerHasBackground()"
+      (input)="setDim($event)"
+    />
+    <span class="tme-dim-value" data-testid="tme-dim-value">{{ graph.activeLayerDim() }}</span>
+  </div>
+}
 
 <!-- B-127 (D86): the zoom trio — one >= 44px button each (F52), the C23
      glyphs/words (+, −, Fit). Viewport commands of the service (R2); they
@@ -197,15 +271,43 @@
      navigational, never an edit. A SIBLING of the body (not inside it) so
      the narrow bar shares ONE band between the trio and the collapse
      toggle below — the two-band phone rail (D53: the map stays the primary
-     surface; the rail never grows a third band). -->
+     surface; the rail never grows a third band).
+     B-D1: at >=1024 the trio is the belt's stacked zoom cluster (compact
+     icons; Fit keeps its 3-char word); testids and click paths unchanged. -->
 <div class="tme-zoom" role="group" aria-label="Zoom" data-testid="tme-zoom">
-  <button type="button" class="tme-zoom-button" data-testid="tme-zoom-in" aria-label="Zoom in" (click)="zoomIn()">
+  <button
+    type="button"
+    class="tme-zoom-button"
+    data-testid="tme-zoom-in"
+    aria-label="Zoom in"
+    [attr.title]="beltWord('Zoom in')"
+    [attr.data-tip]="beltWord('Zoom in')"
+    (click)="zoomIn()"
+  >
     +
   </button>
-  <button type="button" class="tme-zoom-button" data-testid="tme-zoom-out" aria-label="Zoom out" (click)="zoomOut()">
+  <button
+    type="button"
+    class="tme-zoom-button"
+    data-testid="tme-zoom-out"
+    aria-label="Zoom out"
+    [attr.title]="beltWord('Zoom out')"
+    [attr.data-tip]="beltWord('Zoom out')"
+    (click)="zoomOut()"
+  >
     −
   </button>
-  <button type="button" class="tme-zoom-button" data-testid="tme-zoom-fit" (click)="fitToView()">Fit</button>
+  <button
+    type="button"
+    class="tme-zoom-button"
+    data-testid="tme-zoom-fit"
+    [attr.aria-label]="beltWord('Fit')"
+    [attr.title]="beltWord('Fit')"
+    [attr.data-tip]="beltWord('Fit')"
+    (click)="fitToView()"
+  >
+    Fit
+  </button>
 </div>
 
 <!-- B-116 (F45/D75): the save dock lived here until the B-133 review (D91):
@@ -221,7 +323,10 @@
      control the collapsed strip carries. The state is component-local (the
      B-114 precedent); the region shrink/grow is an ordinary container
      resize the D81 discriminator classifies (preserve on wide, refit on
-     narrow). Plain words (C23); no hover affordance. -->
+     narrow). Plain words (C23); no hover affordance.
+     B-D1: display:none at >=1024 (SCSS — collapsing a 56px belt is
+     pointless; a collapse made below 1024 does not persist into the shell:
+     the belt SCSS re-shows the body and the region keeps its 56px basis). -->
 <button
   type="button"
   class="tme-rail-toggle"

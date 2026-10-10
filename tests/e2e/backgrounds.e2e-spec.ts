@@ -86,6 +86,53 @@ const tap = async (locator: ReturnType<Page['locator']>): Promise<void> => {
   else await locator.click();
 };
 
+// B-D1 re-baseline (PROPOSAL-D §2.1 + B-D1): at >=1024 the rail's per-layer
+// nav and its Manage entry are shell-gated OFF — the layer switch rides the
+// LAYER MANAGER's row-name button (the switch surface, layer-manager.component)
+// and the manager opens through the belt's Layers tool (tme-layers-tool);
+// below 1024 the rail surfaces stand byte-identical (R29 ruling 1).
+// Presence-probed against the live DOM — the regime truth, never a mirrored
+// breakpoint. The manager-state-aware switch leaves an ALREADY-OPEN sheet
+// open (the pre-shell rail switch never touched it).
+
+/** The manager's open-state probe (the enterCalibrateViaSheet idiom). */
+const managerOpen = async (page: Page): Promise<boolean> => {
+  const body = page.getByTestId('tme-layer-manager-body');
+  return (await body.count()) > 0 && (await body.isVisible());
+};
+
+/** Open the layer manager through the live regime's entry (B-D1). */
+const openManager = async (page: Page): Promise<void> => {
+  if (await managerOpen(page)) return;
+  const beltTool = page.getByTestId('tme-layers-tool');
+  if (await beltTool.count()) await tap(beltTool);
+  else await tap(page.getByTestId('tme-layer-manage'));
+  await expect(page.getByTestId('tme-layer-manager-body')).toBeVisible();
+};
+
+/** The rail's per-layer button ids by authored layer name (FX1). */
+const RAIL_LAYER_BUTTON: Readonly<Record<string, string>> = {
+  'Fuyuki City': 'tme-layer-layer-fuyuki',
+  'Misaki Town': 'tme-layer-layer-misaki',
+};
+
+/** Switch layers in the live regime (B-D1): the rail's per-layer button
+ *  below 1024 (the original .click() input path, both projects byte-equal),
+ *  the manager's row-name button at >=1024 (an already-open manager stays
+ *  open; one opened for the switch closes after it — the pre-shell chrome
+ *  state; selectLayer's explicit fit runs either way, D85/D81). */
+const switchLayer = async (page: Page, name: string): Promise<void> => {
+  const rail = page.getByTestId(RAIL_LAYER_BUTTON[name] ?? '');
+  if (await rail.count()) {
+    await rail.click();
+    return;
+  }
+  const wasOpen = await managerOpen(page);
+  if (!wasOpen) await openManager(page);
+  await layerRow(page, name).getByTestId('tme-layer-name').click();
+  if (!wasOpen) await tap(page.getByTestId('tme-layer-manager-close'));
+};
+
 /**
  * Wait two animation frames: a sheet open/close or a background swap changes
  * the stage synchronously, but ResizeObserver-driven paths run just before
@@ -226,7 +273,7 @@ test.describe('per-layer backgrounds: sheet entry, store upload, degrade (PKG B-
     // The harness patch renders first (D69) — then the URL arm replaces it
     // (one image per layer: replace = set again).
     await expect(page.getByTestId('tme-bg')).toBeVisible();
-    await tap(page.getByTestId('tme-layer-manage'));
+    await openManager(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware manager entry
     await expect(page.getByTestId('tme-layer-manager-body')).toBeVisible();
     await setUrlOn(page, FUYUKI_ROW, SVG_URL);
 
@@ -252,7 +299,7 @@ test.describe('per-layer backgrounds: sheet entry, store upload, degrade (PKG B-
     test.skip(isPhone(), 'the upload + replace cell is the desktop project (the packet cell list)');
     const bad = collectConsole(page);
 
-    await tap(page.getByTestId('tme-layer-manage'));
+    await openManager(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware manager entry
     const row = layerRow(page, FUYUKI_ROW);
     await expandBgForm(page, FUYUKI_ROW); // B-149 (R9 item 5): the file input hides behind the expander
     await row.getByTestId('tme-layer-bg-file').setInputFiles(fixturePng());
@@ -288,7 +335,7 @@ test.describe('per-layer backgrounds: sheet entry, store upload, degrade (PKG B-
     test.skip(isPhone(), 'the remove + scoping cell is the desktop project (the packet cell list)');
     const bad = collectConsole(page);
 
-    await tap(page.getByTestId('tme-layer-manage'));
+    await openManager(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware manager entry
     const fuyuki = layerRow(page, FUYUKI_ROW);
     const misaki = layerRow(page, MISAKI_ROW);
     // B-149 (R9 item 5): expand-first — the Remove/Calibrate controls hide
@@ -313,10 +360,10 @@ test.describe('per-layer backgrounds: sheet entry, store upload, degrade (PKG B-
     // per-layer truth (D84), and the headers stay verbatim across switches.
     await setUrlOn(page, FUYUKI_ROW, SVG_URL);
     await expect.poll(() => readBg(page), { timeout: 5_000 }).toEqual({ src: SVG_URL, naturalWidth: 64 });
-    await page.getByTestId('tme-layer-layer-misaki').click();
+    await switchLayer(page, MISAKI_ROW); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect(page.getByTestId('tme-bg')).toHaveCount(0);
     await expectHeaders(page);
-    await page.getByTestId('tme-layer-layer-fuyuki').click();
+    await switchLayer(page, FUYUKI_ROW); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(() => readBg(page), { timeout: 5_000 }).toEqual({ src: SVG_URL, naturalWidth: 64 });
 
     await expectHeaders(page);
@@ -329,7 +376,7 @@ test.describe('per-layer backgrounds: sheet entry, store upload, degrade (PKG B-
     test.skip(isPhone(), 'the degrade cell is the desktop project (the packet cell list)');
     const bad = collectConsole(page);
 
-    await tap(page.getByTestId('tme-layer-manage'));
+    await openManager(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware manager entry
     await setUrlOn(page, FUYUKI_ROW, DEAD_URL);
 
     // The load failed: the img hid (degrade to NO background) and the
@@ -367,7 +414,7 @@ test.describe('per-layer backgrounds: sheet entry, store upload, degrade (PKG B-
     test.skip(isPhone(), 'the refusal-path cell is the desktop project (the packet cell list)');
     const bad = collectConsole(page);
 
-    await tap(page.getByTestId('tme-layer-manage'));
+    await openManager(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware manager entry
     const fuyuki = layerRow(page, FUYUKI_ROW);
     const misaki = layerRow(page, MISAKI_ROW);
 
@@ -403,7 +450,7 @@ test.describe('per-layer backgrounds: sheet entry, store upload, degrade (PKG B-
     await page.setViewportSize({ width: 375, height: 812 });
 
     // The whole URL-arm journey runs touch-alone at 375px.
-    await tap(page.getByTestId('tme-layer-manage'));
+    await openManager(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware manager entry
     const row = layerRow(page, FUYUKI_ROW);
     await expandBgForm(page, FUYUKI_ROW); // B-149 (R9 item 5): the sweep measures the EXPANDED sub-form
     const targets = [
@@ -504,10 +551,10 @@ test.describe('per-layer background dim on the rail (PKG B-132, D90/D93/F56)', (
     // The map-data re-read: leave the layer and come back — the slider and
     // the opacity come back FROM THE MAP (the R4 live-read path a loadMap
     // binds; Misaki's disabled slider rides the same cell).
-    await page.getByTestId('tme-layer-layer-misaki').click();
+    await switchLayer(page, MISAKI_ROW); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect(page.getByTestId('tme-bg')).toHaveCount(0);
     await expect.poll(() => readDimSlider(page)).toEqual({ value: '0', disabled: true });
-    await page.getByTestId('tme-layer-layer-fuyuki').click();
+    await switchLayer(page, FUYUKI_ROW); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(() => readDimSlider(page)).toEqual({ value: '0.4', disabled: false });
     await expect.poll(() => readBgOpacity(page)).toBeCloseTo(0.6, 5);
 
@@ -524,13 +571,13 @@ test.describe('per-layer background dim on the rail (PKG B-132, D90/D93/F56)', (
 
     // Misaki boots with NO background: its slider is DISABLED (the F07
     // dead-control gate — the UI does not offer a dim without an image).
-    await page.getByTestId('tme-layer-layer-misaki').click();
+    await switchLayer(page, MISAKI_ROW); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect(page.getByTestId('tme-bg')).toHaveCount(0);
     await expect.poll(() => readDimSlider(page)).toEqual({ value: '0', disabled: true });
 
     // Give Misaki a background (the sheet's URL arm): its slider ENABLES at
     // 0 — a fresh layer arm, not Fuyuki's.
-    await tap(page.getByTestId('tme-layer-manage'));
+    await openManager(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware manager entry
     await setUrlOn(page, MISAKI_ROW, SVG_URL);
     await expect.poll(() => readBg(page), { timeout: 5_000 }).toEqual({ src: SVG_URL, naturalWidth: 64 });
     await expect.poll(() => readDimSlider(page)).toEqual({ value: '0', disabled: false });
@@ -541,14 +588,14 @@ test.describe('per-layer background dim on the rail (PKG B-132, D90/D93/F56)', (
     await page.getByTestId('tme-dim-slider').fill('0.8');
     await expect.poll(() => readBgOpacity(page)).toBeCloseTo(0.2, 5);
     await expect(page.getByTestId('tme-dim-value')).toHaveText('0.8');
-    await page.getByTestId('tme-layer-layer-fuyuki').click();
+    await switchLayer(page, FUYUKI_ROW); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(() => readDimSlider(page)).toEqual({ value: '0', disabled: false });
     await page.getByTestId('tme-dim-slider').fill('0.4');
     await expect.poll(() => readBgOpacity(page)).toBeCloseTo(0.6, 5);
-    await page.getByTestId('tme-layer-layer-misaki').click();
+    await switchLayer(page, MISAKI_ROW); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(() => readDimSlider(page)).toEqual({ value: '0.8', disabled: false });
     await expect.poll(() => readBgOpacity(page)).toBeCloseTo(0.2, 5);
-    await page.getByTestId('tme-layer-layer-fuyuki').click();
+    await switchLayer(page, FUYUKI_ROW); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(() => readDimSlider(page)).toEqual({ value: '0.4', disabled: false });
     await expect.poll(() => readBgOpacity(page)).toBeCloseTo(0.6, 5);
 
@@ -569,7 +616,7 @@ test.describe('per-layer background dim on the rail (PKG B-132, D90/D93/F56)', (
 
     // The sheet's REPLACE path: a NEW background source on the same layer
     // (the harness assetId arm → the URL arm; one image per layer).
-    await tap(page.getByTestId('tme-layer-manage'));
+    await openManager(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware manager entry
     await setUrlOn(page, FUYUKI_ROW, SVG_URL);
     await expect.poll(() => readBg(page), { timeout: 5_000 }).toEqual({ src: SVG_URL, naturalWidth: 64 });
 
@@ -1019,7 +1066,7 @@ test.describe('background sync render (PKG B-134, D92/D93/D75/D91)', () => {
     // resolves the natural size, ONE setLayerBackgroundPlacement writes the
     // computed default (dirty — D75), and (D91) the background appearing/
     // changing/transforming never moves the viewport.
-    await tap(page.getByTestId('tme-layer-manage'));
+    await openManager(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware manager entry
     await expect(page.getByTestId('tme-layer-manager-body')).toBeVisible();
     await setUrlOn(page, FUYUKI_ROW, SVG_URL);
     // The swap gate: the SURVIVING img element's naturals settle to the
@@ -1037,9 +1084,9 @@ test.describe('background sync render (PKG B-134, D92/D93/D75/D91)', () => {
     // The loadMap/layer-switch read path a persisted map binds: leave the
     // layer and come back — the ARM renders verbatim (same center, same
     // scale), and the switch dirties nothing.
-    await page.getByTestId('tme-layer-layer-misaki').click();
+    await switchLayer(page, MISAKI_ROW); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect(page.getByTestId('tme-bg')).toHaveCount(0);
-    await page.getByTestId('tme-layer-layer-fuyuki').click();
+    await switchLayer(page, FUYUKI_ROW); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(() => bgPlaced(page), { timeout: 5_000 }).toBe(true);
     expectPlacement(await readBgRender(page), 'the arm re-read after the switch');
     await expect(page.getByTestId('tme-save-dock')).toHaveCount(0);
@@ -1057,12 +1104,12 @@ test.describe('background sync render (PKG B-134, D92/D93/D75/D91)', () => {
     expectPlacement(await readBgRender(page), 'boot default');
 
     // Misaki carries NO background: the img leaves the stage entirely.
-    await page.getByTestId('tme-layer-layer-misaki').click();
+    await switchLayer(page, MISAKI_ROW); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect(page.getByTestId('tme-bg')).toHaveCount(0);
 
     // Back: the default re-applies from the recomputed hold — identical
     // placement, and still nothing persisted (D75).
-    await page.getByTestId('tme-layer-layer-fuyuki').click();
+    await switchLayer(page, FUYUKI_ROW); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(() => bgPlaced(page), { timeout: 5_000 }).toBe(true);
     expectPlacement(await readBgRender(page), 'the recomputed default after the round trip');
     await expect(page.getByTestId('tme-save-dock')).toHaveCount(0);
@@ -1081,10 +1128,10 @@ test.describe('background sync render (PKG B-134, D92/D93/D75/D91)', () => {
     // zero area, so the fit-to-graph is undefined. Give it a background and
     // switch to it: the default is undefined → the D84 stage-contain
     // fallback renders (no inline box) until B-135's calibrate writes an arm.
-    await tap(page.getByTestId('tme-layer-manage'));
+    await openManager(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware manager entry
     await expect(page.getByTestId('tme-layer-manager-body')).toBeVisible();
     await setUrlOn(page, MISAKI_ROW, SVG_URL);
-    await page.getByTestId('tme-layer-layer-misaki').click();
+    await switchLayer(page, MISAKI_ROW); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware switch
     await expect.poll(() => bgFallback(page), { timeout: 5_000 }).toBe(true);
 
     // The fallback IS the old contain shape: the img box equals the canvas
@@ -1110,7 +1157,7 @@ test.describe('background sync render (PKG B-134, D92/D93/D75/D91)', () => {
     // The placed default is live; REPLACE it with a dead URL (the harness
     // assetId arm → a hostile src). The load degrades to NO background —
     // the img hides, ONE warn, and the transform machinery never throws.
-    await tap(page.getByTestId('tme-layer-manage'));
+    await openManager(page); // B-D1 (PROPOSAL-D §2.1 + B-D1): the regime-aware manager entry
     await setUrlOn(page, FUYUKI_ROW, DEAD_URL);
     await expect
       .poll(() => bad.warnings.filter((w) => w.includes('[TravelMapper] background load failed')), {
