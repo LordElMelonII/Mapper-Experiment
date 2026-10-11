@@ -357,8 +357,30 @@ export class PropertyPanelComponent {
    * mirrors this into a class (see host binding) that the SCSS turns into
    * display:none, and the template keys its @if on the same gate — a closed
    * panel leaves neither a visible section nor an empty host slot.
+   * B-D4 (R29, PROPOSAL-D §3.1): the naming state closes the VIEW — while
+   * the inline-naming popover stands over the drafted node (or stays
+   * LATCHED over it after a resolution, commit or cancel alike) the panel
+   * does not stand: the popover is the naming surface, and the touch flow
+   * needs the gate — the long-press's release-tap selects the node and
+   * seeds this panel BEFORE the menu's Rename arm runs, so without it both
+   * surfaces would stand together. A draft does not SURVIVE the naming
+   * state hidden (B-D4's same-node extension of the D-3 displacement rule:
+   * the seeding effect's early return no longer shields it): the effect
+   * resolves the draft FIRST — a dirty one COMMITS (the displacement
+   * commit; the popover's later PUT reads the live map, so both intents
+   * stand), a C30 refusal closes the naming quietly (no latch) and
+   * re-opens this panel on the intact draft with the issues rendered, a
+   * pristine one drops — nothing stands stale behind the popover.
    */
-  protected readonly open = computed(() => this.graph.editorMode() && this.draft() !== null);
+  protected readonly open = computed(() => {
+    const d = this.draft();
+    return (
+      this.graph.editorMode() &&
+      d !== null &&
+      this.graph.inlineNamingId() !== d.id &&
+      this.graph.inlineNamingLatch() !== d.id
+    );
+  });
 
   /**
    * The template's render gate: the draft ONLY while the panel is open. A
@@ -594,10 +616,26 @@ export class PropertyPanelComponent {
     // and the editor mode — both change only through discrete taps (D2).
     // Switching selection or closing the panel COMMITS a dirty draft first
     // (one upsertNode, whole draft); an untouched draft just re-seeds.
+    // B-D4 (R29): the naming state displacing a drafted node — a placement
+    // (a DIFFERENT node's draft, B-D3) or the menu's Rename over the SAME
+    // node's draft — resolves the draft FIRST through this one effect: a
+    // dirty draft commits (the displacement commit), a refusal hands the
+    // node back to the open panel with its issues, a pristine draft drops.
     effect(() => {
       const editor = this.graph.editorMode();
       const selId = this.graph.selection()?.id ?? null;
       const current = this.draft();
+      // B-D4: does the naming state name the SELECTED node? The D-3 skip
+      // branch's own condition, factored ONCE at the TOP of the effect: the
+      // read must precede every return so both naming signals stay in the
+      // dependency set on EVERY path — a same-node early return taken
+      // before this read would drop them from the set, and the effect would
+      // never re-run when the menu's Rename opens the popover over the
+      // drafted node (the hidden-draft revert the same-node extension of
+      // the displacement rule exists to close).
+      const namingOwns =
+        selId !== null &&
+        (this.graph.inlineNamingId() === selId || this.graph.inlineNamingLatch() === selId);
       if (!editor) {
         // Editor exit is a panel close: commit-if-dirty. On a C30 refusal
         // the draft survives (hidden) and resumes when editor mode returns
@@ -611,10 +649,27 @@ export class PropertyPanelComponent {
       // another node (the arc panel's clearArcBlockRefusal discipline,
       // B-123).
       this.graph.clearNodeBlockRefusal();
-      if (current !== null && current.id === selId) return; // same node — keystrokes never re-seed
+      // Same node — keystrokes never re-seed. B-D4: UNLESS the naming state
+      // names THIS node — the menu's Rename displaces its own node's
+      // standing draft (the D-3 displacement discipline extended to the
+      // same-node case): the draft falls through to the commit arm below
+      // and resolves FIRST instead of surviving the naming state hidden —
+      // a hidden dirty draft would commit its STALE label at the next
+      // navigation and silently revert the popover's rename.
+      if (current !== null && current.id === selId && !namingOwns) return;
       if (current !== null && this.isDirty(current)) {
         const committed = this.commitDraft(current);
         if (!committed) {
+          if (namingOwns && current.id === selId) {
+            // B-D4: the same-node displacement commit REFUSED (C30) — the
+            // naming state yields QUIETLY (clearInlineNaming, no latch) and
+            // returns with the draft intact: the open() gate passes again,
+            // the panel re-opens showing the draft and its refusal words
+            // (the startConnect refusal precedent — the edit body stays up
+            // with the issues rendered; D10, nothing dropped silently).
+            this.graph.clearInlineNaming();
+            return;
+          }
           // C30 refusal: the draft stays open; undo the navigation that
           // would orphan it (the promoteWaypoint re-point precedent) so the
           // author fixes or reverts in place (D10 — their edit survives).
@@ -629,14 +684,14 @@ export class PropertyPanelComponent {
       // rule never engages for a placement. The skip sits BELOW the commit
       // arm — a draft displaced by a placement commits first (the
       // commit-at-navigation rule above is untouched), then yields to the
-      // popover. The service's guard effect clears the latch the moment the
-      // selection leaves the node, so a deselect + reselect opens the panel
-      // exactly as today for an existing node (the preserved path; the R-5
-      // name-first arm rides that seed unchanged).
-      if (
-        selId !== null &&
-        (this.graph.inlineNamingId() === selId || this.graph.inlineNamingLatch() === selId)
-      ) {
+      // popover. B-D4: the SAME-node displacement lands here too — after
+      // its displacement commit (or a pristine drop) the draft is null and
+      // the popover is the node's editor now. The service's guard effect
+      // clears the latch the moment the selection leaves the node, so a
+      // deselect + reselect opens the panel exactly as today for an
+      // existing node (the preserved path; the R-5 name-first arm rides
+      // that seed unchanged).
+      if (namingOwns) {
         this.draft.set(null);
         return;
       }

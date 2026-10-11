@@ -127,10 +127,17 @@ export class InlineNamingComponent implements OnDestroy {
    * phone too (the soft keyboard is the point, D53). A purely presentational
    * imperative write (the B-119 drag-write class: focus is DOM chrome, never
    * a signal, never a commit).
+   * B-D4 (R29, PROPOSAL-D §3.1): a SEEDED open (the menu's Rename of an
+   * existing node) additionally `select()`s the seed text so typing replaces
+   * it wholesale (the R-5 name-first idiom, re-homed at the object); a
+   * placement's seed is null and the empty + placeholder form stays
+   * byte-identical (D10 — nothing is committed by the selection itself).
    */
   private readonly focusOnOpen = afterRenderEffect(() => {
     if (this.graph.inlineNamingId() === null) return;
-    this.input()?.focus();
+    const input = this.input();
+    input?.focus();
+    if (this.graph.inlineNamingSeed() !== null) input?.select();
   });
 
   /** Enter's commit arm — the input's value, verbatim (the service trims). */

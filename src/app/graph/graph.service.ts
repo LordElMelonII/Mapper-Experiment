@@ -978,6 +978,17 @@ function nodeEditRefusal(error: unknown): NodeEditRefusal {
 }
 
 /**
+ * B-D4 (R29, PROPOSAL-D §3.1): a NodeEditRefusal's issues folded into the
+ * node menu's single-string refusal slot — the core's own words, verbatim
+ * (C30), joined with a space (the panel renders each issue its own row; the
+ * menu has one status line, the Set arm's slot). Never re-worded, never
+ * truncated (C32).
+ */
+function menuRefusalWords(refusal: NodeEditRefusal): string {
+  return refusal.issues.map((issue) => issue.message).join(' ');
+}
+
+/**
  * B-113 (§5 M4 label culling, §6.1 dense sub-graph perf row): labels hide
  * when the current zoom falls below the CURRENT fit zoom × this factor.
  * The threshold is fit-RELATIVE, not absolute, because one absolute floor
@@ -1919,6 +1930,18 @@ export class GraphService implements OnDestroy {
    * existing node (the preserved path — the packet's honest test).
    */
   readonly inlineNamingLatch = signal<string | null>(null);
+
+  /**
+   * B-D4 (R29, PROPOSAL-D §3.1): the popover's SEED — the live label an
+   * EXISTING node carried when the menu's Rename re-opened the naming state
+   * (null for a fresh placement: the empty input + placeholder form stays
+   * byte-identical to B-D3). Written by startInlineNaming alongside the flag,
+   * cleared with the rest of the state in clearInlineNaming; the popover
+   * renders it as the input's [value] at open (uncontrolled thereafter, D2)
+   * and selects it on focus so typing replaces it wholesale (the R-5
+   * name-first idiom, re-homed at the object).
+   */
+  readonly inlineNamingSeed = signal<string | null>(null);
 
   // D3: created ONCE, headless — mount() attaches a DOM host later; unmount()
   // returns to headless. Computation works with the UI closed. Verified
@@ -3323,6 +3346,146 @@ export class GraphService implements OnDestroy {
     this.afterGraphMutation();
   }
 
+  // --- B-D4 (R29, PROPOSAL-D §3.1): the node menu's authoring verbs ----------
+  //
+  // The six object verbs at the selection (Rename · Set as party location ·
+  // Connect… · Details · Detach from arcs · Delete). Set/Clear are B-143's
+  // arms above, byte-untouched; the five below are the authoring half, each
+  // routing an EXISTING command path (R2 — no new facade surface, no new
+  // open writer): Rename re-opens D-3's naming state SEEDED with the live
+  // label, Details and Connect clear the naming state + latch so the panel's
+  // preserved seeding path runs, Detach/Delete are the property panel's own
+  // service commands verbatim (F54/F46) with their refusals rendered in-menu
+  // the Set arm's way (C30 words, retry-elsewhere).
+
+  /**
+   * B-D4: the menu's select-first write — the tap handler's exact selection
+   * shape (`edgeSelection` null + `{ id, label }`), the label read LIVE off
+   * the library plane (C23). The menu-open gesture writes NO selection
+   * (taphold/cxttap select nothing — on touch the release-tap selects the
+   * leaf afterward, on desktop nothing follows a right-click), so every
+   * authoring verb that presumes the selection (Rename's naming state,
+   * Details' seeding, Connect's frozen source) writes it here FIRST: the
+   * D-3 guard effect clears any naming whose node is not the selection, so
+   * this write MUST precede any naming write. An absent node (an overlay
+   * waypoint — the authoring rows never render for one — or a stale id)
+   * answers null and the caller degrades to a quiet close (C32).
+   */
+  private selectNodeForMenuVerb(nodeId: string): string | null {
+    const node = this.nodeDataById(nodeId);
+    if (node === null) return null;
+    this.edgeSelection.set(null);
+    this.selection.set({ id: nodeId, label: node.label });
+    return node.label;
+  }
+
+  /**
+   * B-D4 (R29, PROPOSAL-D §3.1): the menu's Rename arm — re-open D-3's
+   * inline-naming state for an EXISTING node, seeded with its live label
+   * (the popover's Enter/click-away/Esc semantics identical; commit is the
+   * same B-116 PUT path). Order is load-bearing: select-first (the D-3
+   * guard effect would clear a naming whose node is not the selection),
+   * then tear down any latch naming the node (a resolved placement's
+   * suppression must not swallow the re-open), then the menu consumes
+   * itself, then the naming state opens with the seed. No facade command
+   * fires here (D10 — nothing renames until the popover commits).
+   */
+  renameNodeFromMenu(nodeId: string): void {
+    const menu = this.nodeMenu();
+    if (menu === null || menu.nodeId !== nodeId) return;
+    const label = this.selectNodeForMenuVerb(nodeId);
+    if (label === null) {
+      this.closeNodeMenu(); // no library node, no rename — the surface has nothing to act on (C32 belt)
+      return;
+    }
+    if (this.inlineNamingLatch() === nodeId) this.inlineNamingLatch.set(null);
+    this.closeNodeMenu();
+    this.startInlineNaming(nodeId, label);
+  }
+
+  /**
+   * B-D4: the menu's Details arm — open the property panel for the node
+   * through the PRESERVED seeding path (R-5's name-first form unchanged in
+   * content). The panel opens because its draft-seeding effect runs once
+   * nothing holds it shut: the quiet clear drops any standing naming state
+   * and the latch null releases a resolved placement's suppression (both are
+   * read INSIDE that effect, so these writes re-trigger it). NO panel writes
+   * here — the service never opens a panel directly (R3).
+   */
+  openNodeDetailsFromMenu(nodeId: string): void {
+    const menu = this.nodeMenu();
+    if (menu === null || menu.nodeId !== nodeId) return;
+    if (this.selectNodeForMenuVerb(nodeId) === null) {
+      this.closeNodeMenu(); // C32 belt
+      return;
+    }
+    this.clearInlineNaming();
+    this.inlineNamingLatch.set(null);
+    this.closeNodeMenu();
+  }
+
+  /**
+   * B-D4: the menu's Connect… arm — the existing B-118 quick-connect entry,
+   * entered from the object instead of the panel's button. NO eligibility
+   * gating of its own (R2/C30: the row renders for editor-mode library nodes
+   * and lets the EXISTING entry path refuse field-precisely — enterConnectMode
+   * gates editor + selection, both just written). The naming state + latch
+   * clear as Details does (the banner replaces the edit body; no popover may
+   * stand under it); the menu consumes itself on the way in.
+   */
+  connectNodeFromMenu(nodeId: string): void {
+    const menu = this.nodeMenu();
+    if (menu === null || menu.nodeId !== nodeId) return;
+    if (this.selectNodeForMenuVerb(nodeId) === null) {
+      this.closeNodeMenu(); // C32 belt
+      return;
+    }
+    this.clearInlineNaming();
+    this.inlineNamingLatch.set(null);
+    this.enterConnectMode();
+    this.closeNodeMenu();
+  }
+
+  /**
+   * B-D4: the menu's Detach arm — the property panel's `detachNode`
+   * verbatim (F54: every incident arc dies in both planes, the node survives
+   * byte-identical). NO selection writes (the panel arm's byte-for-byte
+   * semantics — the service's detachNode never touches the selection, so the
+   * node stays selected and its panel stays open). A C30 refusal renders the
+   * issues' own words into the menu's status slot and KEEPS the surface open
+   * (retry-elsewhere, the Set arm's contract); null consumes the menu.
+   */
+  detachNodeFromMenu(nodeId: string): void {
+    const menu = this.nodeMenu();
+    if (menu === null || menu.nodeId !== nodeId) return;
+    const refused = this.detachNode(nodeId);
+    if (refused !== null) {
+      this.nodeMenu.set({ ...menu, refusal: menuRefusalWords(refused) });
+      return; // C30 reject-before-mutate: the words stand, the menu stays
+    }
+    this.closeNodeMenu();
+  }
+
+  /**
+   * B-D4: the menu's Delete arm — the property panel's `removeNode` verbatim
+   * (F46: delete-and-redo IS the workflow, no confirm dialog; node + arcs
+   * die in both planes). NO selection writes (the service's removeNode
+   * clears the selection itself when the removed node WAS it, so the chip
+   * and panels close with it). A C30 refusal (e.g. a compound parent whose
+   * children would dangle) renders the issues' own words in-menu and keeps
+   * the surface open; null consumes the menu.
+   */
+  deleteNodeFromMenu(nodeId: string): void {
+    const menu = this.nodeMenu();
+    if (menu === null || menu.nodeId !== nodeId) return;
+    const refused = this.removeNode(nodeId);
+    if (refused !== null) {
+      this.nodeMenu.set({ ...menu, refusal: menuRefusalWords(refused) });
+      return; // C30 reject-before-mutate: the words stand, the menu stays
+    }
+    this.closeNodeMenu();
+  }
+
   /**
    * B-143: whether one node IS the current pin — a live read of the C24
    * reference (R4; the nodeBlockReason precedent). The menu's Clear arm
@@ -3539,25 +3702,32 @@ export class GraphService implements OnDestroy {
     // NAMING state instead of auto-opening the property panel (the panel's
     // draft-seeding effect skips while the flag names the selection). The
     // anchor is captured NOW, at open: the rebuilt projection's rendered
-    // position (canvas-relative px).
-    if (createdId !== null) this.startInlineNaming(createdId);
+    // position (canvas-relative px). B-D4: the placement seeds NOTHING —
+    // the empty input + placeholder form is byte-identical (only Rename
+    // passes a live label).
+    if (createdId !== null) this.startInlineNaming(createdId, null);
   }
 
   // --- B-D3 (R29, PROPOSAL-D §3.1): the inline-naming state machine ----------
 
   /**
    * B-D3: open the inline-naming state for one node — the placement path's
-   * ONLY open writer (R3: one write path per transition). Captures the
-   * rendered anchor at open (the openNodeMenu precedent:
-   * `node.renderedPosition()`, canvas-relative px, read once — the popover
-   * is PARKED) and sets the flag the panel's seeding effect and the
-   * popover's `@if` read. An absent node degrades to a null anchor (C32
-   * spirit — unreachable: the caller just rebuilt the projection).
+   * open writer (R3: one write path per transition). B-D4 (R29, PROPOSAL-D
+   * §3.1): the menu's Rename joins as the second caller, passing the node's
+   * LIVE label as `seedLabel` so the popover opens pre-filled for
+   * replace-wholesale typing; the placement passes null (the empty +
+   * placeholder form, byte-identical to B-D3). Captures the rendered anchor
+   * at open (the openNodeMenu precedent: `node.renderedPosition()`,
+   * canvas-relative px, read once — the popover is PARKED) and sets the flag
+   * the panel's seeding effect and the popover's `@if` read. An absent node
+   * degrades to a null anchor (C32 spirit — unreachable: the caller just
+   * rebuilt the projection).
    */
-  private startInlineNaming(id: string): void {
+  private startInlineNaming(id: string, seedLabel: string | null): void {
     const node = this.cy.getElementById(id);
     const rendered = node.length > 0 ? node.renderedPosition() : null;
     this.inlineNamingAnchor.set(rendered === null ? null : { x: rendered.x, y: rendered.y });
+    this.inlineNamingSeed.set(seedLabel);
     this.inlineNamingId.set(id);
   }
 
@@ -3565,10 +3735,13 @@ export class GraphService implements OnDestroy {
    * B-D3: the flag's quiet close — no command, no latch (the guard effect's
    * and the editor exit's close path; R3). The selection is untouched; the
    * property panel behaves exactly as today for whatever is selected.
+   * B-D4: the seed clears with the rest (a stale seed must never pre-fill
+   * the next placement's popover).
    */
   clearInlineNaming(): void {
     this.inlineNamingId.set(null);
     this.inlineNamingAnchor.set(null);
+    this.inlineNamingSeed.set(null);
   }
 
   /**

@@ -36,14 +36,30 @@
 //           reach IN PAGE, never spec-magic: the aim's model span to the
 //           nearest child is asserted against the hook's live zoom before
 //           the gesture (the arc-editing seam convention).
+//   B-D4 (PROPOSAL-D §3.1) — the node menu, generalized: the six object
+//           verbs (Rename · Set as party location · Connect… · Details ·
+//           Detach from arcs · Delete) on editor-mode LIBRARY nodes, {Set}
+//           alone in view mode and on waypoints; every verb routes an
+//           EXISTING command path (R2); refusals render the core's own
+//           words in-menu (C30) and keep the surface open; the menu-open
+//           gesture writes NO selection — the authoring verbs select-first
+//           themselves (the D-3 guard-order law); Rename re-opens D-3's
+//           popover SEEDED with the live label; Details/Connect yield the
+//           naming state + latch so the panel's preserved seeding path
+//           runs; Detach/Delete are the panel arms' exact commands (F54/
+//           F46, no confirm — D10).
 import { chromium, devices, expect, test, type CDPSession, type Page, type Point } from '@playwright/test';
 
 interface TmeE2EHook {
+  nodeLabels(): string[];
   nodeRenderedPosition(id: string): { x: number; y: number } | null;
   nodeHasClass(id: string, cls: string): boolean;
   selectedNodeId(): string | null;
   zoom(): number;
   pan(): { x: number; y: number };
+  edgeIds(): string[];
+  edgeData(id: string): { source: string; target: string } | null;
+  connectMode(): boolean;
 }
 
 const HOOK_ERROR = 'window.__TME_E2E__ missing — dev harness not loaded';
@@ -367,6 +383,32 @@ const cdpLongPress = async (cdp: CDPSession, point: Point): Promise<void> => {
 };
 
 /**
+ * B-D4 (cell 10): one-finger canvas PAN through CDP — the twin's touch input
+ * path (the touchscreen API has no drag primitive), the editor-panel-regime
+ * cdpTouchDrag verbatim. The 200 ms HOLD before the release is load-bearing,
+ * not cosmetic: a touchEnd landing right after the last move leaves
+ * Chromium's gesture recognizer half-armed and the NEXT tap's click is
+ * silently dropped (the regime spec's reproduced ~40% finding).
+ */
+const cdpPanDrag = async (cdp: CDPSession, from: Point, dx: number, dy: number): Promise<void> => {
+  const steps = 6;
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: from.x, y: from.y }],
+  });
+  await sleep(40);
+  for (let i = 1; i <= steps; i++) {
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ x: from.x + (dx * i) / steps, y: from.y + (dy * i) / steps }],
+    });
+    await sleep(25);
+  }
+  await sleep(200);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+};
+
+/**
  * Open the node menu AT a screen point — context-click on the pointer
  * project, CDP long-press through the twin on the phone project
  * (D53/F52: one affordance, two worlds, no hover dependency). The menu's
@@ -389,6 +431,219 @@ const openNodeMenuAt = async (page: Page, point: Point): Promise<void> => {
 
 const openNodeMenuOnNode = async (page: Page, id: string): Promise<void> =>
   openNodeMenuAt(page, await nodeScreenPoint(page, id));
+
+// --- B-D4 (PROPOSAL-D §3.1) helper seams (the established read-only shapes) ---
+
+/** The projection's node labels — the canvas-label assert surface (C23). */
+const readLabels = (page: Page): Promise<string[]> =>
+  page.evaluate((): string[] => {
+    const hook = (window as unknown as { __TME_E2E__?: TmeE2EHook }).__TME_E2E__;
+    if (hook === undefined) throw new Error(HOOK_ERROR);
+    return hook.nodeLabels();
+  });
+
+/** B-109 ruling 4: every edge id in the projection — the F54/F46 count seam. */
+const readEdgeIds = (page: Page): Promise<string[]> =>
+  page.evaluate((): string[] => {
+    const hook = (window as unknown as { __TME_E2E__?: TmeE2EHook }).__TME_E2E__;
+    if (hook === undefined) throw new Error(HOOK_ERROR);
+    return hook.edgeIds();
+  });
+
+/**
+ * The ids of every arc currently incident to one node — computed IN PAGE from
+ * the live edge set (the detach/delete cells' F54/F46 basis). NEVER a
+ * hardcoded count: the boot incident sets are staging facts, not contracts
+ * (FX1 boots emiya-residence with 7 and shopping-district with 6 incident
+ * arcs — read live, asserted as deltas).
+ */
+const readIncidentEdgeIds = (page: Page, nodeId: string): Promise<string[]> =>
+  page.evaluate(
+    (id): string[] => {
+      const hook = (window as unknown as { __TME_E2E__?: TmeE2EHook }).__TME_E2E__;
+      if (hook === undefined) throw new Error(HOOK_ERROR);
+      return hook.edgeIds().filter((edgeId) => {
+        const data = hook.edgeData(edgeId);
+        return data !== null && (data.source === id || data.target === id);
+      });
+    },
+    nodeId,
+  );
+
+/** B-118: whether connect mode is on — the banner's state seam. */
+const readConnectMode = (page: Page): Promise<boolean> =>
+  page.evaluate((): boolean => {
+    const hook = (window as unknown as { __TME_E2E__?: TmeE2EHook }).__TME_E2E__;
+    if (hook === undefined) throw new Error(HOOK_ERROR);
+    return hook.connectMode();
+  });
+
+/** The focused element's testid — the focus asserts' poll surface (D53). */
+const activeElementTestid = (page: Page): Promise<string> =>
+  page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? '');
+
+/** The focused input's value + selection span (the R-5 replace-wholesale read). */
+const activeInputSelection = (
+  page: Page,
+): Promise<{ value: string; start: number; end: number } | null> =>
+  page.evaluate(() => {
+    const el = document.activeElement;
+    return el instanceof HTMLInputElement
+      ? { value: el.value, start: el.selectionStart ?? 0, end: el.selectionEnd ?? 0 }
+      : null;
+  });
+
+// --- B-D4 cell 10: the phone arm's sheet-dodge staging ------------------------
+// The cell's canvas gestures run while the MAXIMIZED property sheet stands
+// (probe-measured on the 445px phone stage: the sheet tops ≈177px and the
+// collapsed route rail rides at ≈133.5..177.5 — the whole lower two-thirds
+// of the stage). A node rendered at the world fit (the Set target sits
+// y≈225) is UNDER the sheet: a press at its center hits the panel, never
+// the canvas. The lift below is the editor-property-panel dodgeBands
+// discipline (B-133c) re-homed at this spec's CDP twin.
+
+/** One sheet/chrome band's live DOM rect (null when absent or zero-sized). */
+interface BandBox {
+  readonly left: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+}
+
+/**
+ * B-D4 cell 10: the FX1 node ids for the dodge's clear-start scan — the
+ * editor-property-panel EPP_NODE_IDS precedent (the hook exposes per-id
+ * reads only; the scan needs every rendered center).
+ */
+const FX1_NODE_IDS = [
+  'einzbern-castle',
+  'ryuudou-temple',
+  'outskirts',
+  'emiya-residence',
+  'shopping-district',
+  'homurahara-academy',
+  'matou-residence',
+  'tohsaka-residence',
+  'fuyuki-bridge',
+  'fuyuki-station',
+  'harbor',
+  'kotomine-church',
+  'ghost-house',
+  'district-miyama',
+  'district-shinto',
+] as const;
+
+/** The live covering bands: the sheets (property/route/rail) + the chip. */
+const sheetBands = (page: Page): Promise<{ sheets: (BandBox | null)[]; chip: BandBox | null }> =>
+  page.evaluate(() => {
+    const boxOf = (sel: string): BandBox | null => {
+      const el = document.querySelector(sel);
+      if (el === null) return null;
+      const r = el.getBoundingClientRect();
+      return r.width === 0 && r.height === 0
+        ? null
+        : { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+    };
+    return {
+      sheets: [
+        boxOf('tme-property-panel'),
+        boxOf('tme-route-panel'),
+        boxOf('[data-testid="tme-sheet-rail"]'),
+      ],
+      chip: boxOf('[data-testid="tme-selection-chip"]'),
+    };
+  });
+
+/**
+ * B-D4 cell 10 (phone-only, the twin): lift one node's rendered point clear
+ * of the covering sheet bands with ONE decisive one-finger PAN. Two rules,
+ * both probe-found live:
+ *   - DECISIVE drags only (the corrective dy is floored at 40px): a <40px
+ *     finger movement classifies as a background TAP in cy's gesture
+ *     recognition, and in editor+Node a background tap PLACES a node whose
+ *     naming popover then owns the stage (measured: a 15px "correction"
+ *     placed 'node-1' and parked its popover exactly over the press aim).
+ *   - The STRICT (±4px, the bandCovers predicate) containment check ends
+ *     the loop — the map's top clamp keeps the last few px of a lift, and a
+ *     margin-chasing corrective loop would tap-place (the rule above).
+ * Re-aims FRESH every pass (R23 law: a band open/close re-pans at constant
+ * zoom — stale aims bit three times); fails loud with the geometry when the
+ * corridor between the chip band and the sheets cannot fit — never a blind
+ * press at a covered aim (the B-136 discipline). A clean no-op when the
+ * aim already clears.
+ */
+const liftNodeClearOfSheets = async (page: Page, id: string): Promise<void> => {
+  const inside = (y: number, b: BandBox | null, margin: number): boolean =>
+    b !== null && y >= b.top - margin && y <= b.bottom + margin;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await settle(page);
+    const aim = await nodeScreenPoint(page, id);
+    const bands = await sheetBands(page);
+    if (!bands.sheets.some((b) => inside(aim.y, b, 4))) return; // clear — the press may land
+    const tops = bands.sheets.filter((b): b is BandBox => b !== null).map((b) => b.top);
+    let dy = (tops.length > 0 ? Math.min(...tops) : aim.y) - 30 - aim.y;
+    if (dy > -40) dy = -40; // DECISIVE: a tiny drag classifies as a tap — and places
+    const floor = bands.chip !== null ? bands.chip.bottom + 16 : 16;
+    if (aim.y + dy < floor) {
+      throw new Error(
+        `liftNodeClearOfSheets: corridor too narrow (aim y ${Math.round(aim.y)}, dy ${Math.round(dy)}, floor ${Math.round(floor)})`,
+      );
+    }
+    const start = await page.evaluate((ids): Point | null => {
+      const hook = (window as unknown as {
+        __TME_E2E__?: { nodeRenderedPosition(nodeId: string): { x: number; y: number } | null };
+      }).__TME_E2E__;
+      if (hook === undefined) return null;
+      const host = document.querySelector('[data-testid="tme-canvas"]');
+      if (host === null) return null;
+      const canvasBox = host.getBoundingClientRect();
+      const sheetTops = [
+        'tme-property-panel',
+        'tme-route-panel',
+        '[data-testid="tme-sheet-rail"]',
+      ]
+        .map((sel) => document.querySelector(sel))
+        .filter((el): el is Element => el !== null)
+        .map((el) => el.getBoundingClientRect())
+        .filter((r) => r.width > 0 || r.height > 0)
+        .map((r) => r.top);
+      const minSheet = sheetTops.length > 0 ? Math.min(...sheetTops) : canvasBox.bottom;
+      const chip = document.querySelector('[data-testid="tme-selection-chip"]');
+      const topFloor = chip !== null ? chip.getBoundingClientRect().bottom : canvasBox.top;
+      const nodePts = ids
+        .map((nodeId: string) => hook.nodeRenderedPosition(nodeId))
+        .filter((p): p is { x: number; y: number } => p !== null);
+      for (const fx of [0.5, 0.2, 0.8, 0.35, 0.65]) {
+        for (let y = topFloor + 12; y < minSheet - 12; y += 6) {
+          const x = canvasBox.x + canvasBox.width * fx;
+          const el = document.elementFromPoint(x, y);
+          if (el === null || el.closest('.tme-canvas') === null) continue;
+          // A down on a node GRABS it (editor mode) — clear every center by
+          // more than the touch slop (~22·zoom + 8 px; the dodgeBands rule).
+          if (nodePts.some((p) => Math.hypot(canvasBox.x + p.x - x, canvasBox.y + p.y - y) < 26)) {
+            continue;
+          }
+          return { x, y };
+        }
+      }
+      return null;
+    }, [...FX1_NODE_IDS]);
+    if (start === null) throw new Error('liftNodeClearOfSheets: no clear canvas drag start');
+    const cdp = await page.context().newCDPSession(page);
+    await cdpPanDrag(cdp, start, 0, dy);
+  }
+  await settle(page);
+  const aim = await nodeScreenPoint(page, id);
+  const bands = await sheetBands(page);
+  if (bands.sheets.some((b) => inside(aim.y, b, 4))) {
+    throw new Error(
+      `liftNodeClearOfSheets: ${id} stays covered (aim y ${Math.round(aim.y)}, sheet tops ${bands.sheets
+        .filter((b) => b !== null)
+        .map((b) => Math.round(b.top))
+        .join('/')})`,
+    );
+  }
+};
 
 test.describe('pin-setting node menu (PKG B-143, REPAIRS §R3)', () => {
   test.beforeEach(async ({ page }) => {
@@ -657,6 +912,476 @@ test.describe('pin-setting node menu (PKG B-143, REPAIRS §R3)', () => {
       await expect(p.getByTestId('tme-node-menu')).toBeHidden();
       await expect(p.getByTestId('tme-selection-chip')).toBeVisible();
       await expect(p.getByTestId('tme-selection-label')).toHaveText('Kotomine Church');
+    };
+    if (isPhone()) await withPhoneTwinPage(cell);
+    else await cell(page);
+  });
+});
+
+// --- B-D4 (PROPOSAL-D §3.1): the node menu, generalized — the six object
+// verbs at the selection. Every cell runs BOTH arms (desktop pointer /
+// phone CDP-twin touch, D53/F52) through the shared staging above. -------
+
+/** B-D4: the Rename cell's replacement label (C23 plain words). */
+const RENAMED_LABEL = 'Market Quarter';
+
+/** B-D4 (cell 10): the NON-label dirty draft edit — a description change
+ *  (two label edits would muddy the assert: the packet pins the draft's
+ *  field edit against the popover's label intent). */
+const DESC_EDIT = 'The busiest arcade in Miyama.';
+
+/**
+ * B-D4: the waypoint cell's placement point — the B-109-vetted clear
+ * background hole (waypoints.e2e-spec.ts's BG_MODEL_POINT scan: >60 model
+ * units from every node center, inside the fitted bbox at both fits).
+ */
+const WP_MODEL_POINT: { x: number; y: number } = { x: -250, y: 450 };
+
+/**
+ * B-D4: the engine-assigned id of the FIRST waypoint on a fresh facade (C5 —
+ * deterministic, the waypoints spec's own pinned fact; read live after the
+ * placement through the rendered-position seam before any gesture on it).
+ */
+const WAYPOINT_ID = 'wp-1';
+
+test.describe('the object menu: six verbs at the selection (PKG B-D4, PROPOSAL-D §3.1)', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByTestId('tme-canvas')).toBeVisible();
+    await expect.poll(() => readRenderedPosition(page, BOOT_PIN_ID)).not.toBeNull();
+    await restoreBootViewport(page);
+    await expect.poll(() => hasPinClass(page, BOOT_PIN_ID)).toBe(true);
+  });
+
+  // Cell 1 — the menu's SHAPE: editor mode renders the six object rows on a
+  // library leaf; view mode (the default boot) keeps exactly today's {Set}.
+  test('editor menu carries the six verbs; view mode keeps exactly {Set} on a leaf (B-D4, PROPOSAL-D §3.1, F52/D53)', async ({
+    page,
+  }) => {
+    const cell = async (p: Page): Promise<void> => {
+      // VIEW mode first (the default boot): the authoring rows are ABSENT —
+      // exactly the pre-packet {Set} shape on a non-pin leaf.
+      await openNodeMenuOnNode(p, SET_TARGET_ID);
+      await expect(p.getByTestId('tme-node-menu-label')).toHaveText('Shopping District');
+      await expect(p.getByTestId('tme-node-menu-set')).toBeVisible();
+      for (const tid of ['rename', 'connect', 'details', 'detach', 'delete']) {
+        await expect(p.getByTestId(`tme-node-menu-${tid}`)).toHaveCount(0);
+      }
+      await expect(p.getByTestId('tme-node-menu-clear')).toHaveCount(0); // not the pin
+      // Dismiss through the packet's named path (the aim sits above the
+      // phone's raised sheet band — the standing cell-5 precedent).
+      await tapPoint(p, await canvasPoint(p, { x: 10, y: 100 }));
+      await expect(p.getByTestId('tme-node-menu')).toBeHidden();
+
+      // EDITOR mode: the six rows stand — Rename, Set, Connect…, Details,
+      // Detach from arcs, Delete (Clear still absent: not the pin).
+      await activate(p, 'tme-editor-toggle');
+      await settle(p);
+      await openNodeMenuOnNode(p, SET_TARGET_ID);
+      const rows = ['set', 'rename', 'connect', 'details', 'detach', 'delete'];
+      for (const tid of rows) {
+        await expect(p.getByTestId(`tme-node-menu-${tid}`)).toHaveCount(1);
+      }
+      await expect(p.getByTestId('tme-node-menu-clear')).toHaveCount(0);
+      // F52: every row is a >= 44px tap target in BOTH regimes.
+      for (const tid of rows) {
+        const box = await p.getByTestId(`tme-node-menu-${tid}`).boundingBox();
+        expect(box?.height ?? 0, `row ${tid} height >= 44px (F52)`).toBeGreaterThanOrEqual(44);
+      }
+      // The mode-exit dismissal (the unsaved-node cell's precedent).
+      await activate(p, 'tme-editor-toggle');
+      await expect(p.getByTestId('tme-node-menu')).toBeHidden();
+    };
+    if (isPhone()) await withPhoneTwinPage(cell);
+    else await cell(page);
+  });
+
+  // Cell 2 — Rename: the popover re-opens SEEDED with the current label
+  // (focused + fully selected — typing replaces wholesale); Enter commits
+  // through the one PUT; Esc keeps the label (no command).
+  test('Rename seeds the popover with the live label; Enter commits, Esc keeps it (B-D4, C23/C30, D10, F45)', async ({
+    page,
+  }) => {
+    const cell = async (p: Page): Promise<void> => {
+      await activate(p, 'tme-editor-toggle');
+      await settle(p);
+      await openNodeMenuOnNode(p, SET_TARGET_ID);
+      await activate(p, 'tme-node-menu-rename');
+
+      // The menu consumed itself; the popover stands with the CURRENT label
+      // pre-filled, focused, and fully selected (the R-5 idiom at the object).
+      await expect(p.getByTestId('tme-node-menu')).toBeHidden();
+      await expect(p.getByTestId('tme-inline-naming')).toBeVisible();
+      const input = p.getByTestId('tme-inline-name-input');
+      await expect(input).toHaveValue('Shopping District');
+      await expect.poll(() => activeElementTestid(p)).toBe('tme-inline-name-input');
+      const seeded = await activeInputSelection(p);
+      expect(seeded?.start).toBe(0);
+      expect(seeded?.end, 'the seed is fully selected — typing replaces it').toBe(
+        'Shopping District'.length,
+      );
+
+      // Replace + Enter: ONE upsertNode full-replace — the canvas label and
+      // the selection chip follow, the map is dirty (F45 presence).
+      await input.fill(RENAMED_LABEL);
+      await input.press('Enter');
+      await expect(p.getByTestId('tme-inline-naming')).toHaveCount(0);
+      await expect.poll(() => readLabels(p)).toContain(RENAMED_LABEL);
+      await expect.poll(() => readLabels(p)).not.toContain('Shopping District');
+      await expect(p.getByTestId('tme-selection-label')).toHaveText(RENAMED_LABEL);
+      await expect(p.getByTestId('tme-save-dock')).toBeVisible();
+      await expect(p.getByTestId('tme-property-panel')).toHaveCount(0); // the latch holds it shut
+
+      // The Esc arm: re-open → Rename → Esc — the CURRENT label stands, no
+      // rename command fires (D10: nothing auto-commits).
+      await openNodeMenuOnNode(p, SET_TARGET_ID);
+      await activate(p, 'tme-node-menu-rename');
+      await expect(input).toHaveValue(RENAMED_LABEL);
+      await input.press('Escape');
+      await expect(p.getByTestId('tme-inline-naming')).toHaveCount(0);
+      await expect.poll(() => readLabels(p)).toContain(RENAMED_LABEL);
+      await expect.poll(() => readLabels(p)).not.toContain('New place');
+    };
+    if (isPhone()) await withPhoneTwinPage(cell);
+    else await cell(page);
+  });
+
+  // Cell 3 — Details on a LATCHED node: a placement resolved by Esc leaves
+  // the panel suppressed; the menu's Details yields the latch and the panel
+  // opens NAME-FIRST through the preserved seeding path (R-5 standing).
+  test('Details yields the latch: the panel opens name-first on a node whose popover resolved (B-D4, R-5)', async ({
+    page,
+  }) => {
+    const cell = async (p: Page): Promise<void> => {
+      await activate(p, 'tme-editor-toggle');
+      await settle(p);
+      await tapPoint(p, await modelScreenPoint(p, placeModelPointFor(p)));
+      await expect.poll(readSelectedId.bind(null, p)).not.toBeNull();
+      const placedId = await readSelectedId(p);
+      if (placedId === null) throw new Error('placed node not selected (C5/D75 id discovery failed)');
+
+      // Resolve the popover by Esc — the latch parks the panel shut. NO
+      // dismissSelection here: the selection must STAY (the latch dies with
+      // its departure — the thing Details must overcome). B-117 keeps the
+      // route sheet collapsed for the editor-mode library selection, so the
+      // placed node's press point stands clear.
+      await p.getByTestId('tme-inline-name-input').press('Escape');
+      await expect(p.getByTestId('tme-inline-naming')).toHaveCount(0);
+      await expect(p.getByTestId('tme-property-panel')).toHaveCount(0);
+
+      await openNodeMenuOnNode(p, placedId);
+      await activate(p, 'tme-node-menu-details');
+
+      // The menu consumed itself; the panel opens through the PRESERVED
+      // seeding path — NAME-FIRST: the Name input is the panel's first
+      // field, focused, seeded with the live label, fully selected (R-5).
+      await expect(p.getByTestId('tme-node-menu')).toBeHidden();
+      await expect(p.getByTestId('tme-property-panel')).toBeVisible();
+      await expect.poll(() => activeElementTestid(p)).toBe('tme-node-label-input');
+      const firstField = await p.evaluate(() => {
+        const panel = document.querySelector('[data-testid="tme-property-panel"]');
+        return panel?.querySelector('input, select, textarea')?.getAttribute('data-testid') ?? null;
+      });
+      expect(firstField, 'the Name input is the panel\'s first field (R-5 name-first)').toBe(
+        'tme-node-label-input',
+      );
+      const state = await activeInputSelection(p);
+      expect(state?.value).toBe(NEW_PLACE);
+      expect(state?.start).toBe(0);
+      expect(state?.end, 'the Name is fully selected (R-5)').toBe(NEW_PLACE.length);
+    };
+    if (isPhone()) await withPhoneTwinPage(cell);
+    else await cell(page);
+  });
+
+  // Cell 4 — Connect…: the existing quick-connect mode entered from the
+  // object; the banner names the node; Cancel exits (no arcs touched).
+  test('Connect… enters quick-connect from the menu: the banner names the node, Cancel exits (B-D4, F16/F27)', async ({
+    page,
+  }) => {
+    const cell = async (p: Page): Promise<void> => {
+      const edgesBefore = await readEdgeIds(p);
+      await activate(p, 'tme-editor-toggle');
+      await settle(p);
+      await openNodeMenuOnNode(p, SET_TARGET_ID);
+      await activate(p, 'tme-node-menu-connect');
+
+      // The menu consumed itself; the mode is on (the service's select-first
+      // wrote the frozen source) and the banner names it in the core's own
+      // C23 words.
+      await expect(p.getByTestId('tme-node-menu')).toBeHidden();
+      await expect.poll(readConnectMode.bind(null, p)).toBe(true);
+      await expect(p.getByTestId('tme-connect-from')).toBeVisible();
+      await expect(p.getByTestId('tme-connect-from')).toHaveText('Connecting from Shopping District');
+
+      // Exit through the banner's Cancel — nothing committed.
+      await activate(p, 'tme-connect-cancel');
+      await expect.poll(readConnectMode.bind(null, p)).toBe(false);
+      await expect(p.getByTestId('tme-connect-from')).toHaveCount(0);
+      expect((await readEdgeIds(p)).length).toBe(edgesBefore.length);
+    };
+    if (isPhone()) await withPhoneTwinPage(cell);
+    else await cell(page);
+  });
+
+  // Cell 5 — Detach from arcs (F54): every incident arc dies in both planes,
+  // the node survives byte-identical, the selection STANDS, the menu is
+  // consumed. The boot pin node doubles as the pin-untouched proof (D10).
+  test('Detach from arcs kills the incident arcs, keeps the node and the selection (F54, B-D4)', async ({ page }) => {
+    const cell = async (p: Page): Promise<void> => {
+      const before = await readEdgeIds(p);
+      const incident = await readIncidentEdgeIds(p, BOOT_PIN_ID);
+      expect(incident.length, 'the boot pin node has incident arcs to lose (F54 staging)').toBeGreaterThan(0);
+
+      // Desktop: the context-click writes NO selection — stage one first (a
+      // plain tap selects; the auto-opened route dock is closed through the
+      // rail's wide Route toggle so nothing floats over the press). The
+      // phone arm needs none: the long-press's own release-tap selects.
+      if (!isPhone()) {
+        await tapPoint(p, await nodeScreenPoint(p, BOOT_PIN_ID));
+        await expect.poll(readSelectedId.bind(null, p)).toBe(BOOT_PIN_ID);
+        await activate(p, 'tme-route-toggle');
+        await settle(p);
+      }
+      await activate(p, 'tme-editor-toggle');
+      await settle(p);
+      await openNodeMenuOnNode(p, BOOT_PIN_ID);
+      await activate(p, 'tme-node-menu-detach');
+
+      // F54: exactly the incident set died (live-counted, never hardcoded);
+      // the node, the selection, and the pin stand.
+      await expect(p.getByTestId('tme-node-menu')).toBeHidden();
+      const after = await readEdgeIds(p);
+      expect(after.length).toBe(before.length - incident.length);
+      for (const id of incident) expect(after).not.toContain(id);
+      await expect.poll(() => readRenderedPosition(p, BOOT_PIN_ID)).not.toBeNull();
+      expect(await readSelectedId(p)).toBe(BOOT_PIN_ID);
+      await expect.poll(() => hasPinClass(p, BOOT_PIN_ID)).toBe(true); // detach never touches the pin (D10)
+    };
+    if (isPhone()) await withPhoneTwinPage(cell);
+    else await cell(page);
+  });
+
+  // Cell 6 — Delete (F46): the node AND its incident arcs die, the selection
+  // CLEARS (the service's own clear — the chip and panels close with it),
+  // the menu is consumed. No confirm dialog ever (delete-and-redo).
+  test('Delete removes the node and its arcs, clears the selection, consumes the menu (F46, B-D4)', async ({ page }) => {
+    const cell = async (p: Page): Promise<void> => {
+      const before = await readEdgeIds(p);
+      const incident = await readIncidentEdgeIds(p, SET_TARGET_ID);
+      expect(incident.length, 'the delete target has incident arcs to lose (F46 staging)').toBeGreaterThan(0);
+
+      // The detach cell's desktop staging: a selection must stand for the
+      // clear to be honest (the context-click writes none).
+      if (!isPhone()) {
+        await tapPoint(p, await nodeScreenPoint(p, SET_TARGET_ID));
+        await expect.poll(readSelectedId.bind(null, p)).toBe(SET_TARGET_ID);
+        await activate(p, 'tme-route-toggle');
+        await settle(p);
+      }
+      await activate(p, 'tme-editor-toggle');
+      await settle(p);
+      await openNodeMenuOnNode(p, SET_TARGET_ID);
+      await activate(p, 'tme-node-menu-delete');
+
+      await expect(p.getByTestId('tme-node-menu')).toBeHidden();
+      const after = await readEdgeIds(p);
+      expect(after.length).toBe(before.length - incident.length);
+      for (const id of incident) expect(after).not.toContain(id);
+      await expect.poll(() => readRenderedPosition(p, SET_TARGET_ID)).toBeNull(); // the node is gone
+      expect(await readSelectedId(p)).toBeNull(); // the service cleared it
+      await expect(p.getByTestId('tme-selection-chip')).toBeHidden();
+    };
+    if (isPhone()) await withPhoneTwinPage(cell);
+    else await cell(page);
+  });
+
+  // Cell 7 — the C30 refusal: Delete on the compound parent (children would
+  // dangle) renders the CORE's own words in-menu and KEEPS the surface open.
+  test('refused delete on a container: the core words render in the menu, nothing dies (C30/C32, B-D4)', async ({
+    page,
+  }) => {
+    const cell = async (p: Page): Promise<void> => {
+      // The container-refusal cell's zoom staging (the slop-shrink so the
+      // compound parent's body owns the press — see CONTAINER_AIM's block).
+      const zoomTaps = isPhone() ? 5 : 3;
+      for (let i = 0; i < zoomTaps; i++) await activate(p, 'tme-zoom-in');
+      await settle(p);
+      await expectContainerAimClearOfSlop(p);
+
+      // Editor mode for the Delete row — through the WAYPOINT tool: the
+      // phone twin's release-tap on a compound parent's box is a PLACEMENT
+      // gesture in editor+node (B-109 ruling 2), and a placed node's naming
+      // popover would park exactly where the menu parks (aim+14) and cover
+      // the arms; the Waypoint tool's release places a waypoint with NO
+      // popover and NO selection, leaving the menu the top surface.
+      await activate(p, 'tme-editor-toggle');
+      await settle(p);
+      await activate(p, 'tme-tool-waypoint');
+      await settle(p);
+
+      await openNodeMenuAt(p, await modelScreenPoint(p, CONTAINER_AIM));
+      await expect(p.getByTestId('tme-node-menu-delete')).toBeVisible();
+      await activate(p, 'tme-node-menu-delete');
+
+      // The validator's own words (each dangling child's parent issue —
+      // folded into the menu's one status line), the menu STAYS open
+      // (retry-elsewhere), and nothing died (C30 reject-before-mutate).
+      const refusal = p.getByTestId('tme-node-menu-refusal');
+      await expect(refusal).toBeVisible();
+      await expect(refusal).toContainText(
+        "must reference an existing node id ('district-miyama' not found)",
+      );
+      await expect(p.getByTestId('tme-node-menu')).toBeVisible();
+      expect(await readRenderedPosition(p, CONTAINER_ID)).not.toBeNull();
+
+      // Dismiss through the standing cell's path (zoom home, then the vetted
+      // clear point).
+      for (let i = 0; i < zoomTaps; i++) await activate(p, 'tme-zoom-out');
+      await tapPoint(p, await canvasPoint(p, { x: 10, y: 100 }));
+      await expect(p.getByTestId('tme-node-menu')).toBeHidden();
+    };
+    if (isPhone()) await withPhoneTwinPage(cell);
+    else await cell(page);
+  });
+
+  // Cell 8 — D-3's standing law at the new surface: the popover and the menu
+  // are NEVER simultaneous — the long-press's own press resolves a standing
+  // popover FIRST (the typed name commits), then the menu stands.
+  test('never simultaneous: a long-press resolves the standing popover first, then the menu stands (B-D4, D-3/D10)', async ({
+    page,
+  }) => {
+    const cell = async (p: Page): Promise<void> => {
+      await activate(p, 'tme-editor-toggle');
+      await settle(p);
+      await tapPoint(p, await modelScreenPoint(p, placeModelPointFor(p)));
+      await expect.poll(readSelectedId.bind(null, p)).not.toBeNull();
+      const placedId = await readSelectedId(p);
+      if (placedId === null) throw new Error('placed node not selected (C5/D75 id discovery failed)');
+
+      // Type a name and leave the popover standing — then long-press the
+      // SAME node. The press (the menu-open gesture's own pointerdown)
+      // commits the typed name through the popover's outside-press arm
+      // BEFORE the hold opens the menu; the hold's taphold then opens the
+      // menu on the now-renamed node.
+      const input = p.getByTestId('tme-inline-name-input');
+      await input.fill('Riverbend');
+      await openNodeMenuOnNode(p, placedId);
+
+      // The popover is GONE while the menu stands — never both at once —
+      // and the typed name COMMITTED (the canvas label and the menu's own
+      // label line carry it).
+      await expect(p.getByTestId('tme-node-menu')).toBeVisible();
+      await expect(p.getByTestId('tme-inline-naming')).toHaveCount(0);
+      await expect.poll(() => readLabels(p)).toContain('Riverbend');
+      await expect(p.getByTestId('tme-node-menu-label')).toHaveText('Riverbend');
+      await expect(p.getByTestId('tme-selection-label')).toHaveText('Riverbend');
+    };
+    if (isPhone()) await withPhoneTwinPage(cell);
+    else await cell(page);
+  });
+
+  // Cell 9 — the waypoint menu keeps today's exact {Set} shape: an overlay
+  // waypoint is no library node, so no authoring row renders (the live
+  // nodeDataById presence read — the panel-never-opens rule's menu twin).
+  test('a waypoint menu keeps exactly {Set}: no authoring rows on the overlay plane (B-D4, F10/D21)', async ({
+    page,
+  }) => {
+    const cell = async (p: Page): Promise<void> => {
+      // The waypoints spec's placement prefix: editor mode + the Waypoint
+      // tool; one tap places 'wp-1' (C5, deterministic on a fresh facade).
+      await activate(p, 'tme-editor-toggle');
+      await settle(p);
+      await activate(p, 'tme-tool-waypoint');
+      await expect(p.getByTestId('tme-tool-waypoint')).toHaveAttribute('aria-pressed', 'true');
+      await tapPoint(p, await modelScreenPoint(p, WP_MODEL_POINT));
+      await expect.poll(() => readRenderedPosition(p, WAYPOINT_ID)).not.toBeNull();
+
+      await openNodeMenuOnNode(p, WAYPOINT_ID);
+      await expect(p.getByTestId('tme-node-menu-label')).toHaveText('Waypoint');
+      await expect(p.getByTestId('tme-node-menu-set')).toBeVisible();
+      for (const tid of ['rename', 'connect', 'details', 'detach', 'delete']) {
+        await expect(p.getByTestId(`tme-node-menu-${tid}`)).toHaveCount(0);
+      }
+      await expect(p.getByTestId('tme-node-menu-clear')).toHaveCount(0); // not the pin
+
+      // The mode-exit dismissal (a background tap here would PLACE another
+      // waypoint — the Waypoint tool owns the gesture).
+      await activate(p, 'tme-editor-toggle');
+      await expect(p.getByTestId('tme-node-menu')).toBeHidden();
+    };
+    if (isPhone()) await withPhoneTwinPage(cell);
+    else await cell(page);
+  });
+
+  // Cell 10 — the SAME-NODE displacement (the review-gate finding): a DIRTY
+  // panel draft displaced by its OWN node's Rename resolves FIRST — the
+  // seeding effect commits the draft (the displacement commit) before the
+  // popover stands, so the popover's later PUT reads the LIVE map and BOTH
+  // intents survive the navigation commit: the renamed canvas label AND the
+  // draft's description edit. The pre-fix bug: the same-node early return
+  // ("keystrokes never re-seed") shielded the dirty draft — it stood HIDDEN
+  // under the popover, and its STALE label committed at the next selection
+  // change, silently reverting the rename (the older intent committing
+  // last). B-D4 + the D-3 displacement rule (C29). Note: the popover's seed
+  // shows the PRE-commit live label — cosmetic: the text is fully selected
+  // for wholesale replacement.
+  test('Rename over its own dirty draft: both intents survive the navigation (B-D4 + the D-3 displacement rule, C29)', async ({
+    page,
+  }) => {
+    const cell = async (p: Page): Promise<void> => {
+      await activate(p, 'tme-editor-toggle');
+      await settle(p);
+
+      // A PLAIN TAP selects the leaf (a leaf tap in editor mode keeps the
+      // select branch — only compound boxes place) and the panel opens,
+      // seeded. The draft is dirtied through the DESCRIPTION field — a
+      // NON-label edit.
+      await tapPoint(p, await nodeScreenPoint(p, SET_TARGET_ID));
+      await expect.poll(readSelectedId.bind(null, p)).toBe(SET_TARGET_ID);
+      await expect(p.getByTestId('tme-property-panel')).toBeVisible();
+      await p.getByTestId('tme-node-description').fill(DESC_EDIT);
+
+      // Phone-only staging: the maximized property sheet covers the node's
+      // rendered slot (probe-measured: sheet top ≈177px, the node y≈225) —
+      // lift it above the sheet bands before the press.
+      if (isPhone()) await liftNodeClearOfSheets(p, SET_TARGET_ID);
+
+      // Menu → Rename over the SAME node whose draft stands dirty.
+      await openNodeMenuOnNode(p, SET_TARGET_ID);
+      await activate(p, 'tme-node-menu-rename');
+      await expect(p.getByTestId('tme-node-menu')).toBeHidden();
+      const input = p.getByTestId('tme-inline-name-input');
+      await expect(input).toBeVisible();
+      await expect(input).toHaveValue('Shopping District'); // the seed: the PRE-commit live label (cosmetic, see above)
+      // The displacement commit resolved the draft BEFORE the popover stood:
+      // the panel is gone — never both surfaces, and no draft survives the
+      // naming state hidden.
+      await expect(p.getByTestId('tme-property-panel')).toHaveCount(0);
+
+      await input.fill(RENAMED_LABEL);
+      await input.press('Enter');
+      await expect(p.getByTestId('tme-inline-naming')).toHaveCount(0);
+
+      // The navigation: select ANOTHER node — the exact moment the pre-fix
+      // bug's hidden draft committed its stale label.
+      if (isPhone()) await liftNodeClearOfSheets(p, ROUTE_TARGET_ID);
+      await tapPoint(p, await nodeScreenPoint(p, ROUTE_TARGET_ID));
+      await expect.poll(readSelectedId.bind(null, p)).toBe(ROUTE_TARGET_ID);
+
+      // BOTH intents stand after the navigation commit: the popover's label
+      // on the canvas (the pre-fix revert put 'Shopping District' back
+      // here)...
+      await expect.poll(() => readLabels(p)).toContain(RENAMED_LABEL);
+      await expect.poll(() => readLabels(p)).not.toContain('Shopping District');
+
+      // ...and the draft's description edit, read back through the panel
+      // after a re-select (no revert of either).
+      if (isPhone()) await liftNodeClearOfSheets(p, SET_TARGET_ID);
+      await tapPoint(p, await nodeScreenPoint(p, SET_TARGET_ID));
+      await expect.poll(readSelectedId.bind(null, p)).toBe(SET_TARGET_ID);
+      await expect(p.getByTestId('tme-property-panel')).toBeVisible();
+      await expect(p.getByTestId('tme-node-description')).toHaveValue(DESC_EDIT);
     };
     if (isPhone()) await withPhoneTwinPage(cell);
     else await cell(page);

@@ -8,8 +8,15 @@
      Escape keeps 'New place' (the host binding), a click-away commits a
      typed name / cancels over empty (the document-level capture arm). D10:
      nothing auto-commits — an empty input commits nothing. F52/D53: the
-     input is a >= 44px target, focused unqualified (the soft keyboard is the
-     point); C23: the placeholder is plain words, never an id. -->
+     input is a >= 44px target, focused unqualified (the soft keyboard is
+     the point); C23: the placeholder is plain words, never an id.
+     B-D4 (R29, PROPOSAL-D §3.1): the input renders the service's SEED as
+     its [value] at open — the menu's Rename of an existing node passes the
+     live label (focused + fully selected, so typing replaces wholesale);
+     a placement seeds null and renders the empty + placeholder form
+     byte-identical. The binding lands at render only: the input stays
+     UNCONTROLLED thereafter (no per-keystroke writes, D2 — the seed signal
+     changes only at open, so it can never clobber typed text). -->
 @if (graph.inlineNamingId(); as id) {
   <div
     class="tme-inline-naming"
@@ -24,6 +31,7 @@
       placeholder="Name this place"
       aria-label="Name this place"
       autocomplete="off"
+      [value]="graph.inlineNamingSeed() ?? ''"
       (keydown.enter)="commitFromInput($event)"
     />
   </div>

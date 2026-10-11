@@ -1,19 +1,30 @@
 <!-- src/app/viewer/node-menu.component.html — PKG B-143 (docs/ui-restyle/
-     REPAIRS.md §R3): the pin-setting node menu — the app's FIRST
-     setCurrentLocation caller. Opened by the service's `taphold`+`cxttap`
+     REPAIRS.md §R3), generalized by B-D4 (R29, PROPOSAL-D §3.1): the node
+     menu — the object's verbs. Opened by the service's `taphold`+`cxttap`
      canvas binding (long-press touch / context-click pointer), rendered
      here while the `nodeMenu` signal stands: the node's authored label
-     (C23 — read-only context, never a machine id), the Set as party
-     location arm (`facade.setCurrentLocation(nodeId)` through the
-     service's R2 command path), and the Clear party location arm
-     (`setCurrentLocation(null)`) ONLY while this node IS the pin (a live
-     signal read — R3's unidirectional flow, never a cached copy). A
-     refused set renders the core's field-precise words as the
-     menu's status line (C30/C32 — never re-worded, role=alert) and the pin
-     stays where it was; a successful set/clear consumes the menu.
-     D53/F52: both arms are >= 44px tap targets, touch-alone, no hover-only
-     affordance; the surface is the same menu at both breakpoints and in
-     both modes (view + editor). No drag-the-pin, no auto-set ever (D10). -->
+     (C23 — read-only context, never a machine id), then the six object
+     rows — Rename · Set as party location · [Clear party location] ·
+     Connect… · Details · Detach from arcs · Delete. The Set arm is
+     B-143's verbatim (`facade.setCurrentLocation(nodeId)` through the
+     service's R2 command path), the Clear arm ONLY while this node IS the
+     pin (a live signal read — R3's unidirectional flow, never a cached
+     copy), and the five authoring arms route the service's B-D4 menu
+     verbs (each an EXISTING command path, R2 — Rename re-opens D-3's
+     inline naming SEEDED with the live label; Details opens the panel
+     through the preserved seeding path; Connect… enters the existing
+     quick-connect mode; Detach/Delete are the panel arms' own commands,
+     F54/F46). The authoring rows render for EDITOR-mode LIBRARY nodes
+     only (the live `nodeDataById` presence read — an overlay waypoint
+     keeps today's exact {Set/Clear} shape; no duplicated validator
+     gating: connect's own precondition governs, refusals surface the
+     core's words). A refused command renders the core's field-precise
+     words as the menu's status line (C30/C32 — never re-worded,
+     role=alert) and the menu STAYS open (retry-elsewhere); a successful
+     command consumes the menu. D53/F52: every row is a >= 44px tap
+     target, touch-alone, no hover-only affordance; the surface is the
+     same menu at both breakpoints and in both modes (view + editor). No
+     drag-the-pin, no auto-set, no confirm dialog ever (D10/F46). -->
 @if (graph.nodeMenu(); as menu) {
   <div
     class="tme-node-menu"
@@ -24,6 +35,17 @@
     [style.top.px]="pos().y"
   >
     <p class="tme-node-menu-label" data-testid="tme-node-menu-label">{{ menu.label }}</p>
+    @if (graph.editorMode() && graph.nodeDataById(menu.nodeId) !== null) {
+      <button
+        type="button"
+        class="tme-node-menu-item"
+        data-testid="tme-node-menu-rename"
+        role="menuitem"
+        (click)="rename(menu.nodeId)"
+      >
+        Rename
+      </button>
+    }
     <button
       type="button"
       class="tme-node-menu-item"
@@ -42,6 +64,44 @@
         (click)="clearLocation(menu.nodeId)"
       >
         Clear party location
+      </button>
+    }
+    @if (graph.editorMode() && graph.nodeDataById(menu.nodeId) !== null) {
+      <button
+        type="button"
+        class="tme-node-menu-item"
+        data-testid="tme-node-menu-connect"
+        role="menuitem"
+        (click)="connect(menu.nodeId)"
+      >
+        Connect…
+      </button>
+      <button
+        type="button"
+        class="tme-node-menu-item"
+        data-testid="tme-node-menu-details"
+        role="menuitem"
+        (click)="details(menu.nodeId)"
+      >
+        Details
+      </button>
+      <button
+        type="button"
+        class="tme-node-menu-item"
+        data-testid="tme-node-menu-detach"
+        role="menuitem"
+        (click)="detach(menu.nodeId)"
+      >
+        Detach from arcs
+      </button>
+      <button
+        type="button"
+        class="tme-node-menu-item"
+        data-testid="tme-node-menu-delete"
+        role="menuitem"
+        (click)="deleteNode(menu.nodeId)"
+      >
+        Delete
       </button>
     }
     @if (menu.refusal; as refusal) {
