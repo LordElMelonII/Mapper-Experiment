@@ -658,3 +658,55 @@ span.tme-crumb-active {
     color: var(--tme-text);
   }
 }
+
+// ---------------------------------------------------------------------------
+// B-D2 (R29, PROPOSAL-D §2.1) — the >=1024 SHELL's context dock + status
+// strip. The dock element itself is context-dock.component.scss; this file
+// owns the LAYOUT seam: the --tme-dock-w custom property (the --tme-rail-w
+// precedent — a fixed-position floater cannot read a sibling's box, but it
+// CAN read a custom property set by the layout that owns the dock), consumed
+// by the five floaters' DEFAULT right anchors so an unplaced floater never
+// paints over the dock band. Remembered positions always win (D10) — only
+// defaults move. The strip carries the selection chip at shell widths (D-5
+// adds the refusal/pending words).
+// ---------------------------------------------------------------------------
+
+.tme-viewer {
+  --tme-dock-w: 0px; // no dock below the shell (and none while unrendered)
+}
+
+@media (min-width: 1024px) {
+  // The dock is rendered ⇒ the viewer's flex row reserves its 280px column;
+  // the floaters' default right insets clear it (their own SCSS reads the var).
+  .tme-viewer:has(.tme-dock) {
+    --tme-dock-w: 280px;
+  }
+
+  // The status strip — the canvas-bottom one-line band (the template renders
+  // it at shellWide only). A status line, not a control surface: the strip
+  // never intercepts (the floaters' bottoms stay as they are — the packet's
+  // ruling), only the chip is real chrome. z 16: above the sheet stack (15,
+  // the standing band doctrine), below the wide floaters (20).
+  .tme-status-strip {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 16;
+    display: flex;
+    align-items: center;
+    justify-content: center; // centered: the floaters anchor at the corners
+    min-height: 44px; // F52: the chip's standing band
+    padding: 0 0.75rem;
+    pointer-events: none; // a line, not a hit target — the chip re-enables
+  }
+
+  // The chip's strip home: the header copy's right-alignment does not carry
+  // over — the testids/class/dismiss path are verbatim, only the placement
+  // differs (the dual-home law).
+  .tme-status-strip .tme-chip {
+    pointer-events: auto; // the strip is none; the chip is a real control
+    margin-left: 0;
+    flex: 0 1 auto;
+  }
+}

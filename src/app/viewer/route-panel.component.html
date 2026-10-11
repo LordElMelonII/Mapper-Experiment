@@ -25,18 +25,27 @@
        pointerdown path, D2: the live position is a direct style transform
        and the signal commits once on release) + the Maximize/Restore toggle
        (>= 44px, F52). Hidden entirely at narrow widths (the media query
-       owns it): the sheet rail below is the narrow form's affordance. -->
+       owns it): the sheet rail below is the narrow form's affordance.
+       B-D2 (R29, PROPOSAL-D §2.1): the shell-gated Dock affordance — the
+       float-side half of the dock↔float handoff; below 1024 it never
+       renders (byte-for-byte), and inside the dock the SCSS hides it
+       (never a dead control, F07). -->
   <header class="tme-float-head" data-testid="tme-route-float-head" (pointerdown)="onDragStart($event)">
     <h2 class="tme-float-title">Route</h2>
-    <button
-      type="button"
-      class="tme-regime"
-      data-testid="tme-route-panel-maximize"
-      [attr.aria-pressed]="maximized() ? 'true' : 'false'"
-      (click)="toggleMaximize()"
-    >
-      {{ maximized() ? 'Restore' : 'Maximize' }}
-    </button>
+    <div class="tme-float-actions">
+      <button
+        type="button"
+        class="tme-regime"
+        data-testid="tme-route-panel-maximize"
+        [attr.aria-pressed]="maximized() ? 'true' : 'false'"
+        (click)="toggleMaximize()"
+      >
+        {{ maximized() ? 'Restore' : 'Maximize' }}
+      </button>
+      @if (graph.shellWide()) {
+        <button type="button" class="tme-regime" data-testid="tme-route-dock" (click)="dock()">Dock</button>
+      }
+    </div>
   </header>
 
   <!-- B-114 (ruling 1): the sheet rail — one full-width button, ≥44px tall

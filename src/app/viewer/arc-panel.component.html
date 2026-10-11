@@ -15,18 +15,26 @@
 <section class="tme-arc" data-testid="tme-arc-panel" aria-label="Arc">
   <!-- B-133 (D91): the wide floater's regime header — the drag handle +
        Maximize/Restore toggle (>= 44px, F52). Hidden at narrow widths (the
-       media query owns it); the body's duplicate title hides at wide. -->
+       media query owns it); the body's duplicate title hides at wide.
+       B-D2 (R29, PROPOSAL-D §2.1): the shell-gated Dock affordance joins
+       the regime pair (below 1024 it never renders; inside the dock the
+       SCSS hides the whole head — the dock header owns the handoff). -->
   <header class="tme-float-head" data-testid="tme-arc-float-head" (pointerdown)="onDragStart($event)">
     <h2 class="tme-float-title">Arc</h2>
-    <button
-      type="button"
-      class="tme-regime"
-      data-testid="tme-arc-panel-maximize"
-      [attr.aria-pressed]="maximized() ? 'true' : 'false'"
-      (click)="toggleMaximize()"
-    >
-      {{ maximized() ? 'Restore' : 'Maximize' }}
-    </button>
+    <div class="tme-float-actions">
+      <button
+        type="button"
+        class="tme-regime"
+        data-testid="tme-arc-panel-maximize"
+        [attr.aria-pressed]="maximized() ? 'true' : 'false'"
+        (click)="toggleMaximize()"
+      >
+        {{ maximized() ? 'Restore' : 'Maximize' }}
+      </button>
+      @if (graph.shellWide()) {
+        <button type="button" class="tme-regime" data-testid="tme-arc-dock" (click)="dock()">Dock</button>
+      }
+    </div>
   </header>
 
   <!-- B-133 (D91): the scrollable body wrapper — narrow, a plain block (the

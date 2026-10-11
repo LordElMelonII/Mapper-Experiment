@@ -139,6 +139,11 @@ function exportFilename(name: string): string {
     // worlds); the servant sheet keeps its rail flow byte-unchanged.
     '[class.tme-maximized]': 'maximized()',
     '[class.tme-placed]': 'floatTransform() !== null',
+    // B-D2 (R29, PROPOSAL-D §2.1): the dock-home chrome class — the panel
+    // docks in the shell's rotation; the SCSS :host(.tme-docked ...)
+    // compounds stand the float forms down inside the dock. Inert below
+    // 1024px.
+    '[class.tme-docked]': 'graph.mapsDockedHome()',
     '[style.transform]': 'floatTransform()',
     '(document:keydown.escape)': 'onEscape()',
   },
@@ -163,12 +168,25 @@ export class MapsPanelComponent {
   }
 
   /**
+   * B-D2 (R29, PROPOSAL-D §2.1): the floater's Dock affordance — the
+   * float-side half of the dock↔float handoff (the dock header's Float is
+   * the other). One service write (R3); shell-gated in the template.
+   */
+  protected dock(): void {
+    this.graph.setPanelDocked('maps', true);
+  }
+
+  /**
    * B-149: the floating panel's rendered transform — `translate(x, y)` of
    * the remembered viewport position (null while anchored: the SCSS anchor
    * applies). The drag's direct style writes land on the same property;
-   * the signal commits once on release (the D91 family shape).
+   * the signal commits once on release (the D91 family shape). B-D2: null
+   * while the panel is the dock's occupant (a remembered position must not
+   * translate the in-flow dock fill; it wins again the moment the panel
+   * floats, D10).
    */
   protected readonly floatTransform = computed<string | null>(() => {
+    if (this.graph.mapsDockedHome()) return null;
     if (!this.open()) return null;
     const pos = this.graph.mapsPanelPosition();
     return pos === null ? null : `translate(${pos.x}px, ${pos.y}px)`;

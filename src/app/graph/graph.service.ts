@@ -828,6 +828,13 @@ const WIDE_LAYOUT_QUERY = '(min-width: 700px)';
 const SHELL_WIDE_QUERY = '(min-width: 1024px)';
 
 /**
+ * B-D2 (R29, PROPOSAL-D §2.1): the five dockable CONTEXT kinds — the panels
+ * the ≥1024px dock hosts one at a time. The kind ids are machine keys (state
+ * switches, never rendered); the dock header speaks their C23 words.
+ */
+export type ContextKind = 'route' | 'arc' | 'property' | 'layers' | 'maps';
+
+/**
  * B-117 (api.ts `parent` contract, §5 Phase 3 M1): the CONTAINER kinds —
  * every kind that may hold compound children. The property panel's parent
  * picker offers exactly these (same layer), and never 'waypoint' (D21: the
@@ -1311,6 +1318,153 @@ export class GraphService implements OnDestroy {
    * facade gains no command for it (R2 — the panelFloating class).
    */
   readonly mapsPanelPosition = signal<{ x: number; y: number } | null>(null);
+
+  // --- B-D2: the context dock (R29, PROPOSAL-D §2.1 — the >=1024 shell) ------
+  //
+  // At shell widths exactly ONE context panel is DOCKED in the 280px right
+  // column (context swap, not stack); every other open panel keeps the D91
+  // floater/sheet form. The state below is frontend viewer chrome of the
+  // panelFloating class — in-memory, no facade/R2 surface, never persisted
+  // (§9 reserves preference persistence for Phase 4's host). R29 ruling 1:
+  // NO evictions, NO machine-closed states (D10) — opening a context swaps
+  // the dock's occupant, and only the user's Float/Dock taps move a kind
+  // between the forms. Below 1024px nothing here is ever read by a template
+  // (the predicates are shellWide-gated through dockContext), so the
+  // sub-shell chrome stays byte-for-byte today's.
+
+  /**
+   * B-D2: the property panel's PUBLISHED open state — the panel component
+   * mirrors its open computed (editor mode + a seeded draft) into this signal
+   * through an effect (setPropertyPanelOpen; the panelFloating-class pattern:
+   * the panel publishes, the service holds). The dock's open history reads
+   * it; no below-1024 template reads it.
+   */
+  readonly propertyPanelOpen = signal(false);
+
+  /** B-D2: the property panel's publish seam (R3 — the panel writes, the dock reads). */
+  setPropertyPanelOpen(open: boolean): void {
+    this.propertyPanelOpen.set(open);
+  }
+
+  /**
+   * B-D2: the per-kind DOCK flags — TRUE by default (docking is the default
+   * around floating; PROPOSAL-D §2.1). The dock header's Float affordance
+   * tears the occupant's kind off (false); the floater's Dock button returns
+   * it (true). Remembered float positions always win (D10) — these flags
+   * choose the FORM, never the placement.
+   */
+  readonly routeDocked = signal(true);
+  readonly arcDocked = signal(true);
+  readonly propertyDocked = signal(true);
+  readonly layersDocked = signal(true);
+  readonly mapsDocked = signal(true);
+
+  /**
+   * B-D2: the one write path for the dock flags (R3 — the toggleEditorMode
+   * pattern): the dock header's Float and each floater's Dock button both
+   * call exactly this, never their own signal writes.
+   */
+  setPanelDocked(kind: ContextKind, docked: boolean): void {
+    switch (kind) {
+      case 'route':
+        this.routeDocked.set(docked);
+        break;
+      case 'arc':
+        this.arcDocked.set(docked);
+        break;
+      case 'property':
+        this.propertyDocked.set(docked);
+        break;
+      case 'layers':
+        this.layersDocked.set(docked);
+        break;
+      case 'maps':
+        this.mapsDocked.set(docked);
+        break;
+    }
+  }
+
+  /**
+   * B-D2: the dock's OPEN HISTORY — most-recently-OPENED first, maintained by
+   * the constructor's history effect: a kind is pushed to the front when it
+   * transitions closed→open, closed kinds are pruned, the rest keep their
+   * order. Ordering only — the open state itself stays the panels' own
+   * signals (their open/close semantics are untouched; the dock is additive
+   * chrome and the product never closes what the user or content opened).
+   */
+  private readonly dockOpenHistory = signal<readonly ContextKind[]>([]);
+
+  /** B-D2: the five open signals, one read per kind (the history effect and dockContext's probe). */
+  private kindIsOpen(kind: ContextKind): boolean {
+    switch (kind) {
+      case 'route':
+        return this.routePanelOpen();
+      case 'arc':
+        return this.edgeSelection() !== null;
+      case 'property':
+        return this.propertyPanelOpen();
+      case 'layers':
+        return this.layerManagerOpen();
+      case 'maps':
+        return this.mapsPanelOpen();
+    }
+  }
+
+  /** B-D2: the five dock flags, one read per kind (dockContext's probe). */
+  private kindIsDocked(kind: ContextKind): boolean {
+    switch (kind) {
+      case 'route':
+        return this.routeDocked();
+      case 'arc':
+        return this.arcDocked();
+      case 'property':
+        return this.propertyDocked();
+      case 'layers':
+        return this.layersDocked();
+      case 'maps':
+        return this.mapsDocked();
+    }
+  }
+
+  /**
+   * B-D2: the dock's OCCUPANT — the most-recently-opened kind that is open,
+   * docked and in the shell regime; null when none qualifies (below 1024px
+   * always null). The single source both template homes gate on: map-viewer's
+   * .tme-sheets renders a panel when it is NOT the occupant (its kind's
+   * docked-home predicate is false) and the dock renders it when it is —
+   * mutual exclusion by construction, one live home per kind per regime.
+   *
+   * THE STICKY FORM (the lead's review ruling on B-D2's instance-swap
+   * finding): the property panel's draft is component-local, so a dock swap
+   * mid-edit would destroy the instance and drop uncommitted keystrokes —
+   * today's floater world never does (both panels coexist). While a property
+   * draft stands (open + docked + shell), the dock keeps hosting it and
+   * contexts opened mid-draft wait in the history — they render their floater
+   * forms, which clamp clear of the dock band (--tme-dock-w), so the P0
+   * occlusion class stays dead by construction. The swap happens the moment
+   * the draft resolves (Done/Cancel/selection clear). Management surfaces
+   * (route/arc/layers/maps) have no draft state and swap freely.
+   */
+  readonly dockContext = computed<ContextKind | null>(() => {
+    if (!this.shellWide()) return null;
+    if (this.propertyPanelOpen() && this.kindIsDocked('property')) return 'property';
+    for (const kind of this.dockOpenHistory()) {
+      if (this.kindIsOpen(kind) && this.kindIsDocked(kind)) return kind;
+    }
+    return null;
+  });
+
+  /**
+   * B-D2: the per-kind dock-home predicates — the ONLY predicates the two
+   * template homes read (the .tme-sheets @if gates and the panels' own
+   * .tme-docked host class). Exactly one can be true at a time (they project
+   * the single occupant), so the homes exclude each other by construction.
+   */
+  readonly routeDockedHome = computed(() => this.dockContext() === 'route');
+  readonly arcDockedHome = computed(() => this.dockContext() === 'arc');
+  readonly propertyDockedHome = computed(() => this.dockContext() === 'property');
+  readonly layersDockedHome = computed(() => this.dockContext() === 'layers');
+  readonly mapsDockedHome = computed(() => this.dockContext() === 'maps');
 
   /**
    * D91 (B-133): which half of the canvas the current selection's rendered
@@ -2126,6 +2280,30 @@ export class GraphService implements OnDestroy {
       void this.calibrateMode();
       void this.connectMode();
       this.closeNodeMenu();
+    });
+
+    // B-D2 (R29, PROPOSAL-D §2.1): the context dock's open-history
+    // maintenance — push a kind to the FRONT on its closed→open transition,
+    // prune closed kinds, keep the rest's relative order (R29 ruling 1:
+    // recency only ever re-orders; nothing is closed here, D10). Every read
+    // is a discrete-write signal — route's linkedSignal recomputes only on
+    // its content signature — so the effect runs per discrete event (D2).
+    // The same-reference guard keeps the write silent when nothing moved
+    // (the signal's equality stops the loop after one settling pass).
+    effect(() => {
+      const open: ContextKind[] = [];
+      if (this.routePanelOpen()) open.push('route');
+      if (this.edgeSelection() !== null) open.push('arc');
+      if (this.propertyPanelOpen()) open.push('property');
+      if (this.layerManagerOpen()) open.push('layers');
+      if (this.mapsPanelOpen()) open.push('maps');
+      const openSet = new Set(open);
+      this.dockOpenHistory.update((history) => {
+        const kept = history.filter((kind) => openSet.has(kind));
+        const fresh = open.filter((kind) => !history.includes(kind)).reverse();
+        if (fresh.length === 0 && kept.length === history.length) return history;
+        return [...fresh, ...kept];
+      });
     });
   }
 

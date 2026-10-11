@@ -264,7 +264,16 @@ const switchLayer = async (page: Page, layerId: string, layerName: string): Prom
   const wasOpen = await managerOpen(page);
   if (!wasOpen) await openManager(page);
   await layerRow(page, layerName).getByTestId('tme-layer-name').click();
-  if (!wasOpen) await activate(page, 'tme-layer-manager-close');
+  if (!wasOpen) {
+    await activate(page, 'tme-layer-manager-close');
+    // B-D2 (R29, PROPOSAL-D §2.1 — cited): the close's ZONELESS render must
+    // land before the next managerOpen DOM read. A stale read here made
+    // openManager skip the caller's reopen and the cell raced the
+    // unmounting sheet (the dock swap widens the flush window — the
+    // full-suite fences flake, probe-proven). toBeHidden auto-waits through
+    // the flush.
+    await expect(page.getByTestId('tme-layer-manager')).toBeHidden();
+  }
 };
 
 /**

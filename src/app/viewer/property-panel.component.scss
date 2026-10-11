@@ -585,3 +585,67 @@
     color: var(--tme-text);
   }
 }
+
+// ---------------------------------------------------------------------------
+// B-D2 (R29, PROPOSAL-D §2.1) — the >=1024 context dock (the route-panel
+// block's twin; see its full comment). (1) The unplaced maximized form's
+// DEFAULT right anchor clears the dock band via the --tme-dock-w seam; the
+// anchor-start and floating rules out-specify it, so only defaults move
+// (D10 — the compact floater's remembered transform is untouched). (2) The
+// dock block: a static in-flow fill inside .tme-dock; display is never
+// touched (the closed panel's display:none keeps driving visibility exactly
+// as today); the Maximize/Restore and Dock controls hide in-dock (the dock
+// header owns the handoff) and the header's drag stands down via
+// pointer-events (the header keeps its Connect/Done taps).
+// ---------------------------------------------------------------------------
+@media (min-width: 1024px) {
+  :host(.tme-open) {
+    right: calc(var(--tme-dock-w, 0px) + 0.75rem);
+  }
+}
+
+@media (min-width: 1024px) {
+  :host-context(.tme-dock),
+  :host(.tme-docked),
+  :host(.tme-docked.tme-open),
+  :host(.tme-docked.tme-open.tme-anchor-start),
+  :host(.tme-docked.tme-open.tme-floating) {
+    position: static;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    transform: none; // belt-and-braces: the binding nulls in-dock (the inline-style guard)
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    max-height: none;
+    max-width: none;
+    z-index: auto;
+    border: none;
+    border-radius: 0;
+  }
+
+  // The float-form regime controls hide inside the dock — the dock header
+  // owns the handoff (Float there; the Dock button hides with them, F07).
+  :host-context(.tme-dock) .tme-regime,
+  :host(.tme-docked) .tme-regime,
+  :host-context(.tme-dock) [data-testid='tme-property-dock'],
+  :host(.tme-docked) [data-testid='tme-property-dock'] {
+    display: none;
+  }
+
+  // The drag surface stands down in-dock: the header never receives the
+  // pointerdown (pure SCSS — no handler change), the buttons keep their taps.
+  :host-context(.tme-dock) .tme-prop-head,
+  :host(.tme-docked) .tme-prop-head {
+    pointer-events: none;
+    cursor: default;
+    touch-action: auto;
+  }
+
+  :host-context(.tme-dock) .tme-prop-head button,
+  :host(.tme-docked) .tme-prop-head button {
+    pointer-events: auto;
+  }
+}

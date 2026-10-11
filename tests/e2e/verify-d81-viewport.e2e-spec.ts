@@ -74,8 +74,15 @@ const BADGE_ID = `tme-badge-${CROSS_LAYER_ARC}`;
 const FUYUKI_LAYER_BUTTON = 'tme-layer-layer-fuyuki';
 const MISAKI_LAYER_BUTTON = 'tme-layer-layer-misaki';
 
-/** D91/B-127/B-128 (D86/D85): the measured INTERACTIVE chrome surfaces (map-viewer.component — the rail, the breadcrumb bar and the chip). */
-const CHROME_SELECTORS = ['.tme-rail', '.tme-breadcrumb', '.tme-chip'];
+/**
+ * D91/B-127/B-128 (D86/D85): the measured INTERACTIVE chrome surfaces
+ * (map-viewer.component — the rail, the breadcrumb bar and the chip).
+ * B-D2 (R29, PROPOSAL-D §2.1): the context dock joins the set (`.tme-dock`)
+ * — a stage SIBLING like the rail, its rect may sit outside the canvas box
+ * (x past the canvas width); the clamp treats it generically. The mirror of
+ * map-viewer's INTERACTIVE_CHROME — keep the two lists in lockstep.
+ */
+const CHROME_SELECTORS = ['.tme-rail', '.tme-breadcrumb', '.tme-chip', '.tme-dock'];
 
 const R1_HEADERS: ReadonlyArray<[string, string]> = [
   ['tme-location', 'Emiya Residence'],

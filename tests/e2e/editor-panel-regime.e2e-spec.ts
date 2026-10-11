@@ -229,6 +229,23 @@ const openPanelFor = async (page: Page, id: string): Promise<void> => {
   await expect(page.getByTestId('tme-property-panel')).toBeVisible();
 };
 
+/**
+ * B-D2 re-baseline (R29, PROPOSAL-D §2.1 + PKG B-D2 — cited per the round
+ * law): at shell widths (>=1024) the panel's DEFAULT home is the context
+ * dock; the B-119 float regime under test here is the explicit tear-off.
+ * The regime cells reach it through the dock header's Float handoff (one
+ * setPanelDocked write) before the Restore/drag dance; below 1024 (the
+ * phone project) the dock never renders and this is a no-op — the phone
+ * arms of these cells are byte-unchanged. Presence-probed against the live
+ * DOM (the D-1 regime-aware helper law), never a mirrored breakpoint.
+ */
+const floatOutOfDockIfDocked = async (page: Page): Promise<void> => {
+  if (await page.getByTestId('tme-dock-float').count()) {
+    await page.getByTestId('tme-dock-float').click();
+    await settle(page);
+  }
+};
+
 /** Collect console errors/warnings/pageerrors into `bad` (the house sweep). */
 const watchConsole = (page: Page, bad: string[]): void => {
   page.on('console', (msg) => {
@@ -331,6 +348,10 @@ test.describe('property panel regime: floating, remembered, maximized-by-default
     const regime = regimeButton(page);
 
     await openPanelFor(page, EMIYA_ID);
+    // B-D2 re-baseline (cited in the helper): at shell widths the panel opens
+    // DOCKED — Float first; the maximized overlay asserts below read the
+    // torn-off form (unchanged semantics, post-handoff).
+    await floatOutOfDockIfDocked(page);
 
     // Maximized default: the ANCHORED overlay (D91 — the old flex-region dock
     // is gone: wide anchors the tall fixed surface inside the stage's bottom
@@ -415,6 +436,7 @@ test.describe('property panel regime: floating, remembered, maximized-by-default
       watchConsole(p, bad);
 
       await openPanelFor(p, OUTSKIRTS_ID);
+      await floatOutOfDockIfDocked(p); // B-D2 re-baseline: Float before the regime dance (cited in the helper)
       await activate(regimeButton(p)); // Restore → floating at the default spot
       await settle(p);
       const floating = await readPanelState(p);
@@ -497,6 +519,7 @@ test.describe('property panel regime: floating, remembered, maximized-by-default
       watchConsole(p, bad);
 
       await openPanelFor(p, EMIYA_ID);
+      await floatOutOfDockIfDocked(p); // B-D2 re-baseline: Float before the regime dance (cited in the helper)
       await activate(regimeButton(p)); // Restore → floating at the default spot
       await settle(p);
 
@@ -545,6 +568,7 @@ test.describe('property panel regime: floating, remembered, maximized-by-default
       watchConsole(p, bad);
 
       await openPanelFor(p, EMIYA_ID);
+      await floatOutOfDockIfDocked(p); // B-D2 re-baseline: Float before the regime dance (cited in the helper)
       await activate(regimeButton(p)); // float
       // B-133c (D91) aiming repair, probe-derived: the OLD +90 down-drag
       // parked the floating host (max-height 352px) at y≈202 — its bottom

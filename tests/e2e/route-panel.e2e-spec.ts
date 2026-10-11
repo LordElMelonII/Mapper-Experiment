@@ -36,6 +36,12 @@
 // is on-screen and disjoint from the property panel's box while the rail's
 // Route toggle reports pressed.
 //
+// PKG B-D2 (R29, PROPOSAL-D §2.1) SUPERSEDES that cell's >=1024 arm: the
+// context dock makes route-vs-property occlusion impossible by construction
+// (the dock hosts ONE context; floaters clear the dock band), so the desktop
+// cell re-baselines to DOCK EXCLUSIVITY and the stagger keeps a cell at the
+// stayed 700–1023 band (900px). The stagger CODE is untouched.
+//
 // PKG B-145 (REPAIRS R-5) re-baseline: the blocked-nodes cell's one-tap
 // Block access now sits behind its collapsed section toggle — the cell
 // expands the section first (cited in-file, R23).
@@ -301,38 +307,136 @@ test.describe('route sidebar (PKG B-105)', () => {
     await expect(page.getByTestId('tme-blocked-label')).toHaveText('Fuyuki Bridge');
   });
 
-  // --- PKG B-141 (docs/ui-restyle/REPAIRS.md R1, the owner's stagger) ------
+  // --- PKG B-D2 (R29, PROPOSAL-D §2.1): the R-1 SUPERSESSION -----------------
+  //
+  // R-1's occlusion class dies BY CONSTRUCTION at >=1024: the context dock
+  // hosts the most-recently-opened non-floated context (property on a
+  // selection — R29 ruling 2/4), the docked panel is in-flow BESIDE the
+  // stage (never over the canvas), and a floater's default anchors clamp
+  // clear of the dock band (the --tme-dock-w inset). This cell re-baselines
+  // B-141's desktop stagger cell to DOCK EXCLUSIVITY: both contexts open ⇒
+  // exactly ONE panel inside the dock (property, the more recent), the
+  // route floater visible with its total on-screen and AABB-DISJOINT from
+  // the dock's box, and the Route toggle honest (aria-pressed reflects real
+  // visibility — the R-1 law). The stagger CODE stays for the 700–1023 band
+  // and the both-floated-at->=1024 case (the user's explicit tear-off); the
+  // next cell keeps the stayed band covered at 900px. Supersession cited:
+  // PROPOSAL-D §2.1 ("This kills the P0 occlusion class by construction") +
+  // the B-D2 packet's R-1 bullet.
 
-  test('editor mode, both floaters open: the priced route never hides under the property panel (B-141/R1, D91)', async ({
+  test('editor mode, route + property open: the dock hosts property alone, the route floater clears it (B-D2/R-1 supersession, PROPOSAL-D §2.1)', async ({
     page,
   }) => {
-    // The same-anchor stagger is a WIDE-floater rule: phone sheets stack by
-    // contract (the B-129 cap arithmetic) and never share the dose anchors.
+    // The dock-exclusivity cell is shell-regime geometry (>=1024): phone
+    // sheets stack by contract (the B-129 cap arithmetic), unchanged.
     test.skip(
       isPhone(),
-      'the route-vs-property anchor stagger is desktop geometry (R1); phone sheets stack by contract',
+      'dock exclusivity is the >=1024 shell regime (R-1 supersession); phone sheets stack by contract',
     );
 
-    // The R1 collision case, reproduced live: a library-node tap in editor
-    // mode opens the property panel (B-117) WHILE the route auto-floats with
-    // its content (the routePanelOpen rule) — both wide floaters open,
-    // neither placed (fresh page, no drag).
+    // The R-1 collision case, now through the dock: a library-node tap in
+    // editor mode opens the property panel (B-117) WHILE the route auto-
+    // floats with its content (the routePanelOpen rule) — property is the
+    // more-recently-opened context, so the dock hosts IT (ruling 1) and the
+    // route keeps its floater form.
+    await activate(page, 'tme-editor-toggle');
+    await settle(page);
+    await tapNode(page, STATION_ID);
+    await expect(page.getByTestId('tme-total')).toHaveText('50 min');
+
+    // DOCK EXCLUSIVITY: the dock is rendered, and exactly ONE context panel
+    // sits inside it — the property form (testids unique per kind, so the
+    // count IS the exclusivity assert).
+    const dock = page.getByTestId('tme-dock');
+    await expect(dock).toBeVisible();
+    const dockedPanels = dock.locator(
+      '[data-testid="tme-route-panel"], [data-testid="tme-property-panel"], [data-testid="tme-arc-panel"], [data-testid="tme-layer-manager"], [data-testid="tme-maps-panel"]',
+    );
+    await expect(dockedPanels).toHaveCount(1);
+    await expect(dock.getByTestId('tme-property-panel')).toBeVisible();
+    // The property form renders NOWHERE else (the sheets home yields to the
+    // dock — one live home per kind, mutual exclusion by construction).
+    await expect(page.getByTestId('tme-property-panel')).toHaveCount(1);
+
+    // Toggle honesty (R-1's law, unchanged): the rail's Route toggle keeps
+    // reporting the panel open — the route is genuinely visible (floater).
+    const routeToggle = page.getByTestId('tme-route-toggle');
+    await expect(routeToggle).toBeVisible();
+    await expect(routeToggle).toHaveAttribute('aria-pressed', 'true');
+
+    // The route floater's visible surface is on-screen, the priced TOTAL
+    // sits outside the dock's box (never covering the product's payoff —
+    // the R-1 acceptance, re-based: the floater's default anchor clears the
+    // dock band by construction, --tme-dock-w).
+    const routeBox = await page.getByTestId('tme-route-panel').boundingBox();
+    if (routeBox === null) throw new Error('tme-route-panel not visible');
+    const totalBox = await page.getByTestId('tme-total').boundingBox();
+    if (totalBox === null) throw new Error('tme-total not visible');
+    const dockBox = await dock.boundingBox();
+    if (dockBox === null) throw new Error('tme-dock not visible');
+
+    const viewport = page.viewportSize();
+    if (viewport === null) throw new Error('no viewport');
+    for (const [name, box] of [
+      ['tme-route-panel', routeBox],
+      ['tme-total', totalBox],
+    ] as const) {
+      expect(box.x, `${name} on-screen left (R1)`).toBeGreaterThanOrEqual(0);
+      expect(box.y, `${name} on-screen top (R1)`).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width, `${name} on-screen right (R1)`).toBeLessThanOrEqual(viewport.width);
+      expect(box.y + box.height, `${name} on-screen bottom (R1)`).toBeLessThanOrEqual(
+        viewport.height,
+      );
+    }
+
+    // AABB disjointness (edge-touching allowed) against the DOCK's box: the
+    // staggered anchors became the dock-band clearance (route vs property
+    // floaters at >=1024 is the explicit-tear-off case the stagger code
+    // keeps serving).
+    const disjoint = (
+      a: { x: number; y: number; width: number; height: number },
+      b: { x: number; y: number; width: number; height: number },
+    ): boolean =>
+      a.x + a.width <= b.x ||
+      b.x + b.width <= a.x ||
+      a.y + a.height <= b.y ||
+      b.y + b.height <= a.y;
+    expect(
+      disjoint(totalBox, dockBox),
+      'the route total is not covered by the dock (R-1 supersession)',
+    ).toBe(true);
+    expect(
+      disjoint(routeBox, dockBox),
+      'the route floater does not intersect the dock column (R-1 supersession)',
+    ).toBe(true);
+  });
+
+  // The stayed stagger: at 700–1023 (and for the both-floated case at
+  // >=1024) floating is still the default and B-141's away-from-property
+  // anchor keeps the priced route clear — the band keeps its cell (cited
+  // re-baseline: the >=1024 arm moved to dock exclusivity above).
+  test('medium band (900px), both floaters open: the priced route never hides under the property panel (B-141/R1, D91 — the stayed band)', async ({
+    page,
+  }) => {
+    test.skip(
+      isPhone(),
+      'the route-vs-property anchor stagger is wide-floater geometry; phone sheets stack by contract',
+    );
+
+    await page.setViewportSize({ width: 900, height: 720 });
+    await settle(page);
+
+    // The pre-D-2 wide regime verbatim: property opens (maximized floater),
+    // route auto-floats — both unplaced, staggered anchors.
     await activate(page, 'tme-editor-toggle');
     await settle(page);
     await tapNode(page, STATION_ID);
     await expect(page.getByTestId('tme-property-panel')).toBeVisible();
     await expect(page.getByTestId('tme-total')).toHaveText('50 min');
 
-    // Toggle honesty (R1): the rail's Route toggle keeps reporting the panel
-    // open — and with occlusion impossible by construction the pressed state
-    // reflects real visibility (routePanelOpen is untouched; no code change).
     const routeToggle = page.getByTestId('tme-route-toggle');
-    await expect(routeToggle).toBeVisible();
     await expect(routeToggle).toHaveAttribute('aria-pressed', 'true');
 
-    // The route panel's visible surface is on-screen and the route TOTAL
-    // (the priced route) sits OUTSIDE the property panel's box — never
-    // covering the product's payoff (R1 acceptance).
     const routeBox = await page.getByTestId('tme-route-panel').boundingBox();
     if (routeBox === null) throw new Error('tme-route-panel not visible');
     const totalBox = await page.getByTestId('tme-total').boundingBox();
@@ -354,9 +458,6 @@ test.describe('route sidebar (PKG B-105)', () => {
       );
     }
 
-    // AABB disjointness (edge-touching allowed): the staggered anchors put
-    // the two floaters on opposite sides, so no box intersection survives —
-    // with either fade's collision case (same side, both defaults).
     const disjoint = (
       a: { x: number; y: number; width: number; height: number },
       b: { x: number; y: number; width: number; height: number },

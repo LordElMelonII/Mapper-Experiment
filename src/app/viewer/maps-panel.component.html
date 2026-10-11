@@ -62,6 +62,13 @@
         >
           {{ maximized() ? 'Restore' : 'Maximize' }}
         </button>
+        <!-- B-D2 (R29, PROPOSAL-D §2.1): the shell-gated Dock affordance —
+             the float-side half of the dock↔float handoff. Below 1024 it
+             never renders (byte-for-byte); inside the dock the SCSS hides
+             it (never a dead control, F07). -->
+        @if (graph.shellWide()) {
+          <button type="button" class="tme-regime" data-testid="tme-maps-dock" (click)="dock()">Dock</button>
+        }
         <button
           type="button"
           class="tme-close"

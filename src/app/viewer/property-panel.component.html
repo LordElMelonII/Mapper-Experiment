@@ -76,6 +76,13 @@
           <button type="button" class="tme-regime" data-testid="tme-panel-maximize" (click)="toggleFloat()">
             {{ floating() ? 'Maximize' : 'Restore' }}
           </button>
+          <!-- B-D2 (R29, PROPOSAL-D §2.1): the shell-gated Dock affordance —
+               the float-side half of the dock↔float handoff (both wide forms
+               are float forms vs the dock). Below 1024 it never renders
+               (byte-for-byte); inside the dock the SCSS hides it (F07). -->
+          @if (graph.shellWide()) {
+            <button type="button" class="tme-regime" data-testid="tme-property-dock" (click)="dock()">Dock</button>
+          }
         </div>
       </header>
 

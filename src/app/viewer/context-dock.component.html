@@ -1,0 +1,45 @@
+<!-- PKG B-D2 (R29, PROPOSAL-D §2.1) — the >=1024px shell's context dock.
+     Renders ONLY at shell widths while a context qualifies (the service's
+     dockContext — most-recently-opened open docked kind): the .tme-dock
+     aside is `.tme-viewer`'s LAST flex child (the host itself is
+     display:contents), so its open/close shrinks/restores the canvas host —
+     the D81-classified panel-driven stage resize. Exactly ONE occupant
+     renders (the @switch); the title word is C23 plain words; Float is the
+     dock-side half of the dock↔float handoff (one setPanelDocked write,
+     R3), >= 44px (F52). The occupant's own close path stays its own (D10:
+     no machine-closed states). data-testid="tme-dock" joins the
+     INTERACTIVE_CHROME set and its e2e mirrors. -->
+@if (graph.shellWide() && graph.dockContext(); as context) {
+  <aside class="tme-dock" data-testid="tme-dock" aria-label="Context panel">
+    <header class="tme-dock-head">
+      <h2 class="tme-dock-title">{{ titleWord() }}</h2>
+      <button
+        type="button"
+        class="tme-dock-float"
+        data-testid="tme-dock-float"
+        (click)="float(context)"
+      >
+        Float
+      </button>
+    </header>
+    <div class="tme-dock-fill">
+      @switch (context) {
+        @case ('route') {
+          <tme-route-panel />
+        }
+        @case ('arc') {
+          <tme-arc-panel />
+        }
+        @case ('property') {
+          <tme-property-panel />
+        }
+        @case ('layers') {
+          <tme-layer-manager />
+        }
+        @case ('maps') {
+          <tme-maps-panel />
+        }
+      }
+    </div>
+  </aside>
+}

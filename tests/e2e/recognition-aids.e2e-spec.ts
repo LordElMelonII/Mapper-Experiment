@@ -115,7 +115,17 @@ const tapPoint = async (page: Page, x: number, y: number): Promise<void> => {
       await expect(rail).toHaveAttribute('aria-expanded', 'false');
       await page.waitForTimeout(200); // the collapse re-renders — a tap in the same tick can still hit the body
     } else {
-      throw new Error(`tapPoint: the aim (${Math.round(x)},${y}) is covered by ${covered}`);
+      const chain = await page.evaluate(([px, py]) => {
+        const el = document.elementFromPoint(px, py);
+        const out: string[] = [];
+        let cur: Element | null = el;
+        while (cur !== null && out.length < 6) {
+          out.push(`${cur.tagName}/${cur.getAttribute('data-testid') ?? cur.className?.toString?.().slice(0, 40) ?? ''}`);
+          cur = cur.parentElement;
+        }
+        return out;
+      }, [x, y] as const);
+      throw new Error(`tapPoint: the aim (${Math.round(x)},${y}) is covered by ${covered} — chain ${chain.join(' < ')}`);
     }
   }
   if (isPhone()) await page.touchscreen.tap(x, y);
@@ -343,7 +353,15 @@ test.describe('rename nudge (PKG B-147, R-7 item 3 — the R-5 machinery, proven
       const head = await page.getByTestId('tme-route-float-head').boundingBox();
       if (head !== null) {
         const canvas = await canvasBox(page);
-        await page.mouse.move(head.x + head.width / 2, head.y + head.height / 2);
+        // B-D2 re-baseline (R29, PROPOSAL-D §2.1 — cited): the shell-gated
+        // Dock button joined the float head's action row, so the head's
+        // geometric CENTER is now a button — a center grab would silently
+        // click Maximize/Restore instead of dragging (probe-proven: the
+        // park no-op'd and the anchor-start floater kept covering the aim).
+        // Grab the TITLE end (head.x + 24 — the editor-panel-regime
+        // dragPanel idiom, never a button); the clamp lands the park
+        // bottom-right of the stage, clear of the lower-left placement void.
+        await page.mouse.move(head.x + 24, head.y + head.height / 2);
         await page.mouse.down();
         await page.mouse.move(canvas.x + canvas.width - 44, canvas.y + 150, { steps: 4 });
         await page.mouse.up();

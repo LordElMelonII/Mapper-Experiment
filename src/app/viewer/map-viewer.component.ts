@@ -19,7 +19,12 @@
 // selection chip, the draw-arc feedback banner and (B-135, D93) the calibrate
 // mode band — the stage-level mode surfaces (D86's absorb list excludes
 // them), and the clamp's measured chrome set is the RAIL rect + the
-// breadcrumb + the chip.
+// breadcrumb + the chip. B-D2 (R29, PROPOSAL-D §2.1): the ≥1024 shell adds
+// the CONTEXT DOCK as the viewer's last flex child — its open/close IS a
+// panel-driven stage resize the same discriminator classifies (preserve +
+// rescue clamp), so '.tme-dock' joins the measured chrome set, and the
+// selection chip dual-homes into the canvas-bottom status strip at shell
+// widths (one instance per regime).
 import {
   AfterViewInit,
   ChangeDetectionStrategy,
@@ -32,6 +37,7 @@ import {
 import { GraphService } from '../graph/graph.service';
 import type { ChromeRect } from '../graph/graph.service';
 import { ArcPanelComponent } from './arc-panel.component';
+import { ContextDockComponent } from './context-dock.component';
 import { EditorRailComponent } from './editor-rail.component';
 import { LayerManagerComponent } from './layer-manager.component';
 import { MapsPanelComponent } from './maps-panel.component';
@@ -41,7 +47,7 @@ import { RoutePanelComponent } from './route-panel.component';
 
 @Component({
   selector: 'tme-map-viewer',
-  imports: [EditorRailComponent, RoutePanelComponent, ArcPanelComponent, PropertyPanelComponent, LayerManagerComponent, MapsPanelComponent, NodeMenuComponent],
+  imports: [EditorRailComponent, RoutePanelComponent, ArcPanelComponent, PropertyPanelComponent, LayerManagerComponent, MapsPanelComponent, NodeMenuComponent, ContextDockComponent],
   templateUrl: './map-viewer.component.html',
   styleUrl: './map-viewer.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -68,21 +74,24 @@ export class MapViewerComponent implements AfterViewInit, OnDestroy {
    * D81/B-127 (D86): the stage's INTERACTIVE chrome — the viewport-preserve
    * clamp's avoidance targets. The RAIL rect (the whole control surface,
    * collapsed strip included — it is still the rail), the selection chip,
-   * and (B-128/D85) the breadcrumb bar (a crumb tap is a selectLayer —
-   * genuinely interactive); the header and the draw-arc feedback banner are
-   * deliberately absent (both are pointer-events: none — messages, not hit
-   * targets). D91: the four panels are overlays and are DELIBERATELY not in
-   * this set — they position to avoid the selection at placement time
-   * (best-effort, each panel's own clamp) and a floater drag must never
-   * fight the viewport clamp. Selectors mirror
-   * map-viewer.component.html / editor-rail.component; the e2e mirror
-   * constants (panel-resize-viewport / verify-d81-viewport
-   * CHROME_SELECTORS) carry the same list.
+   * (B-128/D85) the breadcrumb bar (a crumb tap is a selectLayer —
+   * genuinely interactive), and (B-D2) the context dock — a stage SIBLING
+   * like the rail (its rect may sit outside the canvas box, x past the
+   * canvas width on wide; the clamp treats it generically); the header and
+   * the draw-arc feedback banner are deliberately absent (both are
+   * pointer-events: none — messages, not hit targets). D91: the four panels
+   * are overlays and are DELIBERATELY not in this set — they position to
+   * avoid the selection at placement time (best-effort, each panel's own
+   * clamp) and a floater drag must never fight the viewport clamp. Selectors
+   * mirror map-viewer.component.html / editor-rail.component /
+   * context-dock.component; the e2e mirror constants (panel-resize-viewport
+   * / verify-d81-viewport CHROME_SELECTORS) carry the same list.
    */
   private static readonly INTERACTIVE_CHROME: readonly string[] = [
     '.tme-rail',
     '.tme-breadcrumb',
     '.tme-chip',
+    '.tme-dock',
   ];
 
   // Charter lifecycle: container resizes (panel layouts, rotation) re-size cy.

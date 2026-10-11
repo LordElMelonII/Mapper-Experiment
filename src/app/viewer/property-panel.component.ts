@@ -254,6 +254,12 @@ interface NodeDraft {
     // chrome off it (and keeps the closed panel hidden: display:none still
     // wins, the floating rules require .tme-open too).
     '[class.tme-floating]': 'graph.panelFloating()',
+    // B-D2 (R29, PROPOSAL-D §2.1): the dock-home chrome class — true exactly
+    // while this panel is the context dock's occupant (the service's single
+    // source both template homes gate on). The SCSS's :host(.tme-docked ...)
+    // compounds stand the maximized/floating forms down inside the dock at
+    // float-rule specificity. Inert below 1024px.
+    '[class.tme-docked]': 'graph.propertyDockedHome()',
     // B-133 (D91): the maximized overlay form's avoid-the-selection default
     // anchor (bottom-left of the stage when the selection sits on the right
     // half — placement-only, never a pan). The compact floating form ignores
@@ -376,8 +382,12 @@ export class PropertyPanelComponent {
    * the remembered viewport position (null while maximized: the CSS anchor
    * applies). The drag's direct style writes land on the same property; the
    * one signal write per drag end re-renders the committed value here.
+   * B-D2: null while the panel is the dock's occupant (a remembered
+   * position must not translate the in-flow dock fill; it wins again the
+   * moment the panel floats, D10).
    */
   protected readonly floatTransform = computed<string | null>(() => {
+    if (this.graph.propertyDockedHome()) return null;
     if (!this.graph.panelFloating()) return null;
     const pos = this.graph.panelPosition();
     return pos === null ? null : `translate(${pos.x}px, ${pos.y}px)`;
@@ -614,6 +624,13 @@ export class PropertyPanelComponent {
       }
       this.seedDraft(selId);
     });
+
+    // B-D2 (R29, PROPOSAL-D §2.1): the panel PUBLISHES its open computed —
+    // the service's propertyPanelOpen signal (the dock's open history reads
+    // it; the panelFloating-class pattern: the panel owns the computed, the
+    // service holds the mirror). One signal write per discrete state flip
+    // (D2); nothing below 1024px reads the consumer side.
+    effect(() => this.graph.setPropertyPanelOpen(this.open()));
   }
 
   // --- Template event handlers (R3: DOM read → signal write, never DOM write) ---
@@ -919,6 +936,15 @@ export class PropertyPanelComponent {
       this.graph.panelPosition.set(this.clampFloat(base.x, base.y, frame));
     }
     this.graph.panelFloating.set(true);
+  }
+
+  /**
+   * B-D2 (R29, PROPOSAL-D §2.1): the floater's Dock affordance — the
+   * float-side half of the dock↔float handoff (the dock header's Float is
+   * the other). One service write (R3); shell-gated in the template.
+   */
+  protected dock(): void {
+    this.graph.setPanelDocked('property', true);
   }
 
   /**

@@ -171,6 +171,11 @@ function asFiniteNumber(text: string): number | null {
     '[class.tme-maximized]': 'maximized()',
     '[class.tme-anchor-start]': 'anchorStart()',
     '[class.tme-placed]': 'floatTransform() !== null',
+    // B-D2 (R29, PROPOSAL-D §2.1): the dock-home chrome class — the arc
+    // panel docks in the same rotation as the selection surfaces (R29
+    // ruling 4); the SCSS :host(.tme-docked ...) compounds stand the float
+    // forms down inside the dock. Inert below 1024px.
+    '[class.tme-docked]': 'graph.arcDockedHome()',
     '[style.transform]': 'floatTransform()',
   },
 })
@@ -194,8 +199,12 @@ export class ArcPanelComponent {
    * B-133: the floating panel's rendered transform — `translate(x, y)` of
    * the remembered viewport position (null while unplaced: the CSS anchor
    * applies). The drag's direct style writes land on the same property.
+   * B-D2: null while the panel is the dock's occupant (a remembered
+   * position must not translate the in-flow dock fill; it wins again the
+   * moment the panel floats, D10).
    */
   protected readonly floatTransform = computed<string | null>(() => {
+    if (this.graph.arcDockedHome()) return null;
     if (this.graph.edgeSelection() === null) return null;
     const pos = this.graph.arcPanelPosition();
     return pos === null ? null : `translate(${pos.x}px, ${pos.y}px)`;
@@ -220,6 +229,15 @@ export class ArcPanelComponent {
   /** B-133: the Maximize/Restore toggle (the template's only write path, R3). */
   protected toggleMaximize(): void {
     this.maximized.update((m) => !m);
+  }
+
+  /**
+   * B-D2 (R29, PROPOSAL-D §2.1): the floater's Dock affordance — the
+   * float-side half of the dock↔float handoff (the dock header's Float is
+   * the other). One service write (R3); shell-gated in the template.
+   */
+  protected dock(): void {
+    this.graph.setPanelDocked('arc', true);
   }
 
   /**

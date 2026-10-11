@@ -262,6 +262,30 @@ const tapPoint = async (page: Page, point: Point): Promise<void> => {
 };
 
 /**
+ * B-D2 re-baseline (R29, PROPOSAL-D §2.1 — cited): at shell widths the
+ * context dock narrows the canvas, so a fixed top-center strip tap is no
+ * longer a guaranteed background clear (the D-1 header DIM pill — a real
+ * control — sits exactly at the narrowed center; probe-proven at (528, 40)).
+ * Probe candidate points for one whose elementFromPoint IS the canvas (the
+ * recognition-aids guard idiom) and tap it — a background clear with view
+ * semantics at the call sites.
+ */
+const clearCanvasTap = async (page: Page): Promise<void> => {
+  const box = await canvasBox(page);
+  const point = await page.evaluate(([bx, by, bw]): { x: number; y: number } | null => {
+    for (const [fx, dy] of [[0.5, 40], [0.5, 140], [0.25, 40], [0.25, 140], [0.75, 140]]) {
+      const x = bx + bw * fx;
+      const y = by + dy;
+      const el = document.elementFromPoint(x, y);
+      if (el !== null && el.closest('.tme-canvas') !== null) return { x, y };
+    }
+    return null;
+  }, [box.x, box.y, box.width] as const);
+  if (point === null) throw new Error('no clear canvas point for the background tap');
+  await tapPoint(page, point);
+};
+
+/**
  * Wait two animation frames: panel open/close changes the stage size
  * synchronously, but the ResizeObserver-driven re-fit (B-106) runs just
  * before the next paint — reads inside that window yield pre-fit
@@ -891,8 +915,7 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
     // panel — blocks are overlay state and survive), then the castle tap
     // lands clean. Setup, not assertion.
     await collapseRouteSheet(page);
-    const clearBox = await canvasBox(page);
-    await tapPoint(page, { x: clearBox.x + clearBox.width / 2, y: clearBox.y + 40 });
+    await clearCanvasTap(page); // B-D2 re-baseline: the probed background clear (cited in the helper)
     await expect(page.getByTestId('tme-arc-panel')).toBeHidden();
     await tapNode(page, CASTLE_ID);
     // The re-select re-expands the sheet (B-114); if the guard collapsed it
@@ -972,8 +995,7 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
     await activate(page, 'tme-editor-toggle');
     await expect(page.getByTestId('tme-editor-toggle')).toHaveAttribute('aria-pressed', 'false');
     await collapseRouteSheet(page);
-    const liftBox = await canvasBox(page);
-    await tapPoint(page, { x: liftBox.x + liftBox.width / 2, y: liftBox.y + 40 }); // clear the selection (view semantics)
+    await clearCanvasTap(page); // B-D2 re-baseline: the probed background clear (cited in the helper)
     await tapEdgeMidpoint(page, CASTLE_ARC, 'Outskirts ↔ Einzbern Castle');
     await expect(page.getByTestId('tme-arc-panel')).toBeVisible();
     await expect(page.getByTestId('tme-arc-lift')).toBeEnabled();
@@ -989,8 +1011,7 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
     // point — a castle tap there would toggle the rail instead. Close the
     // arc panel with a top-strip clear first (view semantics; the block was
     // already lifted), then the castle tap lands on canvas.
-    const tailBox = await canvasBox(page);
-    await tapPoint(page, { x: tailBox.x + tailBox.width / 2, y: tailBox.y + 40 });
+    await clearCanvasTap(page); // B-D2 re-baseline: the probed background clear (cited in the helper)
     await expect(page.getByTestId('tme-arc-panel')).toBeHidden();
     await tapNode(page, CASTLE_ID);
     // The pre-lift collapse left the sheet collapsed and the castle re-select

@@ -205,6 +205,14 @@
   .tme-regime {
     display: inline-flex;
   }
+
+  // B-D2: the regime button pair (Maximize/Restore + the shell-gated Dock)
+  // row inside the drag head.
+  .tme-float-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
 }
 
 
@@ -460,5 +468,64 @@
   .tme-mode:hover:not(.tme-active) {
     border-color: var(--tme-hairline);
     color: var(--tme-text);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// B-D2 (R29, PROPOSAL-D §2.1) — the >=1024 context dock. Two pieces:
+//
+// (1) The unplaced floater's DEFAULT right anchor clears the dock band via
+// the --tme-dock-w seam (the --tme-rail-w precedent — a fixed-position host
+// cannot read a sibling's box, but it inherits the layout's custom
+// property). Remembered positions always win (D10): the anchor-start and
+// placed rules above out-specify this, so only the DEFAULT moves.
+//
+// (2) The dock block: inside .tme-dock the host is a static in-flow fill —
+// every float-regime rule above stands down DECLARATIVELY. Display is never
+// touched here (the closed panel's display:none keeps driving visibility
+// exactly as today); only the geometry resets. The .tme-docked compounds
+// (the host class bound to graph.routeDockedHome()) carry the float rules'
+// class count so this block wins on specificity, not just order; the
+// :host-context form is the packet's base block. The drag head hides
+// in-dock — the dock header owns the handoff — and the Dock button hides
+// with it (never a dead control, F07).
+// ---------------------------------------------------------------------------
+@media (min-width: 1024px) {
+  :host(.tme-float-open) {
+    right: calc(var(--tme-dock-w, 0px) + 0.75rem);
+  }
+}
+
+@media (min-width: 1024px) {
+  :host-context(.tme-dock),
+  :host(.tme-docked),
+  :host(.tme-docked.tme-float-open),
+  :host(.tme-docked.tme-float-open.tme-anchor-start),
+  :host(.tme-docked.tme-float-open.tme-placed),
+  :host(.tme-docked.tme-float-open.tme-maximized) {
+    position: static;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    transform: none; // belt-and-braces: the binding nulls in-dock (the inline-style guard)
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    max-height: none;
+    max-width: none;
+    z-index: auto;
+    border: none;
+    border-radius: 0;
+  }
+
+  :host-context(.tme-dock) .tme-float-head,
+  :host(.tme-docked) .tme-float-head {
+    display: none;
+  }
+
+  :host-context(.tme-dock) [data-testid='tme-route-dock'],
+  :host(.tme-docked) [data-testid='tme-route-dock'] {
+    display: none;
   }
 }

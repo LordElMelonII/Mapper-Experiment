@@ -174,8 +174,13 @@
            the save dock and the hint pill can never overlap again (the old
            fixed top offset collided with the docked band by 2px and with the
            hint pill outright); margin-left:auto keeps it the top-right pill
-           and the wrap gives it its own row when the band is tight. -->
-      @if (graph.selection(); as sel) {
+           and the wrap gives it its own row when the band is tight.
+           B-D2 (R29, PROPOSAL-D §2.1): DUAL-HOME — at shell widths (>=1024)
+           the chip migrates to the canvas-bottom status strip (below); the
+           header copy renders BELOW 1024 only, exactly as today, so one chip
+           instance exists per regime and the sub-shell DOM is byte-for-byte
+           unchanged. -->
+      @if (!graph.shellWide() && graph.selection(); as sel) {
         <button type="button" class="tme-chip" data-testid="tme-selection-chip" (click)="dismissSelection()">
           <span data-testid="tme-selection-label">{{ sel.label }}</span>
           <span class="tme-chip-dismiss" aria-hidden="true">×</span>
@@ -377,19 +382,28 @@
          under its own component SCSS (the B-119 surface generalized). DOM
          order = stack paint order (route, arc, property, manager). Panel
          CONTENT testids are byte-verbatim from the region era; only the
-         regime wrappers changed. -->
+         regime wrappers changed.
+         B-D2 (R29, PROPOSAL-D §2.1): at shell widths (>=1024) each kind's
+         dock-home predicate — the service's single source BOTH homes gate on
+         — hides a kind HERE while it is the dock's occupant (the dock's
+         @switch renders it there instead: one live home per kind per
+         regime). The predicates are shellWide-gated, so below 1024 every
+         gate is false and this markup is byte-for-byte today's. -->
     <div class="tme-sheets">
       <!-- B-105: the route panel — wide: auto-floats while it has content
            (routes / blocked listings from the snapshot projection), summoned
            empty by the rail's Route toggle (tme-route-toggle); narrow: the
            B-114 bottom sheet with its always-visible rail, unchanged. -->
-      <tme-route-panel class="tme-panel" />
+      @if (!graph.routeDockedHome()) {
+        <tme-route-panel class="tme-panel" />
+      }
 
       <!-- B-106 (rulings 1/3): the arc panel — rendered only while an edge
            is selected (an edge tap cleared the node selection, so the
            chip/route target are already gone — the panels never fight over
-           one selection). -->
-      @if (graph.edgeSelection()) {
+           one selection). The edge-selection gate stays the panel's own;
+           B-D2 adds only the dock-home arm. -->
+      @if (graph.edgeSelection() && !graph.arcDockedHome()) {
         <tme-arc-panel class="tme-arc-panel" />
       }
 
@@ -397,20 +411,54 @@
            with a node selection only (the draft gate lives inside the
            component; an edge selection — the arc panel's surface — can
            never coexist with a node selection, B-106). -->
-      <tme-property-panel class="tme-property-panel" />
+      @if (!graph.propertyDockedHome()) {
+        <tme-property-panel class="tme-property-panel" />
+      }
 
       <!-- B-126 (§5 Phase 3 M3/D82): the layer-manager sheet — the Manage
            affordance's surface; the component hides its host entirely while
            closed (the B-117 precedent), so closed it is not even painted. -->
-      <tme-layer-manager class="tme-layer-manager" />
+      @if (!graph.layersDockedHome()) {
+        <tme-layer-manager class="tme-layer-manager" />
+      }
 
       <!-- B-137 (§5 M4/D40): the Maps manager panel — the library surface
            (open/new/duplicate/delete), the mapless boot's auto-opened
            picker. Same hide-while-closed discipline; DOM order = stack
            paint order. -->
-      <tme-maps-panel class="tme-maps-panel" />
+      @if (!graph.mapsDockedHome()) {
+        <tme-maps-panel class="tme-maps-panel" />
+      }
     </div>
+
+    <!-- B-D2 (R29, PROPOSAL-D §2.1): the STATUS STRIP — the canvas-bottom
+         one-line band at shell widths (the template gate is shellWide, so
+         the sub-shell DOM is byte-for-byte unchanged; the empty line stands
+         ready for D-5's refusal/pending words). The selection chip lives
+         here at >=1024 (dual-homed with the header copy above — the markup
+         contract is verbatim: same testids, same class, same dismiss path;
+         one instance per regime). A status line, not a control surface:
+         pointer-events none on the strip, auto on the chip (real chrome). -->
+    @if (graph.shellWide()) {
+      <div class="tme-status-strip" data-testid="tme-status-strip">
+        @if (graph.selection(); as sel) {
+          <button type="button" class="tme-chip" data-testid="tme-selection-chip" (click)="dismissSelection()">
+            <span data-testid="tme-selection-label">{{ sel.label }}</span>
+            <span class="tme-chip-dismiss" aria-hidden="true">×</span>
+          </button>
+        }
+      </div>
+    }
   </div>
+
+  <!-- B-D2 (R29, PROPOSAL-D §2.1): the CONTEXT DOCK — the viewer's LAST
+       flex child, AFTER .tme-sheets and INSIDE .tme-viewer (never inside
+       .tme-stage): the host is display:contents and the gated .tme-dock
+       aside is the 280px column, so its open/close shrinks/restores the
+       stage — the panel-driven stage resize the D81/D91 discriminator
+       classifies (preserve + rescue clamp, the rail's collapse/expand
+       class). -->
+  <tme-context-dock />
 
   <!-- B-127 (§5 Phase 3 M3/D86/F53): the editor rail — the app's single
        control surface (editor/view mode, the tool picks, the layer switcher

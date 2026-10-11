@@ -91,6 +91,12 @@ interface DragFrame extends ClampFrame {
     '[class.tme-maximized]': 'maximized()',
     '[class.tme-anchor-start]': 'anchorStart()',
     '[class.tme-placed]': 'floatTransform() !== null',
+    // B-D2 (R29, PROPOSAL-D §2.1): the dock-home chrome class — true exactly
+    // while this panel is the context dock's occupant (the service's single
+    // source both template homes gate on). The SCSS's :host(.tme-docked ...)
+    // compounds stand the float forms down inside the dock at float-rule
+    // specificity. Inert below 1024px (the predicate is shellWide-gated).
+    '[class.tme-docked]': 'graph.routeDockedHome()',
     // B-133: the floating panel's rendered position — translate(x, y) of the
     // remembered viewport position. The DRAG bypasses this binding entirely
     // (direct style.transform writes, D2); the binding re-renders the same
@@ -160,8 +166,13 @@ export class RoutePanelComponent {
    * remembered viewport position (null while unplaced: the CSS anchor
    * applies). The drag's direct style writes land on the same property; the
    * one signal write per drag end re-renders the committed value here.
+   * B-D2: null while the panel is the dock's occupant — a remembered
+   * position must not translate the in-flow dock fill (the SCSS dock block
+   * stands the float geometry down; the remembered position itself is
+   * untouched and wins again the moment the panel floats, D10).
    */
   protected readonly floatTransform = computed<string | null>(() => {
+    if (this.graph.routeDockedHome()) return null;
     if (!this.graph.routePanelOpen()) return null;
     const pos = this.graph.routePanelPosition();
     return pos === null ? null : `translate(${pos.x}px, ${pos.y}px)`;
@@ -216,6 +227,16 @@ export class RoutePanelComponent {
    */
   protected toggleMaximize(): void {
     this.maximized.update((m) => !m);
+  }
+
+  /**
+   * B-D2 (R29, PROPOSAL-D §2.1): the floater's Dock affordance — the
+   * float-side half of the dock↔float handoff (the dock header's Float is
+   * the other). One service write (R3); shell-gated in the template (below
+   * 1024 the button never renders).
+   */
+  protected dock(): void {
+    this.graph.setPanelDocked('route', true);
   }
 
   /**

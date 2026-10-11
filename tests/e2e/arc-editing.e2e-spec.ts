@@ -414,9 +414,23 @@ const dodgeBands = async (
 ): Promise<void> => {
   const canvas = await page.getByTestId('tme-canvas').boundingBox();
   if (canvas === null) throw new Error('canvas host not visible');
+  // B-D2 re-baseline (R29, PROPOSAL-D §2.1 — cited): at shell widths TWO
+  // band facts change. (1) The selection chip lives in the canvas-bottom
+  // STATUS STRIP — a BOTTOM band, not top chrome (counting it into the top
+  // floor put floor+12 past the canvas bottom and emptied the drag-start
+  // search window: topFloor 712 vs a 720px canvas). (2) The docked context
+  // panel's host is a stage SIBLING RIGHT of the canvas — horizontally
+  // outside it, so it can never cover a canvas aim and never steers the
+  // pan. Both repairs read the LIVE geometry (presence-probed, the D-1
+  // law): a chip in the canvas's top half keeps the pre-D-2 treatment; a
+  // band with no horizontal canvas overlap is filtered out.
+  const canvasMid = canvas.y + canvas.height / 2;
+  const chipIsTopBand = boxes.chip !== null && boxes.chip.top + boxes.chip.height <= canvasMid;
+  const coversCanvas = (band: CoverBox): boolean =>
+    band.left < canvas.x + canvas.width && band.left + band.width > canvas.x;
   let panDy = 0;
   for (const band of [boxes.prop, boxes.route, boxes.rail, boxes.arc]) {
-    if (band === null) continue;
+    if (band === null || !coversCanvas(band)) continue;
     for (const t of aims) {
       if (t.y > band.top - 16) panDy = Math.min(panDy, band.top - 16 - t.y);
     }
@@ -425,12 +439,19 @@ const dodgeBands = async (
     const chip = boxes.chip;
     for (const t of aims) {
       if (t.x + 22 > chip.left && t.y + 22 > chip.top && t.y - 22 < chip.top + chip.height) {
-        panDy = Math.min(panDy, chip.top + chip.height + 16 - t.y);
+        // Top strip chip: clear BELOW it (the pre-D-2 world). Bottom strip
+        // chip (the >=1024 status strip): clear ABOVE it.
+        panDy = Math.min(
+          panDy,
+          chipIsTopBand ? chip.top + chip.height + 16 - t.y : chip.top - 16 - t.y,
+        );
       }
     }
   }
   const topFloor = Math.max(
-    ...[boxes.header, boxes.breadcrumb, boxes.chip].map((b) => (b === null ? 0 : b.top + b.height)),
+    ...[boxes.header, boxes.breadcrumb, chipIsTopBand ? boxes.chip : null].map((b) =>
+      b === null ? 0 : b.top + b.height,
+    ),
     0,
   );
   if (topFloor > 0) {
@@ -447,7 +468,12 @@ const dodgeBands = async (
           __TME_E2E__?: { nodeRenderedPosition(id: string): { x: number; y: number } | null };
         }).__TME_E2E__;
         if (hook === undefined) return null;
-        const bands = [top.prop, top.route, top.rail, top.arc].filter((b) => b !== null);
+        // B-D2 re-baseline: bands right of the canvas (the docked panel's
+        // host) never bound the search window — see the coversCanvas note
+        // in the pan arms above.
+        const bands = [top.prop, top.route, top.rail, top.arc].filter(
+          (b) => b !== null && b.left < canvasBox.x + canvasBox.width && b.left + b.width > canvasBox.x,
+        );
         const minBand =
           bands.length === 0 ? Number.POSITIVE_INFINITY : Math.min(...bands.map((b) => b.top));
         const nodePts = ids

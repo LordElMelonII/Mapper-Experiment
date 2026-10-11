@@ -1,0 +1,79 @@
+// PKG B-D2 — component-scoped chrome only (D7: zero global leakage). The
+// dock column: 280px, the viewer's last flex child (in-flow — never
+// position:fixed), border-left hairline. The host is display:contents so the
+// gated aside IS the flex child and an unrendered dock costs zero layout.
+// The whole sheet is inert below 1024px by construction (the template renders
+// nothing when dockContext is null); the media gate is belt-and-braces for
+// the sub-shell byte-for-byte law.
+:host {
+  display: contents;
+}
+
+@media (min-width: 1024px) {
+  .tme-dock {
+    flex: 0 0 280px; // the shell's fixed 280px context column
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    border-left: 1px solid rgba(174, 189, 211, 0.25); // the rail's hairline
+    background: var(--tme-ground);
+  }
+
+  // The dock header: title word + Float (the handoff's dock side). One >= 44px
+  // control row (F52); tokens only, the flat band-pill chrome of the shell.
+  .tme-dock-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    min-height: 44px; // F52
+    padding: 0.25rem 0.5rem 0.25rem 0.75rem;
+    border-bottom: 1px solid rgba(174, 189, 211, 0.25);
+  }
+
+  .tme-dock-title {
+    margin: 0;
+    color: var(--tme-text);
+    font:
+      600 1rem/1.2 system-ui,
+      -apple-system,
+      sans-serif;
+  }
+
+  .tme-dock-float {
+    min-width: 44px; // F52
+    min-height: 44px;
+    padding: 0 0.625rem;
+    border: 1px solid rgba(230, 235, 242, 0.35);
+    border-radius: 8px;
+    background: rgba(20, 23, 28, 0.85);
+    color: var(--tme-text-secondary);
+    font:
+      600 0.875rem/1.2 system-ui,
+      -apple-system,
+      sans-serif;
+    cursor: pointer;
+    touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+  }
+
+  // The occupant's fill area — one grid cell; the panel host stretches to it
+  // (the panels' own :host-context(.tme-dock) blocks stand their float forms
+  // down to a static fill).
+  .tme-dock-fill {
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    display: grid;
+  }
+}
+
+// B-148 pattern (B-D2): the Float control brightens on pointer-fine hover —
+// border/text tokens only, no layout shift, nothing on touch.
+@media (hover: hover) and (pointer: fine) {
+  .tme-dock-float:hover {
+    border-color: var(--tme-hairline);
+    color: var(--tme-text);
+  }
+}

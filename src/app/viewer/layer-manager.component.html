@@ -29,7 +29,10 @@
          pointerdown path, D2/D53 — the header's buttons keep their taps) and
          carries the Maximize/Restore regime toggle (>= 44px, F52) beside the
          close X. Narrow: the same head renders plain (no drag, no regime
-         chrome) above the sheet rail. -->
+         chrome) above the sheet rail.
+         B-D2 (R29, PROPOSAL-D §2.1): the shell-gated Dock affordance joins
+         the regime pair (below 1024 it never renders; inside the dock the
+         SCSS hides it — never a dead control, F07). -->
     <header class="tme-manager-head" (pointerdown)="onDragStart($event)">
       <h2 class="tme-title">Layers</h2>
       <div class="tme-head-actions">
@@ -42,6 +45,9 @@
         >
           {{ maximized() ? 'Restore' : 'Maximize' }}
         </button>
+        @if (graph.shellWide()) {
+          <button type="button" class="tme-regime" data-testid="tme-layers-dock" (click)="dock()">Dock</button>
+        }
         <button
           type="button"
           class="tme-close"

@@ -455,6 +455,18 @@ test.describe('map-driven mode surfaces (PKG B-124)', () => {
     // whitespace, so trim (toHaveText above already normalized it).
     expect((await page.getByTestId('tme-mode-walk').textContent())?.trim()).toBe(seamWord.get('walk'));
 
+    // B-D2 re-baseline (R29, PROPOSAL-D §2.1 — cited): the summoned route is
+    // the dock's occupant at shell widths — the canvas yields its 280px band
+    // AFTER the demo's boot fit, so right-edge content (high pasture) can sit
+    // under the dock column and a tap there lands on the dock, not the map.
+    // The rail's Fit is the explicit full-world ask into the NARROWED canvas
+    // (the B-142 §R2 restoreBootViewport pattern), putting every node back
+    // on-canvas. Presence-probed; phone keeps its byte-identical path.
+    if (await page.getByTestId('tme-dock').count()) {
+      await activate(page.getByTestId('tme-zoom-fit'));
+      await settle(page);
+    }
+
     // Route through the registry-only arc — the leg's word IS the chip's
     // word and the seam's word: 'Horseback' everywhere, 'walk' everywhere.
     await tapPoint(page, await nodeScreenPoint(page, HIGH_PASTURE_ID));
