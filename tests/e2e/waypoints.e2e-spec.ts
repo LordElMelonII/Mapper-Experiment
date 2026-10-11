@@ -1283,16 +1283,17 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
   }) => {
     test.skip(isPhone(), 'wheel zoom runs on desktop; the pinch twin is the phone cell below (D53)');
 
-    // Editor with the default Node tool (B-116 behavior); node A pre-opens
-    // the property-panel column and save dock — the RO refit that follows is
-    // the B-112 chain, NOT under pin here.
+    // Editor with the default Node tool (B-116 behavior); node A lights the
+    // save dock. B-D3 (PROPOSAL-D §3.1, cited): the placement names INLINE —
+    // the popover stands, no panel opens; the settle below still waits out
+    // the placement's own rebuild + popover render before the pins note.
     await activate(page, 'tme-editor-toggle');
     await expect(page.getByTestId('tme-tool-node')).toHaveAttribute('aria-pressed', 'true');
     await tapPoint(page, await screenModelPoint(page, BG_MODEL_POINT));
     await expect
       .poll(async () => (await readLabels(page)).filter((l) => l === 'New place'))
       .toHaveLength(1);
-    await settle(page); // let the panel-open RO refit land before noting
+    await settle(page); // the placement's rebuild + popover render settle before noting
 
     // Zoom IN by wheel (user gesture). D81 (PKG B-125): the panel-open keeps
     // the preserved viewport (no refit), so the wheel aims at
@@ -1335,6 +1336,17 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
     expect(await readPan(page), 'move while zoomed: pan unchanged (R21 ruling 1)').toEqual(pan);
 
     // PROPERTY COMMIT while zoomed: rename via the property panel, Done.
+    // B-D3 re-baseline (PROPOSAL-D §3.1 + B-D3, cited): the placement above
+    // names INLINE (the popover opened over the placed node; the move's
+    // drag start resolved it — an empty input cancels). The panel is
+    // reached through the preserved deselect+reselect path: a chip dismiss
+    // and a node tap are both zero-motion gestures (no fit, no viewport
+    // write — D91), and the pins below measure only the rename itself.
+    await activate(page, 'tme-selection-chip');
+    await expect(page.getByTestId('tme-selection-chip')).toBeHidden();
+    const nodeNow = expectPosition(await readRenderedPosition(page, placedId));
+    await page.mouse.click(box.x + nodeNow.x, box.y + nodeNow.y);
+    await expect(page.getByTestId('tme-property-panel')).toBeVisible();
     await page.getByTestId('tme-node-label-input').fill('Market Square');
     await activate(page, 'tme-node-done');
     await expect(page.getByTestId('tme-selection-label')).toHaveText('Market Square');
@@ -1379,8 +1391,9 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
   test('phone: pinch-zoom in, then place/move/property-commit while zoomed leave zoom and pan untouched (R21 ruling 1 / B-120, D53)', async () => {
     test.skip(!isPhone(), 'the in-test Chromium twin reproduces the iPhone-13 device identically from either project; wheel zoom is the desktop twin above');
     await withPhoneChromiumPage(async (page) => {
-      // Editor + Node tool; node A pre-opens the phone's panels (sheet
-      // expansion + property region) — settle their RO refit first.
+      // Editor + Node tool; node A lights the save dock. B-D3 (PROPOSAL-D
+      // §3.1, cited): the placement names INLINE — the popover stands, no
+      // panel/sheet opens — settle the placement's rebuild + popover render.
       await activate(page, 'tme-editor-toggle');
       await expect(page.getByTestId('tme-tool-node')).toHaveAttribute('aria-pressed', 'true');
       await tapAimed(page, () => screenModelPoint(page, BG_MODEL_POINT));
@@ -1429,8 +1442,10 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
       expect(await readPan(page), 'place while zoomed: pan unchanged (R21 ruling 1)').toEqual(pins.pan);
 
       // MOVE while zoomed (CDP touch drag, hold-terminated) — the drag
-      // start is coverage-cleared first (the property sheet is open on the
-      // placed node's selection).
+      // start is coverage-cleared first. B-D3 (PROPOSAL-D §3.1, cited): no
+      // property sheet stands on the placed node's selection anymore; the
+      // drag's first pointerdown resolves the parked popover (an empty
+      // input cancels — D10) before the grab.
       const placedId = await readSelectedId(page);
       if (placedId === null) throw new Error('placed node not selected (C5/D75 id discovery failed)');
       const start = await clearAimed(page, () => screenModelPoint(page, BG_MODEL_POINT_2));
@@ -1442,7 +1457,22 @@ test.describe('tap-to-place waypoints (PKG B-109)', () => {
       expect(await readZoom(page), 'move while zoomed: zoom unchanged (R21 ruling 1)').toBe(pins.zoom);
       expect(await readPan(page), 'move while zoomed: pan unchanged (R21 ruling 1)').toEqual(pins.pan);
 
-      // PROPERTY COMMIT while zoomed.
+      // PROPERTY COMMIT while zoomed. B-D3 re-baseline (PROPOSAL-D §3.1 +
+      // B-D3, cited): the placement above named inline; the panel is reached
+      // through the preserved deselect+reselect path — a chip dismiss and a
+      // coverage-guarded node tap, both zero-motion (no fit, no viewport
+      // write — D91); the pins re-read after and measure only the rename.
+      await activate(page, 'tme-selection-chip');
+      await expect(page.getByTestId('tme-selection-chip')).toBeHidden();
+      const nodeAim = async (): Promise<Point> => {
+        await settle(page);
+        const pos = await readRenderedPosition(page, placedId);
+        if (pos === null) throw new Error('placed node not rendered');
+        const canvas = await canvasBox(page);
+        return { x: canvas.x + pos.x, y: canvas.y + pos.y };
+      };
+      await tapAimed(page, nodeAim);
+      await expect(page.getByTestId('tme-property-panel')).toBeVisible();
       await page.getByTestId('tme-node-label-input').fill('Market Square');
       await activate(page, 'tme-node-done');
       await expect(page.getByTestId('tme-selection-label')).toHaveText('Market Square');

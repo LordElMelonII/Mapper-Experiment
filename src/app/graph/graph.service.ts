@@ -1882,6 +1882,44 @@ export class GraphService implements OnDestroy {
    */
   readonly nodeMenu = signal<NodeMenuState | null>(null);
 
+  // --- B-D3 (R29, PROPOSAL-D §3.1): the inline-naming state -------------------
+
+  /**
+   * B-D3: the PLACED node currently in its inline-naming state, or null —
+   * the naming popover's render gate (the tme-inline-naming component's
+   * `@if`). Set by the placement path AFTER the selection write
+   * (placeNodeAt → startInlineNaming — the packet's same-tick order),
+   * cleared by the resolution paths (commitInlineName / cancelInlineNaming)
+   * and by the constructor's guard effect whenever the selection leaves the
+   * node or editor mode exits (loadMap/unloadMap are covered through their
+   * own selection/editor writes — no extra belt, R3: the effect is the one
+   * close path for those transitions). No facade surface (R2): frontend
+   * viewer memory, the nodeMenu signal's class.
+   */
+  readonly inlineNamingId = signal<string | null>(null);
+
+  /**
+   * B-D3: the popover's anchor — the placed node's RENDERED position
+   * (canvas-relative px) captured ONCE at open, the openNodeMenu capture
+   * (`node.renderedPosition()`, the rescue clamp's own render→model
+   * projection). The popover is PARKED: pans and zooms never chase it (the
+   * node-menu discipline); the component offsets and clamps it into the
+   * stage at bind time. Null degrades to the clamped stage corner (C32
+   * spirit — unreachable: the caller just rebuilt the projection).
+   */
+  readonly inlineNamingAnchor = signal<{ x: number; y: number } | null>(null);
+
+  /**
+   * B-D3: the resolution LATCH — the node whose property-panel auto-open is
+   * suppressed after its popover resolved (commit OR cancel: the panel does
+   * NOT open after a commit either — the packet's letter). The panel's
+   * draft-seeding effect skips while the latch names the selection; the
+   * guard effect clears the latch the moment the selection leaves the node,
+   * so deselect + reselect re-opens the panel exactly as today for an
+   * existing node (the preserved path — the packet's honest test).
+   */
+  readonly inlineNamingLatch = signal<string | null>(null);
+
   // D3: created ONCE, headless — mount() attaches a DOM host later; unmount()
   // returns to headless. Computation works with the UI closed. Verified
   // against @types/cytoscape 3.21.9 + the installed 3.34.3 runtime: a headless
@@ -2280,6 +2318,24 @@ export class GraphService implements OnDestroy {
       void this.calibrateMode();
       void this.connectMode();
       this.closeNodeMenu();
+    });
+
+    // B-D3 (R29, PROPOSAL-D §3.1): the inline-naming state's guard (the
+    // connectMode exit-guard / node-menu dismissal idiom): the popover names
+    // ONE node of ONE map in ONE editor session — a selection that leaves
+    // the named node, a cleared selection (chip dismiss, loadMap/unloadMap's
+    // reset) or an editor exit ends it; the resolution latch dies with the
+    // selection's departure too, which is what lets a deselect + reselect
+    // re-open the panel (the preserved existing-node path). Every read is a
+    // discrete-write signal (D2); the writes notify only on a real flip
+    // (the default equality), so the effect settles without a loop.
+    effect(() => {
+      const editor = this.editorMode();
+      const selId = this.selection()?.id ?? null;
+      const naming = this.inlineNamingId();
+      if (naming !== null && (!editor || naming !== selId)) this.clearInlineNaming();
+      const latch = this.inlineNamingLatch();
+      if (latch !== null && (!editor || latch !== selId)) this.inlineNamingLatch.set(null);
     });
 
     // B-D2 (R29, PROPOSAL-D §2.1): the context dock's open-history
@@ -3388,6 +3444,7 @@ export class GraphService implements OnDestroy {
     this.editorMode.set(false);
     this.cy.autoungrabify(true);
     this.clearDrawPick(); // B-122: the editor exit clears the pending pick
+    this.clearInlineNaming(); // B-D3: the naming popover is an editor gesture — it dies with the mode (the packet's named clear)
   }
 
   /**
@@ -3476,6 +3533,90 @@ export class GraphService implements OnDestroy {
     if (createdId !== null) this.selection.set({ id: createdId, label: 'New place' });
     if (createdId !== null) this.markPlaceHintDoneForLoadedMap(); // B-147: the taught-away placement (success path only)
     this.editorRevision.update((n) => n + 1); // F45: the first edit shows the unsaved indicator
+    // B-D3 (R29, PROPOSAL-D §3.1): the placement's AFTER-step, exactly the
+    // packet's order — the command sequence above is byte-identical
+    // (upsertNode id:'' + selection); the new node now enters the INLINE
+    // NAMING state instead of auto-opening the property panel (the panel's
+    // draft-seeding effect skips while the flag names the selection). The
+    // anchor is captured NOW, at open: the rebuilt projection's rendered
+    // position (canvas-relative px).
+    if (createdId !== null) this.startInlineNaming(createdId);
+  }
+
+  // --- B-D3 (R29, PROPOSAL-D §3.1): the inline-naming state machine ----------
+
+  /**
+   * B-D3: open the inline-naming state for one node — the placement path's
+   * ONLY open writer (R3: one write path per transition). Captures the
+   * rendered anchor at open (the openNodeMenu precedent:
+   * `node.renderedPosition()`, canvas-relative px, read once — the popover
+   * is PARKED) and sets the flag the panel's seeding effect and the
+   * popover's `@if` read. An absent node degrades to a null anchor (C32
+   * spirit — unreachable: the caller just rebuilt the projection).
+   */
+  private startInlineNaming(id: string): void {
+    const node = this.cy.getElementById(id);
+    const rendered = node.length > 0 ? node.renderedPosition() : null;
+    this.inlineNamingAnchor.set(rendered === null ? null : { x: rendered.x, y: rendered.y });
+    this.inlineNamingId.set(id);
+  }
+
+  /**
+   * B-D3: the flag's quiet close — no command, no latch (the guard effect's
+   * and the editor exit's close path; R3). The selection is untouched; the
+   * property panel behaves exactly as today for whatever is selected.
+   */
+  clearInlineNaming(): void {
+    this.inlineNamingId.set(null);
+    this.inlineNamingAnchor.set(null);
+  }
+
+  /**
+   * B-D3: keep the C23 default ('New place'), close the popover, latch the
+   * panel shut for this node — the packet's deliverable 2: a resolution
+   * WITHOUT a commit (Escape, a click-away over an empty input, an empty
+   * Enter) must still not auto-open the panel. The latch dies when the
+   * selection leaves the node (the guard effect), so deselect + reselect
+   * opens the panel as today for an existing node. No facade command (D10:
+   * nothing auto-commits — empty never renames).
+   */
+  cancelInlineNaming(): void {
+    const id = this.inlineNamingId();
+    this.clearInlineNaming();
+    if (id !== null) this.inlineNamingLatch.set(id);
+  }
+
+  /**
+   * B-D3: the popover's ONE commit path — `upsertNode` FULL-REPLACE of the
+   * placed node's live data with the typed label (the B-116 PUT precedent:
+   * one command, no new facade surface; every other field is read off the
+   * live map reference — the same data the property panel's draft seeds
+   * from — never reconstructed, R4). Trim first: an empty value commits
+   * NOTHING and takes the cancel path (the packet's "Empty + Enter → same
+   * as Escape"; the latch is the point). On success the flag clears, the
+   * latch parks the panel shut for this node, and the selection STAYS on
+   * the node (the service's upsertNode re-points its label — today's
+   * post-placement state; the chip follows the rename, R3). A C30 refusal
+   * (unreachable-in-practice for a label-only PUT against a just-placed
+   * node) degrades to the cancel path — nothing is half-renamed, nothing
+   * throws (C32); the typed name is not silently rewritten anywhere.
+   */
+  commitInlineName(label: string): void {
+    const id = this.inlineNamingId();
+    if (id === null) return;
+    const name = label.trim();
+    const live = name.length === 0 ? null : this.nodeDataById(id);
+    if (live === null) {
+      this.cancelInlineNaming();
+      return;
+    }
+    const refused = this.upsertNode({ ...live, label: name });
+    if (refused !== null) {
+      this.cancelInlineNaming();
+      return;
+    }
+    this.clearInlineNaming();
+    this.inlineNamingLatch.set(id);
   }
 
   /**

@@ -7,9 +7,11 @@
 //              rename nudge.
 //   D79      — the one-time hint contract reused from the calibrate hint
 //              (B-137): fresh-created map only, dismissible, session-memory.
-//   R-5      — the name-first property form; the rename nudge is the SAME
-//              machinery (seedDraft arms focus on every new-node seed), so
-//              the packet's item 3 is proven, not rebuilt (B-147 ruling).
+//   R-5      — the name-first property form; the rename nudge rode the SAME
+//              machinery (seedDraft armed focus on every new-node seed) —
+//              B-D3 (PROPOSAL-D §3.1) SUPERSEDES the nudge: every placement
+//              names INLINE now, and the nudge cells below pin the popover
+//              (R29 ruling 3); R-5's own law stands for panel opens.
 //   C23      — plain words: the hint sentence and the legend's kind words.
 //   F52/D53  — every control >= 44px both dims, touch-alone; the hint's
 //              Dismiss and the legend's toggle are swept.
@@ -40,6 +42,8 @@ const isPhone = (): boolean => test.info().project.name === 'phone';
  * (B-145/R-5's own cells — FX1's lower-left void, clear of nodes AND arcs).
  */
 const BG_MODEL_POINT: { x: number; y: number } = { x: -250, y: 450 };
+
+const NEW_PLACE = 'New place'; // C23 default label, verbatim
 
 // page.evaluate callbacks are SERIALIZED: the hook lookup is inlined in
 // each one (the maps-library discipline).
@@ -291,7 +295,7 @@ test.describe('first-run placement hint (PKG B-147, R-7 item 2, D79 reuse)', () 
   });
 });
 
-test.describe('rename nudge (PKG B-147, R-7 item 3 — the R-5 machinery, proven)', () => {
+test.describe('rename nudge superseded by inline naming (R29 B-D3 ruling 3 — PROPOSAL-D §3.1)', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await expect(page.getByTestId('tme-canvas')).toBeVisible();
@@ -301,88 +305,56 @@ test.describe('rename nudge (PKG B-147, R-7 item 3 — the R-5 machinery, proven
     if (isPhone()) await page.getByTestId('tme-zoom-fit').tap();
   });
 
-  test('every new placement opens the panel Name-focused and fully selected (R-5 seedDraft, B-147 ruling 3)', async ({
+  test('every new placement names inline: the popover re-arms Name-focused on each placement (R-7 item 3 — the nudge IS the popover now)', async ({
     page,
   }) => {
-    // The R-5 citation flow: editor mode, one PLACED node, then a LIBRARY
-    // node — the second placement's open re-focuses + re-selects the Name
-    // (the seedDraft switched check re-arms on every new-node seed), which
-    // is exactly the rename nudge: no second-code, the R-5 machinery
-    // already re-nudges on every placement.
+    // R-7 item 3 SUPERSEDED (B-D3, PROPOSAL-D §3.1 — cited): every placement
+    // names INLINE, so "name as you go" needs no panel re-open arm — the
+    // FIRST placement's popover stands focused over the fresh node, and the
+    // SECOND placement re-arms the same way over ITS node (the input empty;
+    // the placeholder carries the ask). The R-5 panel-open focus+select law
+    // is untouched for panel opens (pinned by editor-property-panel's
+    // library leg on the preserved path).
     await activate(page, 'tme-editor-toggle');
     await expect(page.getByTestId('tme-editor-toggle')).toHaveAttribute('aria-pressed', 'true');
     await tapModelPoint(page, BG_MODEL_POINT); // the R-5 cells' proven-empty placement point
 
-    // First placement: name-first (R-5, pinned by editor-property-panel).
-    await expect(page.getByTestId('tme-property-panel')).toBeVisible();
+    // First placement: the popover focused; the panel never opened; the
+    // placed node is the selection (C5/C23 via the chip).
+    await expect(page.getByTestId('tme-property-panel')).toHaveCount(0);
+    await expect(page.getByTestId('tme-inline-naming')).toBeVisible();
     await expect
       .poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? ''))
-      .toBe('tme-node-label-input');
-    const first = await page.evaluate(() => {
-      const el = document.activeElement;
-      return el instanceof HTMLInputElement ? { start: el.selectionStart, end: el.selectionEnd } : null;
-    });
-    expect(first?.start).toBe(0);
-    expect(first?.end).toBe('New place'.length);
+      .toBe('tme-inline-name-input');
+    await expect(page.getByTestId('tme-selection-label')).toHaveText(NEW_PLACE);
 
-    // SECOND placement — the rename nudge itself: the draft switches to the
-    // NEW node ('New place') and the Name input re-arms: focused + fully
-    // selected. The nudge is the R-5 open, not a separate behavior. The
-    // first panel's focus is dropped by the new seed (the switched check).
-    // The aim must be a DIFFERENT clear point than the first placement (the
-    // first node now sits at BG_MODEL_POINT — a same-point tap would select
-    // it, and a same-node re-seed keeps the focus where it is). MODEL-space
-    // offsets: at the world-fit viewport both points land in FX1's
-    // lower-left void (the R-5 cells' proven-empty region), distinct on
-    // every project because the same world-fit restores the same geometry.
-    // PHONE: the property SHEET covers the lower band while a selection
-    // stands. The chip's × (one discrete tap, R3) dismisses the selection —
-    // the draft closes and the sheet hides, the placed node stays — and the
-    // editor stays ON for the second placement.
-    if (isPhone()) {
-      await expect(page.getByTestId('tme-selection-chip')).toBeVisible();
-      await activate(page, 'tme-selection-chip'); // the whole chip is the dismiss
-      await expect(page.getByTestId('tme-property-panel')).toBeHidden();
-    }
-    // The route floater auto-opens with the first placed leg (the B-141
-    // stagger anchors it over the lower-left void on desktop — right where
-    // this aim lands); one header-drag parks it top-right first (the B-141
-    // park idiom, editor-place-move.e2e-spec.ts:358). Desktop-only: phone
-    // sheets stack by contract and the tapPoint guard talks to them.
-    if (!isPhone()) {
-      const head = await page.getByTestId('tme-route-float-head').boundingBox();
-      if (head !== null) {
-        const canvas = await canvasBox(page);
-        // B-D2 re-baseline (R29, PROPOSAL-D §2.1 — cited): the shell-gated
-        // Dock button joined the float head's action row, so the head's
-        // geometric CENTER is now a button — a center grab would silently
-        // click Maximize/Restore instead of dragging (probe-proven: the
-        // park no-op'd and the anchor-start floater kept covering the aim).
-        // Grab the TITLE end (head.x + 24 — the editor-panel-regime
-        // dragPanel idiom, never a button); the clamp lands the park
-        // bottom-right of the stage, clear of the lower-left placement void.
-        await page.mouse.move(head.x + 24, head.y + head.height / 2);
-        await page.mouse.down();
-        await page.mouse.move(canvas.x + canvas.width - 44, canvas.y + 150, { steps: 4 });
-        await page.mouse.up();
-        await settle(page);
-      }
-    }
-    await tapModelPoint(page, { x: BG_MODEL_POINT.x + 30, y: BG_MODEL_POINT.y + 20 });
+    // SECOND placement — the nudge's successor: the dismissing tap itself
+    // resolves the first popover (an empty input cancels, D10 — no chip
+    // staging needed on phone anymore, and no route-floater park on desktop:
+    // no stage-covering panel opens on a placement now), the tap goes on to
+    // place the next node, and the popover re-arms focused over it. The aim
+    // must be a DIFFERENT clear point than the first placement (the first
+    // node now sits at BG_MODEL_POINT — a same-point tap would select it),
+    // clear of the parked PLATE too (probe-measured: the plate anchors
+    // +14px DOWN-RIGHT of the node and spans ~214x60, so the offset goes
+    // UP-RIGHT — (+70,-70) model units renders ~55px away at the desktop
+    // boot fit (zoom 0.786) and ~20px at the phone's 0.282, clear of the
+    // plate box and the node's tap radius on every project), still inside
+    // FX1's lower-left void (the R-5 cells' proven-empty region).
+    await tapModelPoint(page, { x: BG_MODEL_POINT.x + 70, y: BG_MODEL_POINT.y - 70 });
     await expect
       .poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? ''))
-      .toBe('tme-node-label-input');
+      .toBe('tme-inline-name-input');
     const state = await page.evaluate(() => {
       const el = document.activeElement;
-      return el instanceof HTMLInputElement
-        ? { value: el.value, start: el.selectionStart, end: el.selectionEnd }
-        : null;
+      return el instanceof HTMLInputElement ? { value: el.value } : null;
     });
-    expect(state?.value, 'the draft is the placed node').toBe('New place');
-    expect(state?.start).toBe(0);
-    expect(state?.end).toBe('New place'.length);
+    expect(state?.value, 'the re-armed input is empty for the new node').toBe('');
 
-    // The label stays the placed node's own — one click, one rename.
-    expect(await page.getByTestId('tme-node-label-input').inputValue()).toBe('New place');
+    // Both placements carry the C23 default; the second is the selection.
+    await expect(page.getByTestId('tme-selection-label')).toHaveText(NEW_PLACE);
+    await expect
+      .poll(async () => (await readLabels(page)).filter((label) => label === NEW_PLACE))
+      .toHaveLength(2);
   });
 });

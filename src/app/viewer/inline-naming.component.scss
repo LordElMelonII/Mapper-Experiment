@@ -1,0 +1,58 @@
+// PKG B-D3 (R29, PROPOSAL-D §3.1) — component-scoped chrome only (D7: zero
+// global leakage); the plate mirrors the node-menu's surface language (the
+// stage's other parked surface) and consumes the R0 token catalog. The host
+// is a full-stage INERT overlay standing over the canvas: pointer-events
+// none at the host passes every canvas gesture through (the popover never
+// blocks a pan, drag or pinch), and only the plate itself takes input — a
+// press outside it resolves the naming state through the ts's capture arm.
+// z-index 17: the node-menu band — above the sheet stack (15) and the
+// calibrate band / status strip (16), below the wide floaters (20): a
+// floater a user drags over stays the work surface. No NEW z band (the
+// packet's fence).
+:host {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 17;
+  pointer-events: none;
+}
+
+.tme-inline-naming {
+  position: absolute;
+  pointer-events: auto;
+  // The clamp geometry contract (the ts's PLATE_MAX_W/PLATE_MAX_H): the
+  // plate's box never exceeds the cap, so the clamped left/top can never
+  // push it off the stage or into the chrome bands.
+  width: 200px;
+  max-width: 208px;
+  padding: 0.375rem;
+  border: 1px solid rgba(174, 189, 211, 0.4);
+  border-radius: 8px; // --tme-radius-sm (R0: cataloged, unconsumed rule holds)
+  background: rgba(20, 23, 28, 0.9);
+  box-shadow: none;
+}
+
+// The ONE field — a >= 44px tap/focus target both dims (F52), touch-alone
+// (D53); the placeholder carries the ask (C23 plain words). The soft
+// keyboard rising over the parked plate is the phone contract's own shape
+// (the R-5 name-first rationale): the input is focused on render.
+.tme-inline-name-input {
+  display: block;
+  width: 100%;
+  min-height: 44px; // --tme-tap-min (F52)
+  padding: 0 0.5rem;
+  border: 1px solid rgba(174, 189, 211, 0.4);
+  border-radius: 6px;
+  background: rgba(20, 23, 28, 0.85);
+  color: var(--tme-text);
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+
+  &::placeholder {
+    color: var(--tme-text-secondary);
+    font-weight: 500;
+  }
+}

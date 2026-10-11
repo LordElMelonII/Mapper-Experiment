@@ -510,6 +510,26 @@ const openPanelFor = async (page: Page, id: string): Promise<void> => {
   await expect(page.getByTestId('tme-property-panel')).toBeVisible();
 };
 
+/**
+ * B-D3 re-baseline (PROPOSAL-D §3.1 + B-D3, cited): a placement now names
+ * INLINE — the popover stands over the fresh node and the property panel
+ * does NOT auto-open. This is the placed-node replacement of openPanelFor
+ * (whose tap targets an EXISTING node — that path is preserved
+ * byte-for-byte): Escape keeps the C23 default and latches the panel shut
+ * while the selection stands; the chip dismiss clears the selection (the
+ * service's guard effect clears the latch with it); the reselect re-seeds
+ * the panel exactly as for any existing node — the packet's own preserved
+ * path, name-first on arrival (R-5).
+ */
+const openPanelForPlaced = async (page: Page, placedId: string): Promise<void> => {
+  await page.getByTestId('tme-inline-name-input').press('Escape');
+  await expect(page.getByTestId('tme-inline-naming')).toHaveCount(0);
+  await activate(page.getByTestId('tme-selection-chip'));
+  await expect(page.getByTestId('tme-selection-chip')).toBeHidden();
+  await tapNodeAimed(page, placedId);
+  await expect(page.getByTestId('tme-property-panel')).toBeVisible();
+};
+
 test.describe('property panel: rename, kind & parent, aliases, description, delete (PKG B-117)', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
@@ -851,10 +871,14 @@ test.describe('property panel: rename, kind & parent, aliases, description, dele
     // throw) and renders it; nothing lands anywhere.
     await activate(page.getByTestId('tme-editor-toggle'));
     await tapModelPoint(page, BG_MODEL_POINT);
-    await expect(page.getByTestId('tme-property-panel')).toBeVisible();
+    // B-D3 re-baseline (PROPOSAL-D §3.1 + B-D3, cited): the placement names
+    // inline — the popover stands; the panel is reached through the
+    // preserved deselect+reselect path (openPanelForPlaced).
+    await expect(page.getByTestId('tme-inline-naming')).toBeVisible();
     await expect.poll(readSelectedId.bind(null, page)).not.toBeNull();
     const placedId = await readSelectedId(page);
     if (placedId === null) throw new Error('placed node not selected (C5/D75 id discovery failed)');
+    await openPanelForPlaced(page, placedId);
 
     // B-145 (R-5) re-baseline: Block access renders behind its collapsed toggle.
     await expandSection(page, 'block');
@@ -913,17 +937,25 @@ test.describe('property panel: rename, kind & parent, aliases, description, dele
     });
     page.on('pageerror', (err) => bad.push(`pageerror: ${err.message}`));
 
-    // Place: the editor background tap creates + selects a node; the panel
-    // opens seeded with the C23 default label. The engine-assigned id is
-    // read live (C5/D75) — the parent assertion below needs it.
+    // Place: the editor background tap creates + selects a node; the engine-
+    // assigned id is read live (C5/D75) — the parent assertion below needs
+    // it. B-D3 re-baseline (PROPOSAL-D §3.1 + B-D3, cited): the placement
+    // names INLINE — the popover stands with its input focused, the panel
+    // stays shut; the journey reaches the panel through the preserved
+    // deselect+reselect path (openPanelForPlaced) and continues
+    // byte-identical from the seeded 'New place' draft.
     await activate(page.getByTestId('tme-editor-toggle'));
     await tapModelPoint(page, BG_MODEL_POINT);
-    await expect(page.getByTestId('tme-property-panel')).toBeVisible();
-    const label = page.getByTestId('tme-node-label-input');
-    await expect(label).toHaveValue('New place');
+    await expect(page.getByTestId('tme-inline-naming')).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? ''))
+      .toBe('tme-inline-name-input');
     await expect.poll(readSelectedId.bind(null, page)).not.toBeNull();
     const placedId = await readSelectedId(page);
     if (placedId === null) throw new Error('placed node not selected (C5/D75 id discovery failed)');
+    await openPanelForPlaced(page, placedId);
+    const label = page.getByTestId('tme-node-label-input');
+    await expect(label).toHaveValue('New place');
 
     // Rename, re-parent, alias — one Done each, one command per commit.
     // B-145 (R-5) re-baseline: Parent and Aliases render behind their
@@ -987,27 +1019,29 @@ test.describe('the name-first property form: focus, collapsed sections, pinned d
   });
 
   test('the open is name-first: placing a node focuses and fully selects the Name input (R-5)', async ({ page }) => {
-    // The critique's case: placing a node used to open the 9-group wall
-    // pre-emptively for a node auto-named 'New place' — now the first
-    // keystroke IS the name (focus + select: typing replaces wholesale).
+    // B-D3 re-baseline (PROPOSAL-D §3.1 + B-D3, cited): the placement's
+    // naming surface is now the INLINE POPOVER — focused on render (the R-5
+    // name-first rationale: the first keystroke IS the name; the input is
+    // EMPTY, so there is nothing to pre-select — the panel's focus+select
+    // arm keeps its letter for the panel's own opens). The panel stays shut
+    // for a placement; the LIBRARY leg below pins R-5's focus+select
+    // verbatim on the preserved path.
     await activate(page.getByTestId('tme-editor-toggle'));
     await tapModelPoint(page, BG_MODEL_POINT);
-    await expect(page.getByTestId('tme-property-panel')).toBeVisible();
+    await expect(page.getByTestId('tme-property-panel')).toHaveCount(0);
+    await expect(page.getByTestId('tme-inline-naming')).toBeVisible();
     await expect
       .poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? ''))
-      .toBe('tme-node-label-input');
-    const placed = await page.evaluate(() => {
+      .toBe('tme-inline-name-input');
+    const inline = await page.evaluate(() => {
       const el = document.activeElement;
-      return el instanceof HTMLInputElement
-        ? { start: el.selectionStart, end: el.selectionEnd, value: el.value }
-        : null;
+      return el instanceof HTMLInputElement ? { value: el.value } : null;
     });
-    expect(placed?.value).toBe('New place');
-    expect(placed?.start).toBe(0);
-    expect(placed?.end).toBe('New place'.length);
+    expect(inline?.value, 'the naming input starts empty (the placeholder carries the ask)').toBe('');
 
     // A LIBRARY node's open is name-first too — a rename is one keystroke
-    // away, selection covering the whole current name.
+    // away, selection covering the whole current name. (The tap-away also
+    // resolves the popover: an empty input cancels — D10.)
     await tapNodeAimed(page, CASTLE_ID);
     await expect(page.getByTestId('tme-node-label-input')).toHaveValue('Einzbern Castle');
     await expect

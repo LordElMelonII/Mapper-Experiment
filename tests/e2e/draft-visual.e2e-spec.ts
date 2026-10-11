@@ -483,7 +483,14 @@ const parkRouteFloater = async (page: Page): Promise<void> => {
   if (canvas === null) throw new Error('canvas host not visible');
   const headBox = await page.getByTestId('tme-route-float-head').boundingBox();
   if (headBox === null) {
-    throw new Error('tme-route-float-head not visible (the route floater is not open)');
+    // B-D3 (PROPOSAL-D §3.1, cited): a placement no longer opens the
+    // property panel, so at shell widths (>=1024) the route content's own
+    // auto-open claims the CONTEXT DOCK (the D-2 occupant rule) — the route
+    // never floats and there is nothing to park; the stage is clear by
+    // construction (the dock is in-flow beside it). Presence-probed, never
+    // a mirrored breakpoint (the B-D1 law): the park still runs in the
+    // 700–1023 band, where the route floats over the stage.
+    return;
   }
   await page.mouse.move(headBox.x + headBox.width / 2, headBox.y + headBox.height / 2);
   await page.mouse.down();
@@ -654,9 +661,11 @@ test.describe('unsaved-element draft visual (PKG B-121, D77)', () => {
       await settle(p);
       const modelBefore = await readModelPosition(p, placedId);
       if (modelBefore === null) throw new Error('placed node absent before drag');
-      // B-133c (D91): the property sheet is open over the lower stage — the
-      // drag start must be coverage-clear before the touch drag (probe: the
-      // placed node's aim answered the panel's label input).
+      // B-133c (D91) guard, retained: the drag start must be coverage-clear
+      // before the touch drag. B-D3 (PROPOSAL-D §3.1, cited): a placement no
+      // longer opens the property sheet — the parked popover resolves at the
+      // drag's first pointerdown (an empty input cancels, D10) — so the
+      // guard here is defense in depth, not the live fix it was.
       const start = await clearAimed(p, () => nodeScreenPoint(p, placedId));
       await dragAt(p, start, 60, 0);
       // D75: `free` persisted the released position — poll the MODEL write.

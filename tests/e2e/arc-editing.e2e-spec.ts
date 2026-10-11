@@ -607,7 +607,14 @@ const parkRouteFloater = async (page: Page): Promise<void> => {
   if (canvas === null) throw new Error('canvas host not visible');
   const headBox = await page.getByTestId('tme-route-float-head').boundingBox();
   if (headBox === null) {
-    throw new Error('tme-route-float-head not visible (the route floater is not open)');
+    // B-D3 (PROPOSAL-D §3.1, cited): a placement no longer opens the
+    // property panel, so at shell widths (>=1024) the route content's own
+    // auto-open claims the CONTEXT DOCK (the D-2 occupant rule) — the route
+    // never floats and there is nothing to park; the stage is clear by
+    // construction (the dock is in-flow beside it). Presence-probed, never
+    // a mirrored breakpoint (the B-D1 law): the park still runs in the
+    // 700–1023 band, where the route floats over the stage.
+    return;
   }
   await page.mouse.move(headBox.x + headBox.width / 2, headBox.y + headBox.height / 2);
   await page.mouse.down();
@@ -642,9 +649,10 @@ const placeNodeAndDrawArc = async (
   // node's low-left aim — so the arc-tool coordinates parked in the cell first.
   await parkRouteFloater(page);
   await activate(page, 'tme-tool-arc');
-  // B-133c (D91): the placed node's selection opened the property sheet over
-  // the lower stage — BOTH draw taps are coverage-guarded (the placed node's
-  // own band included).
+  // B-133c (D91) guard, retained: BOTH draw taps are coverage-guarded.
+  // B-D3 (PROPOSAL-D §3.1, cited): a placement no longer opens the property
+  // sheet — the parked popover resolves at the first draw tap's pointerdown
+  // (an empty input cancels, D10) — so the guard here is defense in depth.
   await tapNodeAimed(page, fromId);
   await tapNodeAimed(page, nodeId);
   await expect.poll(async () => (await newEdgeIds(page, edgesBefore)).length).toBe(1);
@@ -913,7 +921,8 @@ test.describe('arc editing: the M2 sections + measure this arc (PKG B-123)', () 
     await activate(page, 'tme-save');
     await expect(page.getByTestId('tme-save-dock')).toBeHidden();
     // Baseline: geometry prices the arc px × 0.2 min/px (row 5).
-    // B-133c (D91): the placed node's property sheet is open — guarded tap.
+    // B-133c (D91) guard, retained (B-D3, PROPOSAL-D §3.1, cited: no sheet
+    // opens on a placement anymore — defense in depth).
     await tapNodeAimed(page, nodeId);
     await expect(page.getByTestId('tme-total')).toHaveText(`${await drawnArcCost(page, nodePos, 0.2, 1)} min`);
 
@@ -943,7 +952,8 @@ test.describe('arc editing: the M2 sections + measure this arc (PKG B-123)', () 
     // px × 0.2 min/px (row 5, 'plain' multiplier 1) — TEST-side math over the
     // node's ACTUAL authored position (R1: the UI computed nothing), computed
     // in the app's engine (the in-page float discipline).
-    // B-133c (D91): the placed node's property sheet is open — guarded tap.
+    // B-133c (D91) guard, retained (B-D3, PROPOSAL-D §3.1, cited: no sheet
+    // opens on a placement anymore — defense in depth).
     await tapNodeAimed(page, nodeId);
     await expect(page.getByTestId('tme-total')).toHaveText(`${await drawnArcCost(page, nodePos, 0.2, 1)} min`);
 
@@ -986,7 +996,7 @@ test.describe('arc editing: the M2 sections + measure this arc (PKG B-123)', () 
     const { nodeId, arcId, nodePos } = await placeNodeAndDrawArc(page, EMIYA_ID);
     await activate(page, 'tme-save');
     await expect(page.getByTestId('tme-save-dock')).toBeHidden();
-    await tapNodeAimed(page, nodeId); // B-133c (D91): guarded (the property sheet is open)
+    await tapNodeAimed(page, nodeId); // B-133c (D91): guarded (B-D3: no sheet opens on a placement — defense in depth)
     await expect(page.getByTestId('tme-total')).toHaveText(`${await drawnArcCost(page, nodePos, 0.2, 1)} min`);
 
     // Measure the KNOWN-length castle arc: 6 km ⇒ unitPerPx = 6/475.079…,

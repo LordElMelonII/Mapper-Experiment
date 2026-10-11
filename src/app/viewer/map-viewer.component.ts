@@ -39,6 +39,7 @@ import type { ChromeRect } from '../graph/graph.service';
 import { ArcPanelComponent } from './arc-panel.component';
 import { ContextDockComponent } from './context-dock.component';
 import { EditorRailComponent } from './editor-rail.component';
+import { InlineNamingComponent } from './inline-naming.component';
 import { LayerManagerComponent } from './layer-manager.component';
 import { MapsPanelComponent } from './maps-panel.component';
 import { NodeMenuComponent } from './node-menu.component';
@@ -47,7 +48,7 @@ import { RoutePanelComponent } from './route-panel.component';
 
 @Component({
   selector: 'tme-map-viewer',
-  imports: [EditorRailComponent, RoutePanelComponent, ArcPanelComponent, PropertyPanelComponent, LayerManagerComponent, MapsPanelComponent, NodeMenuComponent, ContextDockComponent],
+  imports: [EditorRailComponent, RoutePanelComponent, ArcPanelComponent, PropertyPanelComponent, LayerManagerComponent, MapsPanelComponent, NodeMenuComponent, ContextDockComponent, InlineNamingComponent],
   templateUrl: './map-viewer.component.html',
   styleUrl: './map-viewer.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

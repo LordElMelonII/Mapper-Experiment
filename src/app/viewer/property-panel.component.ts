@@ -622,6 +622,24 @@ export class PropertyPanelComponent {
           return;
         }
       }
+      // B-D3 (R29, PROPOSAL-D §3.1): the placement moment — while the naming
+      // popover stands over the selection (or stays LATCHED over it after a
+      // resolution, commit or cancel alike) the panel NEVER seeds for that
+      // node: the draft stays null ⇒ `open` stays false ⇒ the dock's sticky
+      // rule never engages for a placement. The skip sits BELOW the commit
+      // arm — a draft displaced by a placement commits first (the
+      // commit-at-navigation rule above is untouched), then yields to the
+      // popover. The service's guard effect clears the latch the moment the
+      // selection leaves the node, so a deselect + reselect opens the panel
+      // exactly as today for an existing node (the preserved path; the R-5
+      // name-first arm rides that seed unchanged).
+      if (
+        selId !== null &&
+        (this.graph.inlineNamingId() === selId || this.graph.inlineNamingLatch() === selId)
+      ) {
+        this.draft.set(null);
+        return;
+      }
       this.seedDraft(selId);
     });
 

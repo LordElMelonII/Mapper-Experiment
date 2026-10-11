@@ -1,0 +1,30 @@
+<!-- src/app/viewer/inline-naming.component.html — PKG B-D3 (R29, PROPOSAL-D
+     §3.1): the inline-naming popover — the placement moment's ONE surface.
+     Rendered while the service's `inlineNamingId` stands (the placement path
+     set it after the selection write); the plate parks at the captured
+     anchor, clamped by pos(). ONE Name input: focused on render (the
+     afterRenderEffect in the ts), Enter commits via the service's
+     commitInlineName (upsertNode full-replace, the B-116 PUT precedent),
+     Escape keeps 'New place' (the host binding), a click-away commits a
+     typed name / cancels over empty (the document-level capture arm). D10:
+     nothing auto-commits — an empty input commits nothing. F52/D53: the
+     input is a >= 44px target, focused unqualified (the soft keyboard is the
+     point); C23: the placeholder is plain words, never an id. -->
+@if (graph.inlineNamingId(); as id) {
+  <div
+    class="tme-inline-naming"
+    data-testid="tme-inline-naming"
+    [style.left.px]="pos().x"
+    [style.top.px]="pos().y"
+  >
+    <input
+      type="text"
+      class="tme-inline-name-input"
+      data-testid="tme-inline-name-input"
+      placeholder="Name this place"
+      aria-label="Name this place"
+      autocomplete="off"
+      (keydown.enter)="commitFromInput($event)"
+    />
+  </div>
+}

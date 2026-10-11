@@ -542,15 +542,26 @@ test.describe('quick-connect: select, pick leaves, batch-create default arcs (PK
   test('place → Connect → pick two leaves → Done: two default arcs render, the dock lights; Save prices a route through a created arc (D42/F16/F45/D75 discriminator)', async ({
     page,
   }) => {
-    // Place the source at the vetted empty point: it is selected (B-116) and
-    // the property panel opens — quick-connect's exact precondition.
+    // Place the source at the vetted empty point: it is selected (B-116).
+    // B-D3 re-baseline (PROPOSAL-D §3.1 + B-D3, cited): the placement names
+    // INLINE — the popover stands and the panel does NOT auto-open. The
+    // preserved path to quick-connect's precondition (a panel open on the
+    // source): Escape keeps the C23 default, the chip dismiss clears the
+    // selection (the naming latch dies with it — the service's guard), and
+    // the reselect re-opens the panel exactly as for an existing node.
     await activate(page.getByTestId('tme-editor-toggle'));
     await tapModelPoint(page, BG_MODEL_POINT);
-    await expect(page.getByTestId('tme-property-panel')).toBeVisible();
+    await expect(page.getByTestId('tme-inline-naming')).toBeVisible();
     await expect.poll(readSelectedId.bind(null, page)).not.toBeNull();
     const placedId = await readSelectedId(page);
     if (placedId === null) throw new Error('placed node not selected (C5/D75 id discovery failed)');
     await expect(page.getByTestId('tme-selection-label')).toHaveText(NEW_PLACE);
+    await page.getByTestId('tme-inline-name-input').press('Escape');
+    await expect(page.getByTestId('tme-inline-naming')).toHaveCount(0);
+    await activate(page.getByTestId('tme-selection-chip'));
+    await expect(page.getByTestId('tme-selection-chip')).toBeHidden();
+    await tapPoint(page, await nodeScreenPoint(page, placedId));
+    await expect(page.getByTestId('tme-property-panel')).toBeVisible();
 
     const edgesBefore = await readEdgeIds(page);
 

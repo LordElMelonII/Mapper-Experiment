@@ -605,11 +605,13 @@ test.describe('the editor rail: one responsive control surface (PKG B-127, D86/F
     // the new layer commits cross-layer and the banner clears.
     await activate(page.getByTestId('tme-tool-arc'));
     await expect(page.getByTestId('tme-tool-arc')).toHaveAttribute('aria-pressed', 'true');
-    // B-133 (D91) review fix: the placement above gave the route sheet
-    // content (the auto-expand) and its selection holds the property panel
-    // open — on the full-width overlay stage either can cover the castle's
-    // tap point. Clear both first (phone; the wide sidebar has no sheet
-    // regime). Setup, not assertion.
+    // B-133 (D91) review fix, retained: the placement above gave the route
+    // sheet content (the auto-expand) — on the full-width overlay stage it
+    // can cover the castle's tap point. B-D3 (PROPOSAL-D §3.1, cited): the
+    // placement no longer holds the property panel open (the parked popover
+    // resolves at this staging's first tap — an empty input cancels, D10),
+    // so the sheet fold is the only live concern. Clear both first (phone;
+    // the wide sidebar has no sheet regime). Setup, not assertion.
     if (isPhone()) {
       const chip = page.getByTestId('tme-selection-chip');
       if ((await chip.count()) > 0 && (await chip.isVisible())) {
