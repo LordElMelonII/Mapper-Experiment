@@ -1095,8 +1095,8 @@ test.describe('the object menu: six verbs at the selection (PKG B-D4, PROPOSAL-D
   });
 
   // Cell 4 — Connect…: the existing quick-connect mode entered from the
-  // object; the banner names the node; Cancel exits (no arcs touched).
-  test('Connect… enters quick-connect from the menu: the banner names the node, Cancel exits (B-D4, F16/F27)', async ({
+  // object; the bar names the node; Cancel exits (no arcs touched).
+  test('Connect… enters quick-connect from the menu: the bar names the node, Cancel exits (B-D4, F16/F27)', async ({
     page,
   }) => {
     const cell = async (p: Page): Promise<void> => {
@@ -1107,14 +1107,18 @@ test.describe('the object menu: six verbs at the selection (PKG B-D4, PROPOSAL-D
       await activate(p, 'tme-node-menu-connect');
 
       // The menu consumed itself; the mode is on (the service's select-first
-      // wrote the frozen source) and the banner names it in the core's own
-      // C23 words.
+      // wrote the frozen source) and the bar names it in the core's own
+      // C23 words. B-D5 re-baseline (PROPOSAL-D §3.2 + the store's rulings):
+      // the banner's home is the connect BAR — the new from-line wording,
+      // and NO panel stands during connect (the open() gate's connectMode
+      // term; the property sheet never engages).
       await expect(p.getByTestId('tme-node-menu')).toBeHidden();
       await expect.poll(readConnectMode.bind(null, p)).toBe(true);
-      await expect(p.getByTestId('tme-connect-from')).toBeVisible();
-      await expect(p.getByTestId('tme-connect-from')).toHaveText('Connecting from Shopping District');
+      await expect(p.getByTestId('tme-connect-bar')).toBeVisible();
+      await expect(p.getByTestId('tme-property-panel')).toHaveCount(0);
+      await expect(p.getByTestId('tme-connect-from')).toHaveText('Connect: Shopping District — tap places.');
 
-      // Exit through the banner's Cancel — nothing committed.
+      // Exit through the bar's Cancel — nothing committed.
       await activate(p, 'tme-connect-cancel');
       await expect.poll(readConnectMode.bind(null, p)).toBe(false);
       await expect(p.getByTestId('tme-connect-from')).toHaveCount(0);

@@ -62,8 +62,8 @@ F-numbers are stable feature IDs. The roadmap and test plan cite them.
 - **F13 Terrain multipliers** — optional per-terrain factors (road, plain, river, swamp, mountain) applied to derived costs.
 - **F14 Blocked routes** — an arc can be impassable with a reason; excluded from routing, still drawn (dashed), and still reported to the LLM with its reason (D20).
 - **F15 Curved display** — optional visual bend for arcs that detour around something.
-- **F16 Quick-connect** — select a node, pick any number of targets, batch-create arcs with sensible defaults (D42).
-- **F17 Cross-layer arcs** — connect hubs across layers (station ↔ station); inter-layer travel always passes through these explicit arcs.
+- **F16 Quick-connect** — select a node, pick any number of targets, batch-create arcs with sensible defaults (D42). During the mode no form is open: the flow's surface is a collapsed 44px bar at the canvas bottom — the source's name, the pick count, Done/Cancel, with tap feedback and refusals attached underneath; entered from the property panel's Connect button or the node menu's Connect… alike, it closes the panel for the mode's life (a dirty draft commits first, D10) and the panel re-opens on the source when the mode ends (R29 D-5).
+- **F17 Cross-layer arcs** — connect hubs across layers (station ↔ station); inter-layer travel always passes through these explicit arcs. Draw-arc's pending state (first end tapped, second awaited) stays visible: the "Arc: <source> → tap the other end" readout and the tool's feedback words render in the arc status home — the desktop status strip at ≥1024px, the stage band below it (R29 D-5).
 
 ### D. Measurement & geography
 

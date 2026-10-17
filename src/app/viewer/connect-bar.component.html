@@ -1,0 +1,46 @@
+<!-- src/app/viewer/connect-bar.component.html — PKG B-D5 (R29, PROPOSAL-D
+     §3.2 + the store's rulings): the connect BAR — quick-connect's collapsed
+     surface. Renders only while connectMode stands; the property panel is
+     closed by construction (its open() gate refuses during connect — NO form
+     is open in connect mode). The base row is ONE 44px line — the from-line
+     (the source's live label, C23), the pick count (the panel's pickLine
+     wording verbatim), Done/Cancel (the bar IS the 44px band, F52/D53 — every
+     control is a full-height tap target, touch-alone). The tap feedback and
+     the Done-loop's C30 refusal render as ATTACHED lines under the base row
+     (the base line stays 44px; the core's own words, never re-worded,
+     role=status / role=alert). -->
+@if (graph.connectMode()) {
+  <div class="tme-connect-bar" data-testid="tme-connect-bar" role="group" aria-label="Quick connect">
+    <div class="tme-connect-row">
+      <p class="tme-connect-from" data-testid="tme-connect-from">Connect: {{ sourceLabel() }} — tap places.</p>
+      <p class="tme-connect-count" data-testid="tme-connect-count" role="status">{{ pickLine() }}</p>
+      <button type="button" class="tme-connect-done" data-testid="tme-connect-done" (click)="confirmConnect()">
+        Done
+      </button>
+      <button type="button" class="tme-connect-cancel" data-testid="tme-connect-cancel" (click)="abortConnect()">
+        Cancel
+      </button>
+    </div>
+
+    @if (graph.connectFeedback(); as feedback) {
+      <p class="tme-connect-feedback" data-testid="tme-connect-feedback" role="status">
+        {{ feedback }}
+      </p>
+    }
+
+    <!-- C30 field-precise refusal of the Done commit loop — user-visibly
+         rendered (never console-only); the uncommitted picks stay intact. -->
+    @if (graph.connectRefusal(); as refusal) {
+      <div class="tme-errors" data-testid="tme-connect-errors" role="alert" aria-label="The map refused this connection">
+        @for (issue of refusal.issues; track $index) {
+          <p class="tme-error" data-testid="tme-connect-error">
+            @if (issue.path !== '') {
+              <span class="tme-error-path">{{ issue.path }}</span>
+            }
+            <span>{{ issue.message }}</span>
+          </p>
+        }
+      </div>
+    }
+  </div>
+}

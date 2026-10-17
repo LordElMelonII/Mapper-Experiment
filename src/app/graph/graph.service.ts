@@ -2282,9 +2282,11 @@ export class GraphService implements OnDestroy {
     // signal, so the effect runs per discrete event only (D2): editor exit,
     // a selection change (chip dismiss, removeNode's clear, loadMap's reset)
     // or a map reload that would orphan the mode exits it cleanly — the
-    // banner's precondition (the property panel open on the SOURCE) never
-    // silently lapses. exitConnectMode writes signals this effect reads, so
-    // it re-runs once more and finds the guard false — a stable single pass.
+    // bar's precondition is the SELECTION on the source, not an open panel
+    // (B-D5: no form stands during connect; the panel's open() gate sees to
+    // that) never silently lapses. exitConnectMode writes signals this
+    // effect reads, so it re-runs once more and finds the guard false — a
+    // stable single pass.
     effect(() => {
       if (!this.connectMode()) return;
       const selId = this.selection()?.id ?? null;

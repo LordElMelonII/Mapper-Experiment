@@ -73,11 +73,11 @@ Kind changes after placement (location → hub etc.) live in Details; the placem
 
 ### 3.2 The connect-mode canvas share (phone)
 
-The connect banner (B-118) today overlaps the canvas the user must tap. D: in connect mode the banner **collapses to a slim bar (44px) pinned above the rail** showing "Connect: <source> — tap places. (Done · Cancel)" — the pick-set count rides in the bar. No form is open during connect mode (the panel is closed by construction: connect mode's precondition is a selected node; the menu replaced the auto-panel). Phone visible-canvas recovery: from ~36% to ~85%+ without touching the 70% sheet cap (which governs route/property/layer/maps sheets, all of which stay sheets).
+The connect banner (B-118) today overlaps the canvas the user must tap. D: in connect mode the banner **collapses to a slim bar (44px) pinned above the rail** showing "Connect: <source> — tap places. (Done · Cancel)" — the pick-set count rides in the bar. No form is open during connect mode (the panel is closed by construction: connect mode's precondition is a selected node; the menu replaced the auto-panel). Phone visible-canvas recovery: from ~36% to ~85%+ without touching the 70% sheet cap (which governs route/property/layer/maps sheets, all of which stay sheets). (Executed, D-5: the bar is an absolute stage-bottom overlay — the calibrate-band discipline, never in layout flow — lifted regime-aware: above the phone's bottom route-rail below 700px, above the status strip at ≥1024, flush in the 700–1023 band; the ~85% figure measures the connect flow's own chrome against the stage, apples-to-apples with the ~36% baseline, the standing header/rail excluded.)
 
 ### 3.3 Arc authoring
 
-Draw-arc's two-tap pending state keeps its dashed-border source marker (B-122) — D adds the pending-target ghost readout to the status strip ("Arc: <source> → tap the other end") so the state never lives in memory alone (the critique's working-memory failure). Refusals render in the status strip (they already have field-precise words).
+Draw-arc's two-tap pending state keeps its dashed-border source marker (B-122) — D adds the pending-target ghost readout to the status strip ("Arc: <source> → tap the other end") so the state never lives in memory alone (the critique's working-memory failure). Refusals render in the status strip (they already have field-precise words). (Executed cross-width, D-5 — the D-3 precedent: the readout dual-homes by regime; the words render in the D-2 status strip at ≥1024 and in the standalone stage band below it, one instance per surface, so phone authors get the same working-memory fix.)
 
 ## 4. What this fixes that the other proposals can't
 

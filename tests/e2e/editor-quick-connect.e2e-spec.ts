@@ -361,6 +361,11 @@ const coveringBands = (page: Page): Promise<Record<string, CoverBox | null>> =>
       prop: boxOf('tme-property-panel'),
       route: boxOf('tme-route-panel'),
       rail: boxOf('tme-sheet-rail'),
+      // B-D5 (PROPOSAL-D §3.2 + the store's rulings): the connect BAR — the
+      // banner's collapsed home (no panel stands during connect anymore, so
+      // the bar is the flow's own cover; its attached feedback/refusal lines
+      // are tap-transparent, the base row is not).
+      bar: boxOf('tme-connect-bar'),
       header: boxOf('tme-header'),
       breadcrumb: boxOf('tme-breadcrumb'),
     };
@@ -386,7 +391,9 @@ const dodgeBands = async (
   const canvas = await page.getByTestId('tme-canvas').boundingBox();
   if (canvas === null) throw new Error('canvas host not visible');
   let panDy = 0;
-  for (const band of [boxes.prop, boxes.route, boxes.rail]) {
+  // B-D5 (PROPOSAL-D §3.2): the connect bar joins the bottom covers (the
+  // banner-sheet world it replaces is gone during connect).
+  for (const band of [boxes.prop, boxes.route, boxes.rail, boxes.bar]) {
     if (band === null) continue;
     for (const t of aims) {
       if (t.y > band.top - 16) {
@@ -430,7 +437,7 @@ const dodgeBands = async (
     const candidates = await page.evaluate(
       ({ canvasBox, top, floor, avoid }): Point[] => {
         const hook = (window as unknown as { __TME_E2E__?: TmeE2EHook }).__TME_E2E__;
-        const bands: { top: number }[] = [top.prop, top.route, top.rail].filter(
+        const bands: { top: number }[] = [top.prop, top.route, top.rail, top.bar].filter(
           (b): b is { top: number } => b !== null,
         );
         const minBand =
@@ -470,7 +477,7 @@ const dodgeBands = async (
       },
       {
         canvasBox: canvas,
-        top: { prop: boxes.prop, route: boxes.route, rail: boxes.rail },
+        top: { prop: boxes.prop, route: boxes.route, rail: boxes.rail, bar: boxes.bar },
         floor: topFloor,
         avoid: DRAG_AVOID_NODE_IDS,
       },
@@ -518,7 +525,13 @@ const tapAimed = async (page: Page, aim: () => Promise<Point>): Promise<void> =>
   for (let attempt = 0; attempt < 3; attempt++) {
     const pt = await aim();
     const boxes = await coveringBands(page);
-    if (!bandCovers(pt, boxes.prop) && !bandCovers(pt, boxes.route) && !bandCovers(pt, boxes.rail) && !bandCovers(pt, boxes.chip)) {
+    if (
+      !bandCovers(pt, boxes.prop) &&
+      !bandCovers(pt, boxes.route) &&
+      !bandCovers(pt, boxes.rail) &&
+      !bandCovers(pt, boxes.bar) && // B-D5: the connect bar (the banner's home)
+      !bandCovers(pt, boxes.chip)
+    ) {
       await tapPoint(page, pt);
       return;
     }
@@ -527,7 +540,7 @@ const tapAimed = async (page: Page, aim: () => Promise<Point>): Promise<void> =>
   const pt = await aim();
   const boxes = await coveringBands(page);
   throw new Error(
-    `tapAimed: the aim point (${Math.round(pt.x)},${Math.round(pt.y)}) stays covered — chip=${boxes.chip?.top ?? 'x'} prop=${boxes.prop?.top ?? 'x'} route=${boxes.route?.top ?? 'x'} rail=${boxes.rail?.top ?? 'x'}`,
+    `tapAimed: the aim point (${Math.round(pt.x)},${Math.round(pt.y)}) stays covered — chip=${boxes.chip?.top ?? 'x'} prop=${boxes.prop?.top ?? 'x'} route=${boxes.route?.top ?? 'x'} rail=${boxes.rail?.top ?? 'x'} bar=${boxes.bar?.top ?? 'x'}`,
   );
 };
 
@@ -566,10 +579,16 @@ test.describe('quick-connect: select, pick leaves, batch-create default arcs (PK
     const edgesBefore = await readEdgeIds(page);
 
     await activate(page.getByTestId('tme-node-connect'));
-    await expect(page.getByTestId('tme-connect-from')).toHaveText(`Connecting from ${NEW_PLACE}`);
+    // B-D5 re-baseline (PROPOSAL-D §3.2 + the store's rulings): the banner
+    // collapsed to the connect BAR — the from-line's new wording, and "the
+    // banner replaces the edit body" is now "NO panel + the bar" (the open()
+    // gate's connectMode term).
+    await expect(page.getByTestId('tme-connect-bar')).toBeVisible();
+    await expect(page.getByTestId('tme-connect-from')).toHaveText(`Connect: ${NEW_PLACE} — tap places.`);
     await expect(page.getByTestId('tme-connect-count')).toHaveText('No places picked yet');
     await expect.poll(readConnectMode.bind(null, page)).toBe(true);
-    // F46: the edit body is REPLACED by the banner while connecting.
+    // F46/B-D5: NO form stands during connect — the whole panel is gone.
+    await expect(page.getByTestId('tme-property-panel')).toHaveCount(0);
     await expect(page.getByTestId('tme-node-done')).toHaveCount(0);
 
     // Pick two leaves — one tap each; the DISTINCT pick accent (not the
@@ -588,8 +607,10 @@ test.describe('quick-connect: select, pick leaves, batch-create default arcs (PK
     await expect(page.getByTestId('tme-connect-count')).toHaveText('2 places picked');
 
     // Done: one command per picked target — two arcs render, the pick set
-    // and its accents clear, the mode exits back to the edit body, and the
-    // F45 dock lights (dirty only — the save bar's first edit).
+    // and its accents clear, the mode exits, and the F45 dock lights (dirty
+    // only — the save bar's first edit). B-D5 (PROPOSAL-D §3.2): the panel
+    // RE-OPENS on the source at mode exit (the seeding effect's re-seed —
+    // the selection's auto-open law), so the edit body is back on it.
     await activate(page.getByTestId('tme-connect-done'));
     await expect.poll(readConnectMode.bind(null, page)).toBe(false);
     await expect
@@ -601,7 +622,8 @@ test.describe('quick-connect: select, pick leaves, batch-create default arcs (PK
     await expect.poll(readPickedIds.bind(null, page)).toEqual([]);
     expect(await readNodeHasClass(page, CASTLE_ID, 'tme-connect-pick')).toBe(false);
     expect(await readNodeHasClass(page, TEMPLE_ID, 'tme-connect-pick')).toBe(false);
-    await expect(page.getByTestId('tme-node-done')).toBeVisible(); // the edit body is back
+    await expect(page.getByTestId('tme-connect-bar')).toHaveCount(0); // the bar fell with the mode
+    await expect(page.getByTestId('tme-node-done')).toBeVisible(); // the panel re-seeded on the source
 
     // The D42 contract, verbatim, on each created arc (engine-assigned ids —
     // read live, never predicted, C5/D75): source = the selected node, all

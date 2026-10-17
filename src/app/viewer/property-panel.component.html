@@ -5,10 +5,13 @@
      (C29/R2); every commit is a facade command through GraphService (R2).
      R1: nothing here computes or displays a number. Plain words (C23); every
      control is a >= 44px tap target operated touch-alone (F52/D53).
-     B-118 (D42/F16): while connecting, the banner below REPLACES the edit
-     body (the panel is open exactly when connect mode is legal) — the mode
-     in words, the pick count, tap feedback, any Done-loop refusal, and the
-     Done/Cancel affordances; the canvas taps pick, this panel narrates.
+     B-118 (D42/F16) + B-D5 (R29, PROPOSAL-D §3.2 + the store's rulings):
+     the Connect button in the edit body's header remains the flow's panel
+     entry (its commit-first arm byte-untouched), but the banner NO LONGER
+     lives here — in connect mode this panel does not stand at all (the
+     open() gate refuses while connectMode stands; the seeding effect
+     resolves the draft at entry and re-seeds the selection at exit — the
+     bar owns the mode's words now).
      B-119 (Q29/§8 item 3): both headers carry the panel regime — the header
      is the floating panel's drag handle (pointerdown; buttons keep their
      taps) and the Maximize/Restore toggle sits at its end: Restore floats
@@ -17,74 +20,33 @@
      B-145 (R-5): the edit body is NAME-FIRST — Identity (Name/Kind/
      Description) expanded, the five advanced surfaces behind collapsed
      section toggles with live summaries, Detach/Delete in the pinned danger
-     footer. The connect banner branch above is byte-identical (untouched). -->
+     footer. -->
 @if (view(); as d) {
   <section class="tme-prop" data-testid="tme-property-panel" aria-label="Place properties">
-    @if (connecting()) {
-      <!-- B-118 connect banner: replaces the edit body while connecting
-           (the draft is already committed — Connect never interleaves). -->
-      <header class="tme-prop-head" (pointerdown)="onDragStart($event)">
-        <h2 class="tme-title">Connect</h2>
-        <div class="tme-head-actions">
-          <button type="button" class="tme-regime" data-testid="tme-panel-maximize" (click)="toggleFloat()">
-            {{ floating() ? 'Maximize' : 'Restore' }}
-          </button>
-        </div>
-      </header>
-      <p class="tme-connect-line" data-testid="tme-connect-from">
-        Connecting from {{ sourceLabel() }}
-      </p>
-      <p class="tme-connect-line" data-testid="tme-connect-count" role="status">{{ pickLine() }}</p>
-      <p class="tme-connect-hint">Tap places on the map to connect them to this one.</p>
-
-      @if (connectFeedback(); as feedback) {
-        <p class="tme-connect-feedback" data-testid="tme-connect-feedback" role="status">
-          {{ feedback }}
-        </p>
-      }
-
-      <!-- C30 field-precise refusal of the Done commit loop — user-visibly
-           rendered (never console-only); the uncommitted picks stay intact. -->
-      @if (connectRefusal(); as refusal) {
-        <div class="tme-errors" data-testid="tme-connect-errors" role="alert" aria-label="The map refused this connection">
-          @for (issue of refusal.issues; track $index) {
-            <p class="tme-error" data-testid="tme-connect-error">
-              @if (issue.path !== '') {
-                <span class="tme-error-path">{{ issue.path }}</span>
-              }
-              <span>{{ issue.message }}</span>
-            </p>
-          }
-        </div>
-      }
-
-      <div class="tme-actions">
-        <button type="button" class="tme-connect-done" data-testid="tme-connect-done" (click)="confirmConnect()">Done</button>
-        <button type="button" class="tme-connect-cancel" data-testid="tme-connect-cancel" (click)="abortConnect()">Cancel</button>
+    <header class="tme-prop-head" (pointerdown)="onDragStart($event)">
+      <h2 class="tme-title">Properties</h2>
+      <div class="tme-head-actions">
+        <!-- B-118 (D42/F16): the quick-connect entry — batch-create arcs
+             from this node. Commits the draft first (never interleaves).
+             B-D5: entering closes this panel (the connect BAR is the mode's
+             surface); Done/Cancel there re-open it on the source. -->
+        <button type="button" class="tme-connect" data-testid="tme-node-connect" (click)="startConnect()">Connect</button>
+        <button type="button" class="tme-done" data-testid="tme-node-done" (click)="done()">Done</button>
+        <!-- B-119 (Q29/§8 item 3): the panel regime toggle — Restore floats
+             the panel at its remembered (stage-clamped) position; Maximize
+             returns to this docked form (the editor's default). >= 44px (F52). -->
+        <button type="button" class="tme-regime" data-testid="tme-panel-maximize" (click)="toggleFloat()">
+          {{ floating() ? 'Maximize' : 'Restore' }}
+        </button>
+        <!-- B-D2 (R29, PROPOSAL-D §2.1): the shell-gated Dock affordance —
+             the float-side half of the dock↔float handoff (both wide forms
+             are float forms vs the dock). Below 1024 it never renders
+             (byte-for-byte); inside the dock the SCSS hides it (F07). -->
+        @if (graph.shellWide()) {
+          <button type="button" class="tme-regime" data-testid="tme-property-dock" (click)="dock()">Dock</button>
+        }
       </div>
-    } @else {
-      <header class="tme-prop-head" (pointerdown)="onDragStart($event)">
-        <h2 class="tme-title">Properties</h2>
-        <div class="tme-head-actions">
-          <!-- B-118 (D42/F16): the quick-connect entry — batch-create arcs
-               from this node. Commits the draft first (never interleaves). -->
-          <button type="button" class="tme-connect" data-testid="tme-node-connect" (click)="startConnect()">Connect</button>
-          <button type="button" class="tme-done" data-testid="tme-node-done" (click)="done()">Done</button>
-          <!-- B-119 (Q29/§8 item 3): the panel regime toggle — Restore floats
-               the panel at its remembered (stage-clamped) position; Maximize
-               returns to this docked form (the editor's default). >= 44px (F52). -->
-          <button type="button" class="tme-regime" data-testid="tme-panel-maximize" (click)="toggleFloat()">
-            {{ floating() ? 'Maximize' : 'Restore' }}
-          </button>
-          <!-- B-D2 (R29, PROPOSAL-D §2.1): the shell-gated Dock affordance —
-               the float-side half of the dock↔float handoff (both wide forms
-               are float forms vs the dock). Below 1024 it never renders
-               (byte-for-byte); inside the dock the SCSS hides it (F07). -->
-          @if (graph.shellWide()) {
-            <button type="button" class="tme-regime" data-testid="tme-property-dock" (click)="dock()">Dock</button>
-          }
-        </div>
-      </header>
+    </header>
 
       <!-- B-145 (R-5 name-first property form): the panel opens NAME-FIRST —
            the Identity group (Name/Kind/Description) expanded in the open
@@ -337,6 +299,5 @@
         <button type="button" class="tme-detach" data-testid="tme-node-detach" (click)="detach()">Detach from arcs</button>
         <button type="button" class="tme-delete" data-testid="tme-node-delete" (click)="remove()">Delete</button>
       </div>
-    }
   </section>
 }

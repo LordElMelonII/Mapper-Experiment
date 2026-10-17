@@ -39,17 +39,17 @@
 // affordance, the host hides itself (display:none) whenever it has no open
 // draft so the closed panel never occupies a flex slot.
 //
-// B-118 (D42/F16 quick-connect): the panel is also connect mode's home — the
-// Connect button (the edit body's header) is the flow's ONLY entry, legal
-// exactly when this panel is open (a library node selected in editor mode).
+// B-118 (D42/F16 quick-connect) + B-D5 (R29, PROPOSAL-D §3.2 + the store's
+// rulings): the Connect button (the edit body's header) remains ONE of the
+// flow's two entries, legal exactly when this panel is open (a library node
+// selected in editor mode; the menu's Connect… is the other — B-D4).
 // Entering FIRST commits any dirty draft (the commit-at-navigation rule —
 // a C30 refusal keeps the edit body up with the issues rendered and never
 // enters connect mode), so edges and the node draft never interleave
-// half-states. While connecting, the banner REPLACES the edit body: the mode
-// in words, the pick count, tap feedback and any Done-loop refusal, plus the
-// Done/Cancel affordances (all ≥44px, touch-alone, F52) — the canvas taps
-// pick, the panel narrates. Done/Cancel and Escape leave the edit body
-// showing the committed draft (connect commits edges, never node fields).
+// half-states. The banner branch MOVED to the connect BAR (B-D5): in
+// connect mode this panel does not stand at all (the open() gate's
+// connectMode term — NO form is open during connect); the bar narrates the
+// mode, and Done/Cancel there exit back to a panel re-seeded on the source.
 //
 // B-119 (Q29 panel regime, EXECUTION-PLAN §8 item 3's settled reading),
 // re-plumbed by B-133 (D91): the panel is a STANDING panel — MAXIMIZED BY
@@ -270,9 +270,10 @@ interface NodeDraft {
     // (direct style.transform writes, D2); the binding re-renders the same
     // value when the position signal commits on pointerup.
     '[style.transform]': 'floatTransform()',
-    // B-118: Escape exits connect mode (the packet's Escape/Cancel rule) —
-    // one discrete keydown, one signal write (D2). A no-op outside it.
-    '(document:keydown.escape)': 'onEscape()',
+    // B-D5 (R29, PROPOSAL-D §3.2): the connect-mode Escape host binding MOVED
+    // with the banner to the connect BAR (a MODE exit, no-op when the mode is
+    // off) — this panel no longer stands during connect, so it owns no
+    // connect Escape.
   },
 })
 export class PropertyPanelComponent {
@@ -371,6 +372,17 @@ export class PropertyPanelComponent {
    * stand), a C30 refusal closes the naming quietly (no latch) and
    * re-opens this panel on the intact draft with the issues rendered, a
    * pristine one drops — nothing stands stale behind the popover.
+   * B-D5 (R29, PROPOSAL-D §3.2 + the store's ruling 2): connect mode closes
+   * the view the same way — NO form is open during connect (the connect BAR
+   * owns the mode's words). The draft does not survive connect hidden
+   * either (the B-D4r displacement discipline extended): the seeding effect
+   * commits a dirty draft at connect-entry (the menu's Connect… enters the
+   * mode without the panel-button path's own commit-first arm — the effect
+   * IS that arm there), exits the mode on a C30 refusal with the draft +
+   * words intact (the startConnect refusal rule: the mode never stood), and
+   * drops a pristine draft; at mode exit the effect re-runs (connectMode is
+   * in its dependency set) and re-seeds the selection — the panel re-opens
+   * on the source (the selection's auto-open law, R-5's preserved path).
    */
   protected readonly open = computed(() => {
     const d = this.draft();
@@ -378,7 +390,8 @@ export class PropertyPanelComponent {
       this.graph.editorMode() &&
       d !== null &&
       this.graph.inlineNamingId() !== d.id &&
-      this.graph.inlineNamingLatch() !== d.id
+      this.graph.inlineNamingLatch() !== d.id &&
+      !this.graph.connectMode()
     );
   });
 
@@ -388,11 +401,6 @@ export class PropertyPanelComponent {
    * renders nothing until editor mode returns.
    */
   protected readonly view = computed((): NodeDraft | null => (this.open() ? this.draft() : null));
-
-  // --- B-118 quick-connect (the banner's view state — service-owned, R3) ---
-
-  /** The service's connect mode, mirrored for the template's body switch. */
-  protected readonly connecting = this.graph.connectMode;
 
   // --- B-119 panel regime (Q29/§8 item 3 — the service owns the state, R3) ---
 
@@ -434,26 +442,6 @@ export class PropertyPanelComponent {
   /** The drag currently in progress, or null — a plain field (D2: the
    * pointermove handler must never touch Angular state). */
   private drag: DragFrame | null = null;
-
-  /** Tap feedback ("why nothing was picked") and the Done-loop refusal. */
-  protected readonly connectFeedback = this.graph.connectFeedback;
-  protected readonly connectRefusal = this.graph.connectRefusal;
-
-  /** The connect source's authored label — the banner's "connecting from" line. */
-  protected readonly sourceLabel = computed(
-    () => this.graph.selection()?.label ?? this.draft()?.label ?? '',
-  );
-
-  /**
-   * The pick count in words (C23 plain words; a count of picks is UI state,
-   * not R1 math).
-   */
-  protected readonly pickLine = computed((): string => {
-    const n = this.graph.connectPicks().size;
-    if (n === 0) return 'No places picked yet';
-    if (n === 1) return '1 place picked';
-    return `${n} places picked`;
-  });
 
   /**
    * The parent picker's options: the container-kind nodes of the draft
@@ -621,6 +609,11 @@ export class PropertyPanelComponent {
     // node's draft — resolves the draft FIRST through this one effect: a
     // dirty draft commits (the displacement commit), a refusal hands the
     // node back to the open panel with its issues, a pristine draft drops.
+    // B-D5 (R29, PROPOSAL-D §3.2 + the store's ruling 2): connect mode joins
+    // the displacement set — the menu's Connect… enters the mode with no
+    // commit-first arm of its own, so THIS effect is that arm there (the
+    // panel-button path's own startConnect commit can never double-command:
+    // commitDraft re-seeds, so the effect finds a pristine draft).
     effect(() => {
       const editor = this.graph.editorMode();
       const selId = this.graph.selection()?.id ?? null;
@@ -636,6 +629,12 @@ export class PropertyPanelComponent {
       const namingOwns =
         selId !== null &&
         (this.graph.inlineNamingId() === selId || this.graph.inlineNamingLatch() === selId);
+      // B-D5: connectMode joins the dependency-set law's TOP reads — the
+      // same discipline as namingOwns (a read after any early return would
+      // drop it from the set, and the effect would never re-run at mode
+      // entry/exit: the displacement would never fire, and the panel would
+      // never re-seed on the source when the mode ends).
+      const connecting = this.graph.connectMode();
       if (!editor) {
         // Editor exit is a panel close: commit-if-dirty. On a C30 refusal
         // the draft survives (hidden) and resumes when editor mode returns
@@ -656,7 +655,11 @@ export class PropertyPanelComponent {
       // and resolves FIRST instead of surviving the naming state hidden —
       // a hidden dirty draft would commit its STALE label at the next
       // navigation and silently revert the popover's rename.
-      if (current !== null && current.id === selId && !namingOwns) return;
+      // B-D5: UNLESS connect mode stands (the B-D4r twin) — the menu's
+      // Connect… entered the mode over this node's standing draft, and the
+      // draft resolves through the commit arm below instead of surviving
+      // the mode hidden behind the bar.
+      if (current !== null && current.id === selId && !namingOwns && !connecting) return;
       if (current !== null && this.isDirty(current)) {
         const committed = this.commitDraft(current);
         if (!committed) {
@@ -670,6 +673,16 @@ export class PropertyPanelComponent {
             this.graph.clearInlineNaming();
             return;
           }
+          if (connecting) {
+            // B-D5: the connect-entry displacement commit REFUSED (C30) —
+            // the mode never stood: exit it and return with the draft +
+            // words intact (the startConnect refusal rule — the edit body
+            // stays up with the issues rendered; D10, nothing dropped
+            // silently). connectMode flipping false re-runs this effect,
+            // which re-seeds the selection's node: the panel stands again.
+            this.graph.exitConnectMode();
+            return;
+          }
           // C30 refusal: the draft stays open; undo the navigation that
           // would orphan it (the promoteWaypoint re-point precedent) so the
           // author fixes or reverts in place (D10 — their edit survives).
@@ -678,8 +691,8 @@ export class PropertyPanelComponent {
         }
       }
       // B-D3 (R29, PROPOSAL-D §3.1): the placement moment — while the naming
-      // popover stands over the selection (or stays LATCHED over it after a
-      // resolution, commit or cancel alike) the panel NEVER seeds for that
+      // popover stands over the selection (or stays LATCHED over it after
+      // a resolution, commit or cancel alike) the panel NEVER seeds for that
       // node: the draft stays null ⇒ `open` stays false ⇒ the dock's sticky
       // rule never engages for a placement. The skip sits BELOW the commit
       // arm — a draft displaced by a placement commits first (the
@@ -691,7 +704,12 @@ export class PropertyPanelComponent {
       // deselect + reselect opens the panel exactly as today for an
       // existing node (the preserved path; the R-5 name-first arm rides
       // that seed unchanged).
-      if (namingOwns) {
+      // B-D5: the connect skip — after the displacement commit (or a
+      // pristine drop) the draft yields while the mode stands (NO form is
+      // open during connect); at mode exit connectMode flips false, this
+      // effect re-runs, and the fall-through seeds the selection's node —
+      // the panel re-opens on the source (the selection's auto-open law).
+      if (namingOwns || connecting) {
         this.draft.set(null);
         return;
       }
@@ -958,27 +976,17 @@ export class PropertyPanelComponent {
    * draft commits first (one whole-draft upsertNode); a C30 refusal keeps the
    * edit body up with the issues rendered and never enters connect mode (D10
    * — the author fixes or reverts first). An untouched draft passes through.
+   * B-D5 (R29, PROPOSAL-D §3.2): this arm is BYTE-UNCHANGED — entering closes
+   * this panel (the open() gate's connectMode term) and the connect BAR owns
+   * the mode's surface; the seeding effect's connect displacement (below) is
+   * the same rule's effect-side twin for the MENU's entry path, and
+   * commitDraft's re-seed means the two can never double-command.
    */
   protected startConnect(): void {
     const d = this.draft();
     if (d === null) return;
     if (this.isDirty(d) && !this.commitDraft(d)) return; // refusal rendered, draft intact
     this.graph.enterConnectMode();
-  }
-
-  /** B-118: Done — commit one arc per picked target (the service owns the loop). */
-  protected confirmConnect(): void {
-    this.graph.doneConnect();
-  }
-
-  /** B-118: Cancel — discard the whole set, commit nothing. */
-  protected abortConnect(): void {
-    this.graph.cancelConnect();
-  }
-
-  /** B-118: Escape exits connect mode while connecting (no-op otherwise). */
-  protected onEscape(): void {
-    if (this.graph.connectMode()) this.graph.cancelConnect();
   }
 
   // --- B-119 panel regime: Maximize/Restore + header drag (Q29/§8 item 3) -----

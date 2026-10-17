@@ -24,19 +24,24 @@
 // panel-driven stage resize the same discriminator classifies (preserve +
 // rescue clamp), so '.tme-dock' joins the measured chrome set, and the
 // selection chip dual-homes into the canvas-bottom status strip at shell
-// widths (one instance per regime).
+// widths (one instance per regime). B-D5 (R29, PROPOSAL-D §3.2–3.3): the
+// stage also hosts the connect BAR (connect mode's collapsed 44px surface —
+// the calibrate-band overlay family) and the draw-arc pending readout joins
+// the arc words' two homes (the strip line at >=1024, the band family below).
 import {
   AfterViewInit,
   ChangeDetectionStrategy,
   Component,
   ElementRef,
   OnDestroy,
+  computed,
   inject,
   viewChild,
 } from '@angular/core';
 import { GraphService } from '../graph/graph.service';
 import type { ChromeRect } from '../graph/graph.service';
 import { ArcPanelComponent } from './arc-panel.component';
+import { ConnectBarComponent } from './connect-bar.component';
 import { ContextDockComponent } from './context-dock.component';
 import { EditorRailComponent } from './editor-rail.component';
 import { InlineNamingComponent } from './inline-naming.component';
@@ -48,7 +53,7 @@ import { RoutePanelComponent } from './route-panel.component';
 
 @Component({
   selector: 'tme-map-viewer',
-  imports: [EditorRailComponent, RoutePanelComponent, ArcPanelComponent, PropertyPanelComponent, LayerManagerComponent, MapsPanelComponent, NodeMenuComponent, ContextDockComponent, InlineNamingComponent],
+  imports: [EditorRailComponent, RoutePanelComponent, ArcPanelComponent, PropertyPanelComponent, LayerManagerComponent, MapsPanelComponent, NodeMenuComponent, ContextDockComponent, InlineNamingComponent, ConnectBarComponent],
   templateUrl: './map-viewer.component.html',
   styleUrl: './map-viewer.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -155,6 +160,20 @@ export class MapViewerComponent implements AfterViewInit, OnDestroy {
       return undefined;
     }
   }
+
+  /**
+   * B-D5 (R29, PROPOSAL-D §3.3 + the store's ruling 1): the draw-arc pending
+   * readout's SOURCE LABEL — the live label of the pending pick's node (C23:
+   * authored words, never an id), read through nodeDataById off the live map
+   * reference (R4) with drawArcSourceId as the reactive dependency (the pick
+   * accent's own discipline). Null while no pick stands — both the strip home
+   * (>=1024) and the band home (below) key their one line on it.
+   */
+  protected readonly arcPendingLabel = computed((): string | null => {
+    const id = this.graph.drawArcSourceId();
+    if (id === null) return null;
+    return this.graph.nodeDataById(id)?.label ?? null;
+  });
 
   /**
    * B-103: chip dismiss — clears selection through the same signal path as a

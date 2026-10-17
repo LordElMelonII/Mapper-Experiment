@@ -290,16 +290,39 @@
          as the node menu above (inert host, parked clamped plate, z-17). -->
     <tme-inline-naming />
 
-    <!-- B-122 (F17/C3 + C23): the draw-arc refusal banner — why the last
-         Arc-tool tap refused (the cross-layer fence), plain words, rendered
-         only while the Arc tool is active and a refusal stands. A status
-         message, not a control: pointer-events none so a dismissive
-         background tap still reaches the canvas (and cancels the pick).
-         D86: the banner is not rail chrome — it stays where it is. -->
-    @if (graph.editorMode() && graph.editorTool() === 'arc' && graph.drawArcFeedback(); as feedback) {
-      <p class="tme-draw-feedback" data-testid="tme-draw-feedback" role="status">
-        {{ feedback }}
-      </p>
+    <!-- B-D5 (R29, PROPOSAL-D §3.2 + the store's rulings): the connect BAR —
+         quick-connect's collapsed surface. Renders only while connectMode
+         stands (NO form is open during connect — the property panel's open()
+         gate refuses); the stage-bottom 44px overlay family (the calibrate
+         band's discipline: absolute, never in layout flow). The bar's own
+         component owns its content and regime offsets. -->
+    <tme-connect-bar />
+
+    <!-- B-122 (F17/C3 + C23) + B-D5 (§3.3 + ruling 1): the arc words — the
+         pending readout ("Arc: <source> → tap the other end", the live label
+         C23) and the draw-arc feedback (why the last Arc-tool tap needs
+         attention), DUAL-HOMED by regime (the chip's own law): below 1024
+         they render as the standalone stage band family (today's
+         .tme-draw-feedback shape byte-identical, the readout line ADDS — the
+         packet's cited phone exception); at >=1024 the band block stands down
+         (shell-gated off) and the words render IN the D-2 status strip below
+         (one instance per testid per regime). Status messages, not controls:
+         pointer-events none so a dismissive background tap still reaches the
+         canvas (and cancels the pick). D86: the band is not rail chrome — it
+         stays where it is. -->
+    @if (!graph.shellWide() && graph.editorMode() && graph.editorTool() === 'arc' && (graph.drawArcFeedback() !== null || arcPendingLabel() !== null)) {
+      <div class="tme-draw-feedback-wrap">
+        @if (arcPendingLabel(); as label) {
+          <p class="tme-arc-pending" data-testid="tme-arc-pending" role="status">
+            Arc: {{ label }} → tap the other end
+          </p>
+        }
+        @if (graph.drawArcFeedback(); as feedback) {
+          <p class="tme-draw-feedback" data-testid="tme-draw-feedback" role="status">
+            {{ feedback }}
+          </p>
+        }
+      </div>
     }
 
     <!-- B-135 (D93/F56): the CALIBRATE MODE surface — the stage-top band
@@ -439,12 +462,15 @@
 
     <!-- B-D2 (R29, PROPOSAL-D §2.1): the STATUS STRIP — the canvas-bottom
          one-line band at shell widths (the template gate is shellWide, so
-         the sub-shell DOM is byte-for-byte unchanged; the empty line stands
-         ready for D-5's refusal/pending words). The selection chip lives
-         here at >=1024 (dual-homed with the header copy above — the markup
-         contract is verbatim: same testids, same class, same dismiss path;
-         one instance per regime). A status line, not a control surface:
-         pointer-events none on the strip, auto on the chip (real chrome). -->
+         the sub-shell DOM is byte-for-byte unchanged; the empty line stood
+         ready for D-5's refusal/pending words — they render here now). The
+         selection chip lives here at >=1024 (dual-homed with the header copy
+         above — the markup contract is verbatim: same testids, same class,
+         same dismiss path; one instance per regime). B-D5 (§3.3 + ruling 1):
+         the arc words' >=1024 home — ONE line with a standing feedback over
+         the pending readout (the strip's reserved-line rule). A status line,
+         not a control surface: pointer-events none on the strip, auto on the
+         chip (real chrome). -->
     @if (graph.shellWide()) {
       <div class="tme-status-strip" data-testid="tme-status-strip">
         @if (graph.selection(); as sel) {
@@ -452,6 +478,15 @@
             <span data-testid="tme-selection-label">{{ sel.label }}</span>
             <span class="tme-chip-dismiss" aria-hidden="true">×</span>
           </button>
+        }
+        @if (graph.editorMode() && graph.editorTool() === 'arc' && graph.drawArcFeedback(); as feedback) {
+          <p class="tme-strip-line" data-testid="tme-draw-feedback" role="status">
+            {{ feedback }}
+          </p>
+        } @else if (arcPendingLabel(); as label) {
+          <p class="tme-strip-line" data-testid="tme-arc-pending" role="status">
+            Arc: {{ label }} → tap the other end
+          </p>
         }
       </div>
     }

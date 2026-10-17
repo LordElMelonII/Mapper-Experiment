@@ -1,0 +1,185 @@
+// src/app/viewer/connect-bar.component.scss — PKG B-D5 (R29, PROPOSAL-D §3.2
+// + the store's rulings). Component-scoped chrome only (D7: zero global
+// leakage). The calibrate-band discipline (B-135/D93, ruling 3): the bar is an
+// ABSOLUTE stage overlay that never joins layout flow — the mode's flip can
+// never resize the stage nor move the viewport, so no D81 resize
+// classification applies. The stage-sized host is the node-menu family's
+// INERT passthrough: pointer-events none on the host, auto on the bar alone.
+:host {
+  position: absolute;
+  inset: 0;
+  z-index: 16; // above the sheet stack (15 — the standing band doctrine), below the wide floaters (20)
+  pointer-events: none; // the closed bar never blocks a canvas gesture
+}
+
+// The bar: pinned at the stage's bottom inside, regime-aware lift through ONE
+// custom property (the offsets are the SCSS band constants, measured live and
+// cited — see the media blocks below). The BASE row is the 44px line; the
+// feedback/refusal lines ATTACH under it (the bar's base line stays 44px).
+.tme-connect-bar {
+  --tme-connect-lift: 0px; // 700–1023: flush — the wide world's stage bottom has no band
+  position: absolute;
+  left: 0.5rem;
+  right: 0.5rem;
+  bottom: var(--tme-connect-lift);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  pointer-events: auto; // the bar is real chrome (the host passthrough ends here)
+}
+
+// The base row — ONE 44px line (the packet's collapsed banner): the from-line
+// (flex-shrinking with ellipsis — a long label never pushes the controls off
+// the bar), the pick count, Done/Cancel as full-height >= 44px targets (F52;
+// the row's 44px rhythm IS the floor, D53 — touch-alone, no hover).
+.tme-connect-row {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 44px; // the bar IS 44px (F52/D53)
+  padding: 0 0.375rem;
+  border: 1px solid rgba(174, 189, 211, 0.4);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.95);
+}
+
+// The from-line — the mode in words (C23: the source's live label, never an
+// id). Truncates with ellipsis on the narrow stage rather than wrapping the
+// bar past one line (the 44px base-line contract).
+.tme-connect-from {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--tme-text);
+  font:
+    600 0.8125rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+}
+
+// The pick count — the panel's pickLine words verbatim, the row's compact
+// secondary voice.
+.tme-connect-count {
+  flex: 0 0 auto;
+  margin: 0;
+  white-space: nowrap;
+  color: var(--tme-text-secondary);
+  font:
+    600 0.75rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+}
+
+// B-118: the bar's Done (gold primary — the commit) and Cancel (neutral — the
+// discard), both full-height >= 44px targets (F52), touch-alone (D53).
+.tme-connect-done {
+  flex: 0 0 auto;
+  min-width: 44px; // F52
+  min-height: 44px;
+  padding: 0 1rem;
+  border: 1px solid var(--tme-accent-gold);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: var(--tme-accent-gold);
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+}
+
+.tme-connect-cancel {
+  flex: 0 0 auto;
+  min-width: 44px; // F52
+  min-height: 44px;
+  padding: 0 1rem;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 23, 28, 0.85);
+  color: var(--tme-text-secondary);
+  font:
+    600 0.875rem/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2
+}
+
+// B-118: why the last tap picked nothing — one muted amber ATTACHED line
+// under the base row (feedback, not an error: nothing failed, the pick simply
+// was not legal). A STATUS message, not a control (the draw-feedback band's
+// own discipline): pointer-events none so a pick tap aimed under it still
+// reaches the canvas — only the base row (Done/Cancel) takes input.
+.tme-connect-feedback {
+  margin: 0;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid rgba(176, 129, 63, 0.6);
+  border-radius: 8px;
+  background: rgba(176, 129, 63, 0.12);
+  color: var(--tme-node-hub-light);
+  pointer-events: none; // a message, not a hit target
+}
+
+// C30 field-precise refusals of the Done loop — the red family attached under
+// the bar (the panel's .tme-errors mirror): the field path (small, muted)
+// then the core's message verbatim. Same tap-transparency as the feedback
+// line above.
+.tme-errors {
+  margin: 0;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid rgba(201, 86, 78, 0.5);
+  border-radius: 8px;
+  background: rgba(201, 86, 78, 0.12);
+  pointer-events: none; // a message, not a hit target
+}
+
+.tme-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.375rem;
+  margin: 0;
+  color: var(--tme-accent-warn);
+}
+
+.tme-error-path {
+  color: var(--tme-text-muted);
+  font-size: 0.75rem;
+}
+
+// --- The regime lifts (the packet's ruling 3: stage-bottom-anchored with a
+// regime-aware offset; the constants are the SCSS bands, measured live and
+// cited — never D81 resize inputs, chrome-only like SHELL_WIDE_QUERY) ---------
+
+// PHONE (<700): above the phone's bottom rail band — the sheet stack's
+// STANDING route-rail floor, `--tme-route-floor: 44px` (map-viewer.component
+// .scss `.tme-sheets`, the B-136 floor rule: the route sheet's collapsed
+// 44px rail is the narrow form's always-visible summon; the bar never covers
+// it — its tap must always land, F52).
+@media (max-width: 699.98px) {
+  .tme-connect-bar {
+    --tme-connect-lift: 44px; // the --tme-route-floor band
+  }
+}
+
+// SHELL (>=1024): above the status strip — `.tme-status-strip { min-height:
+// 44px }` (map-viewer.component.scss, the D-2 strip's F52 chip band; the
+// strip renders at shellWide exactly).
+@media (min-width: 1024px) {
+  .tme-connect-bar {
+    --tme-connect-lift: 44px; // the strip's min-height band
+  }
+}
+
+// B-148 pattern: pointer-device brightening on the neutral control — border
+// token only, no layout shift, nothing on touch (D53 parity).
+@media (hover: hover) and (pointer: fine) {
+  .tme-connect-cancel:hover {
+    border-color: var(--tme-hairline);
+    color: var(--tme-text);
+  }
+}

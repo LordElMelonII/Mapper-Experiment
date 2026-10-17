@@ -501,9 +501,11 @@ test.describe('map-driven mode surfaces (PKG B-124)', () => {
 
     // B-133 (D91) review fix: collapse the route sheet before the picks —
     // the VALE_GATE selection gave it content (the auto-expand) and on the
-    // full-width overlay stage it covers the demo's pick targets. The
-    // property panel stays (it is the connect surface); the sheet's own
-    // rail toggle clears the map. Setup, not assertion.
+    // full-width overlay stage it covers the demo's pick targets. B-D5
+    // re-baseline (PROPOSAL-D §3.2 + the store's rulings): the property
+    // panel does NOT stay — NO form is open during connect (the connect BAR
+    // is the mode's surface; the sheet's own rail toggle clears the map).
+    // Setup, not assertion.
     if ((await page.getByTestId('tme-sheet-rail').getAttribute('aria-expanded')) === 'true') {
       await page.getByTestId('tme-sheet-rail').click();
       await expect(page.getByTestId('tme-sheet-rail')).toHaveAttribute('aria-expanded', 'false');
@@ -522,10 +524,12 @@ test.describe('map-driven mode surfaces (PKG B-124)', () => {
     // connect mode (clearing the picks), so the drag carries a vertical
     // component whenever the target sits in the chip's band.
     // B-133 (D91) review fix: the panels are OVERLAYS now — a pick target
-    // under the property sheet (the connect surface itself; it must stay
-    // open) is equally unreachable. Extend the dodge: when the target sits
-    // below a panel's top edge, add a vertical component that drags the
-    // target ABOVE it (drag up = content up; the same drag, not a tap).
+    // under a standing cover is equally unreachable. Extend the dodge: when
+    // the target sits below a cover's top edge, add a vertical component
+    // that drags the target ABOVE it (drag up = content up; the same drag,
+    // not a tap). B-D5 (R29, PROPOSAL-D §3.2): the property sheet no longer
+    // stands during connect (the connect BAR is the mode's surface) — the
+    // bar is the dodge's connect-flow cover below.
     const canvas = await page.getByTestId('tme-canvas').boundingBox();
     if (canvas === null) throw new Error('canvas host not visible');
     const pickTarget = await nodeScreenPoint(page, HIGH_PASTURE_ID);
@@ -559,18 +563,21 @@ test.describe('map-driven mode surfaces (PKG B-124)', () => {
     // the desktop geometry never needed the lift).
     const pickTargets = [OLD_MILL_ID, HIGH_PASTURE_ID];
     if (isPhone()) {
-      const panelTops = await page.evaluate((): { prop: number | null; route: number | null } => {
+      const panelTops = await page.evaluate((): { prop: number | null; route: number | null; bar: number | null } => {
         const topOf = (tid: string): number | null => {
           const el = document.querySelector(`[data-testid="${tid}"]`);
           if (el === null) return null;
           const r = el.getBoundingClientRect();
           return r.width === 0 && r.height === 0 ? null : r.top;
         };
-        return { prop: topOf('tme-property-panel'), route: topOf('tme-route-panel') };
+        return { prop: topOf('tme-property-panel'), route: topOf('tme-route-panel'), bar: topOf('tme-connect-bar') };
       });
-      // Both pick targets must clear the panels — OLD_MILL is picked
+      // Both pick targets must clear the bands — OLD_MILL is picked
       // first, so a dodge computed against high-pasture alone can leave
-      // it covered.
+      // it covered. B-D5 (PROPOSAL-D §3.2 + the store's rulings): the
+      // connect BAR joins the bottom covers (the property sheet it
+      // replaced is absent during connect; the bar rides above the
+      // collapsed route rail on the phone).
       for (const id of pickTargets) {
         const t = await nodeScreenPoint(page, id);
         if (panelTops.prop !== null && t.y > panelTops.prop - 16) {
@@ -578,6 +585,9 @@ test.describe('map-driven mode surfaces (PKG B-124)', () => {
         }
         if (panelTops.route !== null && t.y > panelTops.route - 16) {
           panDy = Math.min(panDy, panelTops.route - 16 - t.y);
+        }
+        if (panelTops.bar !== null && t.y > panelTops.bar - 16) {
+          panDy = Math.min(panDy, panelTops.bar - 16 - t.y);
         }
       }
       // R28 R-9r (the revived-lift chip conflict, probe10 arithmetic): the
@@ -601,14 +611,20 @@ test.describe('map-driven mode surfaces (PKG B-124)', () => {
         }
       }
     } else {
-      const propPanel = await page.getByTestId('tme-property-panel').boundingBox();
+      // B-D5 re-baseline (PROPOSAL-D §3.2 + the store's rulings): the
+      // property panel does NOT stand during connect — its locator would
+      // never resolve (boundingBox waits on a non-existent element: the
+      // 30s-timeout class). The BAR's box stands in (its `.top` read stays
+      // the R-9r dead term recorded above — the desktop geometry never
+      // needed the lift).
+      const connectBar = await page.getByTestId('tme-connect-bar').boundingBox();
       const routeSheet = await page.getByTestId('tme-route-panel').boundingBox();
-      // Both pick targets must clear the panels — OLD_MILL is picked first, so
-      // a dodge computed against high-pasture alone can leave it covered.
+      // Both pick targets must clear the covers — OLD_MILL is picked first,
+      // so a dodge computed against high-pasture alone can leave it covered.
       for (const id of pickTargets) {
         const t = await nodeScreenPoint(page, id);
-        if (propPanel !== null && t.y > propPanel.top - 16) {
-          panDy = Math.min(panDy, propPanel.top - 16 - t.y);
+        if (connectBar !== null && t.y > connectBar.top - 16) {
+          panDy = Math.min(panDy, connectBar.top - 16 - t.y);
         }
         if (routeSheet !== null && t.y > routeSheet.top - 16) {
           panDy = Math.min(panDy, routeSheet.top - 16 - t.y);
@@ -651,6 +667,7 @@ test.describe('map-driven mode surfaces (PKG B-124)', () => {
               boxOf('tme-property-panel'),
               boxOf('tme-route-panel'),
               boxOf('tme-sheet-rail'),
+              boxOf('tme-connect-bar'),
             ].filter((b): b is { top: number; bottom: number } => b !== null);
             const minBand =
               bands.length === 0
