@@ -1076,7 +1076,16 @@ export class PropertyPanelComponent {
       drag,
     );
     drag.last = pos;
-    this.host.nativeElement.style.transform = `translate(${pos.x}px, ${pos.y}px)`;
+    // The owner's R29 review fix (the first-drag vanish): an UNPLACED panel
+    // is still on its default CSS anchor (bottom/right), so writing the
+    // ABSOLUTE translate would offset from that anchor and fling the panel
+    // off-stage until release (when the position commit pins it to the
+    // origin). Translate RELATIVE to the drag's start rect until a
+    // remembered position owns the placement; absolute after.
+    const placed = this.floatTransform() !== null;
+    const dx = placed ? pos.x : pos.x - drag.origX;
+    const dy = placed ? pos.y : pos.y - drag.origY;
+    this.host.nativeElement.style.transform = `translate(${dx}px, ${dy}px)`;
   };
 
   /**

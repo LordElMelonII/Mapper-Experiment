@@ -36,17 +36,31 @@
     <header class="tme-manager-head" (pointerdown)="onDragStart($event)">
       <h2 class="tme-title">Layers</h2>
       <div class="tme-head-actions">
+        <!-- The owner's R29 review: the header's window verbs are ICONS (the
+             D-1 toolbelt glyph family; the word lives in aria-label +
+             title). Maximize ▢ / Restore ⧉; return-to-dock ↘. -->
         <button
           type="button"
           class="tme-regime"
           data-testid="tme-layer-manager-maximize"
           [attr.aria-pressed]="maximized() ? 'true' : 'false'"
+          [attr.aria-label]="maximized() ? 'Restore' : 'Maximize'"
+          [attr.title]="maximized() ? 'Restore' : 'Maximize'"
           (click)="toggleMaximize()"
         >
-          {{ maximized() ? 'Restore' : 'Maximize' }}
+          {{ maximized() ? '⧉' : '▢' }}
         </button>
         @if (graph.shellWide()) {
-          <button type="button" class="tme-regime" data-testid="tme-layers-dock" (click)="dock()">Dock</button>
+          <button
+            type="button"
+            class="tme-regime"
+            data-testid="tme-layers-dock"
+            aria-label="Dock"
+            title="Dock"
+            (click)="dock()"
+          >
+            ↘
+          </button>
         }
         <button
           type="button"

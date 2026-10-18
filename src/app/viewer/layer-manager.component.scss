@@ -1,3 +1,5 @@
+@use './caption-icon' as *;
+
 // PKG B-126 — component-scoped chrome only (D7: zero global leakage). The
 // host was the map viewer's FIFTH flex REGION; B-133 (D91) makes it an
 // OVERLAY — a bottom sheet in the .tme-sheets stack on narrow, a position:
@@ -37,20 +39,8 @@
 // (F52), narrow-invisible (the floater chrome is wide-world; the narrow
 // sheet keeps its rail as the collapse affordance).
 .tme-regime {
-  display: none;
-  min-width: 44px; // F52
-  min-height: 44px;
-  padding: 0 0.625rem;
-  border: 1px solid rgba(230, 235, 242, 0.35);
-  border-radius: 8px;
-  background: rgba(20, 23, 28, 0.85);
-  color: var(--tme-text-secondary);
-  font:
-    600 0.875rem/1.2 system-ui,
-    -apple-system,
-    sans-serif;
-  cursor: pointer;
-  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+  @include caption-icon;
+  display: none; // narrow: no floater, no regime chrome (the >=700 gate reveals it)
 }
 
 .tme-manager-head {
@@ -58,7 +48,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.5rem 0.75rem 0;
+  // The caption-icon band: the 44px buttons ARE the head's height.
+  @include caption-band;
 }
 
 .tme-title {
@@ -69,19 +60,7 @@
 
 // The sheet's X close — one >= 44px tap target (F52), touch-alone (D53).
 .tme-close {
-  min-width: 44px; // F52
-  min-height: 44px;
-  padding: 0 0.75rem;
-  border: 1px solid rgba(230, 235, 242, 0.35);
-  border-radius: 8px;
-  background: rgba(20, 23, 28, 0.85);
-  color: var(--tme-text-secondary);
-  font:
-    600 1rem/1 system-ui,
-    -apple-system,
-    sans-serif;
-  cursor: pointer;
-  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+  @include caption-icon;
 }
 
 // B-114 (ruling 1): the sheet rail — one full-width >= 44px tap target
@@ -500,6 +479,20 @@
 
 .tme-manager {
   pointer-events: auto; // B-133 review (D91) — the visible sheet re-enables
+  // The B-149 shrink-chain fix (REPAIRS §R9 item 4 — route/maps' own
+  // precedent; the owner's R29 review found the manager never got it): the
+  // section IS the host's shrink chain — as a plain block it refused the
+  // squeeze, so the docked host's height: 100% never propagated and the
+  // body's overflow-y: auto never engaged (the rows painted past the dock
+  // column with no scrollbar). Flex column + min-height: 0 lets the squeeze
+  // through — the BODY (flex 0 1 auto, min-height 0, overflow-y auto)
+  // becomes the scroll member (the standing D53/D91 rule) in the dock AND
+  // the float form's max-height squeeze alike.
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
 }
 
 // B-148 (REPAIRS R-8 item 2): pointer-device brightening — border/text
@@ -511,8 +504,6 @@
 // brightens where the wide drag-surface form draws one (the drag cursor
 // is the narrow head's own affordance).
 @media (hover: hover) and (pointer: fine) {
-  .tme-regime:hover,
-  .tme-close:hover,
   .tme-sheet-rail:hover,
   .tme-manager-head:hover,
   .tme-layer-name:hover, // B-D1: the row-name switch joins the pointer brightening family
@@ -586,4 +577,18 @@
   :host(.tme-docked) .tme-manager-head button {
     pointer-events: auto;
   }
+  // The dock header owns the title word (C23) — the occupant's duplicate
+  // title never renders (the owner's R29 review: two stacked headers read
+  // as two surfaces). The actions row stands alone, right-aligned; the
+  // close X stays reachable (D10: the occupant's own close path).
+  :host-context(.tme-dock) .tme-manager-head .tme-title,
+  :host(.tme-docked) .tme-manager-head .tme-title {
+    display: none;
+  }
+
+  :host-context(.tme-dock) .tme-manager-head,
+  :host(.tme-docked) .tme-manager-head {
+    justify-content: flex-end;
+  }
+
 }

@@ -1,3 +1,5 @@
+@use './caption-icon' as *;
+
 // PKG B-106 — component-scoped chrome only (D7: zero global leakage; the
 // graph's visual language is GRAPH_STYLESHEET data in graph.service.ts). The
 // host element was sized by the map viewer's flex layout; B-133 (D91) makes
@@ -38,20 +40,8 @@
 // B-133: the Maximize/Restore regime button — one >= 44px tap target (F52),
 // narrow-invisible (the floater chrome is wide-world).
 .tme-regime {
-  display: none;
-  min-width: 44px; // F52
-  min-height: 44px;
-  padding: 0 0.625rem;
-  border: 1px solid rgba(230, 235, 242, 0.35);
-  border-radius: 8px;
-  background: rgba(20, 23, 28, 0.85);
-  color: var(--tme-text-secondary);
-  font:
-    600 0.875rem/1.2 system-ui,
-    -apple-system,
-    sans-serif;
-  cursor: pointer;
-  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+  @include caption-icon;
+  display: none; // narrow: no floater, no regime chrome (the >=700 gate reveals it)
 }
 
 @media (min-width: 700px) {
@@ -103,7 +93,8 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
+    // The caption-icon band: the 44px buttons ARE the head's height.
+    @include caption-band;
     border-bottom: 1px solid rgba(174, 189, 211, 0.25);
     touch-action: none;
     cursor: move;
@@ -520,7 +511,6 @@
 // bottom hairline brightens under the pointer (the move cursor is the
 // drag affordance); the curve rows are the neutral chrome.
 @media (hover: hover) and (pointer: fine) {
-  .tme-regime:hover,
   .tme-float-head:hover,
   .tme-curve-add:hover,
   .tme-curve-remove:hover,

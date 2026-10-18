@@ -156,6 +156,15 @@ test.describe('the >=1024px context dock (PKG B-D2, R29 / PROPOSAL-D §2.1)', ()
     await expect(page.getByTestId('tme-maps-panel')).toHaveCount(1);
     await expect(page.getByTestId('tme-route-panel')).toHaveCount(1); // still open — as a floater
 
+    // The owner's R29 review: ONE header. The dock header owns the title
+    // word; the occupant's own duplicate title never renders (its actions —
+    // the close X — stay reachable).
+    await expect(page.getByTestId('tme-dock').locator('.tme-dock-title')).toHaveText('Maps');
+    await expect(
+      page.getByTestId('tme-dock').locator('[data-testid="tme-maps-panel"] .tme-maps-head .tme-title'),
+    ).toBeHidden();
+    await expect(page.getByTestId('tme-dock').getByTestId('tme-maps-panel-close')).toBeVisible();
+
     // Select a node in editor mode: property publishes open and becomes the
     // occupant (the most recent context); Maps is NOT in the dock (its
     // floater stands), and the property form has exactly one home.
@@ -487,5 +496,63 @@ test.describe('the >=1024px context dock (PKG B-D2, R29 / PROPOSAL-D §2.1)', ()
     await expect(page.getByTestId('tme-property-panel')).toHaveCount(0);
 
     expect(bad, 'console clean (housekeeping)').toEqual([]);
+  });
+
+  // The owner's review finding: the docked layer manager's list had NO
+  // scrollbar — the section (.tme-manager) was a plain block, so the host's
+  // height: 100% never propagated and the body's overflow-y: auto never
+  // engaged (the rows painted straight past the dock column). The B-149
+  // shrink-chain fix (route/maps' own precedent): flex column + min-height:
+  // 0 on the section lets the squeeze through — the BODY becomes the scroll
+  // member. STAGING: a short stage (the bug is height-dependent — at the
+  // full 720px the three-layer list simply fits, so nothing would overflow
+  // and the cell would prove nothing). The cell pins: the list overflows the
+  // docked box, the body never paints past the dock column, and the LAST
+  // row scrolls into view.
+  test('the docked layer manager scrolls its own list — the body is the scroll member (the B-149 shrink chain, owner review fix)', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: DESKTOP_VIEWPORT.width, height: 460 });
+    await settle(page);
+    await page.getByTestId('tme-layers-tool').click();
+    await expect(page.getByTestId('tme-dock').getByTestId('tme-layer-manager')).toBeVisible();
+    await settle(page);
+
+    const measured = await page.evaluate((): { overflow: boolean; bodyInsideDock: boolean; scrollTop: number } => {
+      const dock = document.querySelector('.tme-dock');
+      const body = document.querySelector('[data-testid="tme-layer-manager-body"]');
+      if (dock === null || body === null) throw new Error('dock or layer-manager body missing');
+      const dockRect = dock.getBoundingClientRect();
+      const bodyRect = body.getBoundingClientRect();
+      return {
+        overflow: body.scrollHeight > body.clientHeight,
+        bodyInsideDock: bodyRect.bottom <= dockRect.bottom + 0.5,
+        scrollTop: body.scrollTop,
+      };
+    });
+    expect(measured.overflow, 'the FX1 layer list overflows the short docked body (scrollHeight > clientHeight)').toBe(
+      true,
+    );
+    expect(measured.bodyInsideDock, 'the body box never paints past the dock column').toBe(true);
+
+    // The scroll actually moves (the shrink chain made the BODY the scroll
+    // member — not a clipped overflow:hidden box), and reaches the END: the
+    // LAST layer row sits inside the body's box.
+    await page.getByTestId('tme-layer-manager-body').evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+    });
+    const scrolled = await page.evaluate((): { scrollTop: number; lastRowInView: boolean } => {
+      const rows = document.querySelectorAll('[data-testid="tme-layer-row"]');
+      const body = document.querySelector('[data-testid="tme-layer-manager-body"]');
+      if (rows.length === 0 || body === null) return { scrollTop: 0, lastRowInView: false };
+      const row = rows[rows.length - 1].getBoundingClientRect();
+      const box = body.getBoundingClientRect();
+      return {
+        scrollTop: body.scrollTop,
+        lastRowInView: row.bottom <= box.bottom + 1 && row.top >= box.top - 1,
+      };
+    });
+    expect(scrolled.scrollTop, 'the body scrolls (a clipped box keeps scrollTop at 0)').toBeGreaterThan(0);
+    expect(scrolled.lastRowInView, 'the last layer row scrolls into the body (the list is completable)').toBe(true);
   });
 });

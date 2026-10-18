@@ -53,21 +53,35 @@
     <header class="tme-maps-head" data-testid="tme-maps-float-head" (pointerdown)="onDragStart($event)">
       <h2 class="tme-title">Maps</h2>
       <div class="tme-head-actions">
+        <!-- The owner's R29 review: the header's window verbs are ICONS (the
+             D-1 toolbelt glyph family; the word lives in aria-label +
+             title). Maximize ▢ / Restore ⧉; return-to-dock ↘. -->
         <button
           type="button"
           class="tme-regime"
           data-testid="tme-maps-panel-maximize"
           [attr.aria-pressed]="maximized() ? 'true' : 'false'"
+          [attr.aria-label]="maximized() ? 'Restore' : 'Maximize'"
+          [attr.title]="maximized() ? 'Restore' : 'Maximize'"
           (click)="toggleMaximize()"
         >
-          {{ maximized() ? 'Restore' : 'Maximize' }}
+          {{ maximized() ? '⧉' : '▢' }}
         </button>
         <!-- B-D2 (R29, PROPOSAL-D §2.1): the shell-gated Dock affordance —
              the float-side half of the dock↔float handoff. Below 1024 it
              never renders (byte-for-byte); inside the dock the SCSS hides
              it (never a dead control, F07). -->
         @if (graph.shellWide()) {
-          <button type="button" class="tme-regime" data-testid="tme-maps-dock" (click)="dock()">Dock</button>
+          <button
+            type="button"
+            class="tme-regime"
+            data-testid="tme-maps-dock"
+            aria-label="Dock"
+            title="Dock"
+            (click)="dock()"
+          >
+            ↘
+          </button>
         }
         <button
           type="button"

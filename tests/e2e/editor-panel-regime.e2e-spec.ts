@@ -358,12 +358,15 @@ test.describe('property panel regime: floating, remembered, maximized-by-default
     // corner, narrow keeps the in-stack static sheet), Restore offered, the
     // chrome stack it shares the stage with reachable (the maximized cap
     // stops below the chip — the B-133c arithmetic).
+    // Owner R29 review re-baseline: the regime verbs are ICON buttons now
+    // (the D-1 toolbelt glyph family — Maximize ▢ / Restore ⧉); the word
+    // lives in aria-label + title, so the state asserts read the attribute.
     let state = await readPanelState(page);
     expect(state?.floating, 'maximized default: the anchored overlay, not floating').toBe(false);
     expect(state?.position, 'maximized form (wide fixed overlay / narrow in-stack sheet)').toBe(
       maximizedPosition(),
     );
-    await expect(regime).toHaveText('Restore');
+    await expect(regime).toHaveAttribute('aria-label', 'Restore');
     expect(await chromeReachable(page), 'chrome reachable while maximized').toBe(true);
 
     // Make the save dock part of the stack: a committed edit lights it
@@ -380,7 +383,7 @@ test.describe('property panel regime: floating, remembered, maximized-by-default
     // the old freed-dock-region asserts died with the dock).
     const stageMaximized = await readStageBox(page);
     await activate(regime);
-    await expect(regime).toHaveText('Maximize');
+    await expect(regime).toHaveAttribute('aria-label', 'Maximize'); // the icon re-baseline (owner R29 review)
     await settle(page);
     state = await readPanelState(page);
     const stageFloating = await readStageBox(page);
@@ -411,7 +414,7 @@ test.describe('property panel regime: floating, remembered, maximized-by-default
     // never the stage; anchored/maximized, the header is plain chrome again.
     expect(await headerTouchAction(page), 'floating header is the drag surface').toBe('none');
     await activate(regime);
-    await expect(regime).toHaveText('Restore');
+    await expect(regime).toHaveAttribute('aria-label', 'Restore'); // the icon re-baseline (owner R29 review)
     state = await readPanelState(page);
     expect(state?.floating, 'Maximize leaves the floating regime').toBe(false);
     expect(state?.position, 'maximized form again (wide fixed / narrow static)').toBe(
@@ -491,7 +494,7 @@ test.describe('property panel regime: floating, remembered, maximized-by-default
       expect(reopened.position, 'reopens floating (the regime is remembered)').toBe('fixed');
       expect(Math.abs(reopened.x - dragged.x), 'remembered x survives close/reopen').toBeLessThanOrEqual(2);
       expect(Math.abs(reopened.y - dragged.y), 'remembered y survives close/reopen').toBeLessThanOrEqual(2);
-      await expect(regimeButton(p)).toHaveText('Maximize');
+      await expect(regimeButton(p)).toHaveAttribute('aria-label', 'Maximize'); // the icon re-baseline (owner R29 review)
       expect(await chromeReachable(p), 'chrome reachable after reopen').toBe(true);
 
       // Maximize → the anchored overlay returns (D91: the maximized form is
@@ -597,7 +600,7 @@ test.describe('property panel regime: floating, remembered, maximized-by-default
       expect(reentered?.position, 'maximized form (wide fixed overlay / narrow in-stack sheet)').toBe(
         maximizedPosition(),
       );
-      await expect(regimeButton(p)).toHaveText('Restore');
+      await expect(regimeButton(p)).toHaveAttribute('aria-label', 'Restore'); // the icon re-baseline (owner R29 review)
 
       // Restore floats it back to the remembered spot (±2px), even though a
       // dock/maximize cycle happened in between.
@@ -615,4 +618,5 @@ test.describe('property panel regime: floating, remembered, maximized-by-default
     if (isPhone()) await withPhoneChromiumPage(editorEntryMaximizes);
     else await editorEntryMaximizes(page);
   });
+
 });

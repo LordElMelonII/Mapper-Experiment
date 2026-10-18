@@ -1,0 +1,46 @@
+// src/app/viewer/_caption-icon.scss — the shared float/dock head chrome.
+// The owner's R29 review: WINDOWS-STYLE CAPTION ICONS (borderless 44px
+// squares, glyph centered, pointer-fine background wash) and the band they
+// sit in. Extracted here ONCE — every panel's regime/close/dock button and
+// the dock's Float used to carry their own byte-identical copy (D7 keeps the
+// rules component-scoped: each component @use's this partial, so the emitted
+// CSS stays inside its own encapsulation).
+//
+// F52 guards the floor: the square is 44x44, never smaller. The word lives
+// in the template's aria-label + title (C23 in the accessible name, never a
+// glyph-only dead end).
+
+@mixin caption-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 44px; // F52 — the caption-icon square
+  block-size: 44px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--tme-text-secondary);
+  font:
+    600 1.125rem/1 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+
+  // B-148's no-layout-shift law still holds: a borderless square brightens
+  // by BACKGROUND wash, never by border.
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      background: rgba(174, 189, 211, 0.15);
+      color: var(--tme-text);
+    }
+  }
+}
+
+// The caption band: the 44px squares ARE the head's height (no block
+// padding), so every float/dock header is exactly the F52 floor tall.
+@mixin caption-band {
+  min-height: 44px; // F52
+  padding: 0 0.25rem 0 0.75rem;
+}

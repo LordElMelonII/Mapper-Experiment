@@ -13,13 +13,18 @@
   <aside class="tme-dock" data-testid="tme-dock" aria-label="Context panel">
     <header class="tme-dock-head">
       <h2 class="tme-dock-title">{{ titleWord() }}</h2>
+      <!-- The owner's R29 review: the header's window verbs are ICONS (the
+           D-1 toolbelt precedent — the geometric-unicode glyph family; the
+           word lives in aria-label + title, never lost). Tear-off ↗. -->
       <button
         type="button"
         class="tme-dock-float"
         data-testid="tme-dock-float"
+        aria-label="Float"
+        title="Float"
         (click)="float(context)"
       >
-        Float
+        ↗
       </button>
     </header>
     <div class="tme-dock-fill">

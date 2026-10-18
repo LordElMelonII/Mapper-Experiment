@@ -1,3 +1,5 @@
+@use './caption-icon' as *;
+
 // PKG B-105 — component-scoped chrome only (D7: zero global leakage; graph
 // visual language stays GRAPH_STYLESHEET data in graph.service.ts).
 // B-114 (§5 M4 responsive panels, D53/F52): below the 700px breakpoint the
@@ -163,7 +165,8 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
+    // The caption-icon band: the 44px buttons ARE the head's height.
+    @include caption-band;
     border-bottom: 1px solid rgba(174, 189, 211, 0.25);
     touch-action: none;
     cursor: move;
@@ -185,20 +188,8 @@
 // touch-alone (D53), neutral chrome (panel management, not a route action:
 // gold stays the commit's color, red the destructive one).
 .tme-regime {
-  display: none; // narrow: no floater, no regime chrome
-  min-width: 44px; // F52
-  min-height: 44px;
-  padding: 0 0.625rem;
-  border: 1px solid rgba(230, 235, 242, 0.35);
-  border-radius: 8px;
-  background: rgba(20, 23, 28, 0.85);
-  color: var(--tme-text-secondary);
-  font:
-    600 0.875rem/1.2 system-ui,
-    -apple-system,
-    sans-serif;
-  cursor: pointer;
-  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+  @include caption-icon;
+  display: none; // narrow: no floater, no regime chrome (the >=700 gate reveals it)
 }
 
 @media (min-width: 700px) {
@@ -461,7 +452,6 @@
 // bottom hairline brightens under the pointer (the move cursor is the
 // drag affordance).
 @media (hover: hover) and (pointer: fine) {
-  .tme-regime:hover,
   .tme-sheet-rail:hover,
   .tme-float-head:hover,
   .tme-button:hover:not(.tme-remove-button):not(:disabled),

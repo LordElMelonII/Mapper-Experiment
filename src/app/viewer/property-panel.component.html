@@ -34,16 +34,36 @@
         <button type="button" class="tme-done" data-testid="tme-node-done" (click)="done()">Done</button>
         <!-- B-119 (Q29/§8 item 3): the panel regime toggle — Restore floats
              the panel at its remembered (stage-clamped) position; Maximize
-             returns to this docked form (the editor's default). >= 44px (F52). -->
-        <button type="button" class="tme-regime" data-testid="tme-panel-maximize" (click)="toggleFloat()">
-          {{ floating() ? 'Maximize' : 'Restore' }}
+             returns to this docked form (the editor's default). >= 44px (F52).
+             The owner's R29 review: the window verbs are ICONS (the D-1
+             toolbelt glyph family; the word lives in aria-label + title).
+             Maximize ▢ / Restore ⧉. -->
+        <button
+          type="button"
+          class="tme-regime"
+          data-testid="tme-panel-maximize"
+          [attr.aria-label]="floating() ? 'Maximize' : 'Restore'"
+          [attr.title]="floating() ? 'Maximize' : 'Restore'"
+          (click)="toggleFloat()"
+        >
+          {{ floating() ? '▢' : '⧉' }}
         </button>
         <!-- B-D2 (R29, PROPOSAL-D §2.1): the shell-gated Dock affordance —
              the float-side half of the dock↔float handoff (both wide forms
              are float forms vs the dock). Below 1024 it never renders
-             (byte-for-byte); inside the dock the SCSS hides it (F07). -->
+             (byte-for-byte); inside the dock the SCSS hides it (F07).
+             Return-to-dock ↘ (the icon set's word in aria-label + title). -->
         @if (graph.shellWide()) {
-          <button type="button" class="tme-regime" data-testid="tme-property-dock" (click)="dock()">Dock</button>
+          <button
+            type="button"
+            class="tme-regime"
+            data-testid="tme-property-dock"
+            aria-label="Dock"
+            title="Dock"
+            (click)="dock()"
+          >
+            ↘
+          </button>
         }
       </div>
     </header>

@@ -1,3 +1,5 @@
+@use './caption-icon' as *;
+
 // PKG B-117 — component-scoped chrome only (D7: zero global leakage). The
 // host was the map viewer's fourth flex REGION; B-133 (D91) makes it an
 // OVERLAY on both layouts — a bottom sheet in the .tme-sheets stack on
@@ -361,19 +363,7 @@
 // touch-alone (D53), neutral chrome (panel management, not a draft action:
 // gold stays the commit's color, red the destructive one).
 .tme-regime {
-  min-width: 44px; // F52
-  min-height: 44px;
-  padding: 0 0.625rem;
-  border: 1px solid rgba(230, 235, 242, 0.35);
-  border-radius: 8px;
-  background: rgba(20, 23, 28, 0.85);
-  color: var(--tme-text-secondary);
-  font:
-    600 0.875rem/1.2 system-ui,
-    -apple-system,
-    sans-serif;
-  cursor: pointer;
-  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+  @include caption-icon;
 }
 
 // B-133 (D91): the WIDE maximized form — the editor's default overlay (the
@@ -519,7 +509,6 @@
 // and stay hover-static; the Connect door keeps its teal pick accent. The
 // section toggles and the alias rows are the neutral chrome.
 @media (hover: hover) and (pointer: fine) {
-  .tme-regime:hover,
   .tme-node-block-lift:hover,
   .tme-alias-remove:hover,
   .tme-alias-add:hover,
@@ -591,4 +580,18 @@
   :host(.tme-docked) .tme-prop-head button {
     pointer-events: auto;
   }
+  // The dock header owns the title word (C23) — the occupant's duplicate
+  // title never renders (the owner's R29 review: two stacked headers read
+  // as two surfaces). The actions row stands alone, right-aligned; the
+  // close X stays reachable (D10: the occupant's own close path).
+  :host-context(.tme-dock) .tme-prop-head .tme-title,
+  :host(.tme-docked) .tme-prop-head .tme-title {
+    display: none;
+  }
+
+  :host-context(.tme-dock) .tme-prop-head,
+  :host(.tme-docked) .tme-prop-head {
+    justify-content: flex-end;
+  }
+
 }

@@ -1,3 +1,5 @@
+@use './caption-icon' as *;
+
 // PKG B-137 — component-scoped chrome only (D7: zero global leakage). The
 // layer-manager's D91 surface form: a bottom sheet in the .tme-sheets stack
 // on narrow, a position:fixed FLOATER over the full-width stage on wide
@@ -31,7 +33,8 @@
   justify-content: space-between;
   gap: 0.5rem;
   flex: 0 0 auto; // B-149 (item 4, the section chain): the head is never the shrinking member
-  padding: 0.5rem 0.75rem 0;
+  // The caption-icon band: the 44px buttons ARE the head's height.
+  @include caption-band;
 }
 
 // B-149 (REPAIRS §R9 item 1): the head-actions row — the regime toggle rides
@@ -47,20 +50,8 @@
 // (F52), neutral chrome (panel management, not a map action); narrow keeps
 // it display:none (the sheet rail is the narrow world's affordance).
 .tme-regime {
-  display: none;
-  min-width: 44px; // F52
-  min-height: 44px;
-  padding: 0 0.625rem;
-  border: 1px solid rgba(230, 235, 242, 0.35);
-  border-radius: 8px;
-  background: rgba(20, 23, 28, 0.85);
-  color: var(--tme-text-secondary);
-  font:
-    600 0.875rem/1.2 system-ui,
-    -apple-system,
-    sans-serif;
-  cursor: pointer;
-  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+  @include caption-icon;
+  display: none; // narrow: no floater, no regime chrome (the >=700 gate reveals it)
 }
 
 .tme-title {
@@ -71,19 +62,7 @@
 
 // The panel's X close — one >= 44px tap target (F52), touch-alone (D53).
 .tme-close {
-  min-width: 44px; // F52
-  min-height: 44px;
-  padding: 0 0.75rem;
-  border: 1px solid rgba(230, 235, 242, 0.35);
-  border-radius: 8px;
-  background: rgba(20, 23, 28, 0.85);
-  color: var(--tme-text-secondary);
-  font:
-    600 1rem/1 system-ui,
-    -apple-system,
-    sans-serif;
-  cursor: pointer;
-  touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+  @include caption-icon;
 }
 
 // B-114 (ruling 1): the sheet rail — one full-width >= 44px tap target
@@ -485,8 +464,6 @@
 // a disabled control never brightens. (The B-143-era node menu carries its
 // own pre-existing hover tint and is not this packet's file.)
 @media (hover: hover) and (pointer: fine) {
-  .tme-close:hover,
-  .tme-regime:hover,
   .tme-maps-head:hover,
   .tme-sheet-rail:hover,
   .tme-button:hover:not(.tme-create):not(.tme-open-button):not(.tme-fork):not(.tme-delete):not(:disabled) {
@@ -558,4 +535,18 @@
   :host(.tme-docked) .tme-maps-head button {
     pointer-events: auto;
   }
+  // The dock header owns the title word (C23) — the occupant's duplicate
+  // title never renders (the owner's R29 review: two stacked headers read
+  // as two surfaces). The actions row stands alone, right-aligned; the
+  // close X stays reachable (D10: the occupant's own close path).
+  :host-context(.tme-dock) .tme-maps-head .tme-title,
+  :host(.tme-docked) .tme-maps-head .tme-title {
+    display: none;
+  }
+
+  :host-context(.tme-dock) .tme-maps-head,
+  :host(.tme-docked) .tme-maps-head {
+    justify-content: flex-end;
+  }
+
 }

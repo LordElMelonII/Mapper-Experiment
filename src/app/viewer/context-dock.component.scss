@@ -1,3 +1,5 @@
+@use './caption-icon' as *;
+
 // PKG B-D2 — component-scoped chrome only (D7: zero global leakage). The
 // dock column: 280px, the viewer's last flex child (in-flow — never
 // position:fixed), border-left hairline. The host is display:contents so the
@@ -20,16 +22,15 @@
     background: var(--tme-ground);
   }
 
-  // The dock header: title word + Float (the handoff's dock side). One >= 44px
-  // control row (F52); tokens only, the flat band-pill chrome of the shell.
+  // The dock header: title word + Float (the handoff's dock side). The
+  // caption-icon band: the 44px square IS the head's height.
   .tme-dock-head {
     flex: 0 0 auto;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
-    min-height: 44px; // F52
-    padding: 0.25rem 0.5rem 0.25rem 0.75rem;
+    @include caption-band;
     border-bottom: 1px solid rgba(174, 189, 211, 0.25);
   }
 
@@ -42,20 +43,11 @@
       sans-serif;
   }
 
+  // The Float tear-off (the owner's R29 review): the WINDOWS-STYLE caption
+  // icon — a borderless 44px square, glyph centered, pointer-fine wash
+  // below; the word lives in aria-label + title (the template).
   .tme-dock-float {
-    min-width: 44px; // F52
-    min-height: 44px;
-    padding: 0 0.625rem;
-    border: 1px solid rgba(230, 235, 242, 0.35);
-    border-radius: 8px;
-    background: rgba(20, 23, 28, 0.85);
-    color: var(--tme-text-secondary);
-    font:
-      600 0.875rem/1.2 system-ui,
-      -apple-system,
-      sans-serif;
-    cursor: pointer;
-    touch-action: manipulation; // §6.2: no double-tap zoom on the chrome
+    @include caption-icon;
   }
 
   // The occupant's fill area — one grid cell; the panel host stretches to it
@@ -69,11 +61,4 @@
   }
 }
 
-// B-148 pattern (B-D2): the Float control brightens on pointer-fine hover —
-// border/text tokens only, no layout shift, nothing on touch.
-@media (hover: hover) and (pointer: fine) {
-  .tme-dock-float:hover {
-    border-color: var(--tme-hairline);
-    color: var(--tme-text);
-  }
-}
+// The Float hover wash lives in the caption-icon mixin (one definition).

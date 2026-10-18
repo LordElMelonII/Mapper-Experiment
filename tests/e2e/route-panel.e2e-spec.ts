@@ -549,4 +549,42 @@ test.describe('route sidebar (PKG B-105)', () => {
       );
     }
   });
+  // The owner's R29 review finding: the FIRST drag of the route floater — the
+  // one wide form that floats UNPLACED by default (no remembered position) —
+  // made it VANISH until release. Root cause: the drag wrote an ABSOLUTE
+  // translate while the element was still anchored bottom/right, so the
+  // offset added the anchor's own coordinates. The fix translates RELATIVE
+  // until a remembered position owns the placement; this cell reads the box
+  // MID-DRAG, the only moment the defect is observable.
+  test('the FIRST drag of the unplaced route floater keeps it on screen mid-drag (owner R29 review fix)', async ({
+    page,
+  }) => {
+    test.skip(isPhone(), 'the floater drag is the wide (>=700px) world; phone sheets never drag');
+
+    await page.setViewportSize({ width: 900, height: 720 });
+    await settle(page);
+    const panel = page.getByTestId('tme-route-panel');
+    await expect(panel).toBeVisible();
+
+    const box = await panel.boundingBox();
+    if (box === null) throw new Error('route panel not visible');
+    const from = { x: box.x + 40, y: box.y + 20 }; // the head's title end (buttons keep their taps)
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x - 120, from.y - 60, { steps: 6 });
+
+    const mid = await panel.boundingBox();
+    if (mid === null) throw new Error('route panel vanished MID-DRAG (the reported defect)');
+    expect(mid.x, 'mid-drag left on screen').toBeGreaterThanOrEqual(-1);
+    expect(mid.y, 'mid-drag top on screen').toBeGreaterThanOrEqual(-1);
+    expect(mid.x + mid.width, 'mid-drag right on screen').toBeLessThanOrEqual(901);
+    expect(mid.y + mid.height, 'mid-drag bottom on screen').toBeLessThanOrEqual(721);
+
+    await page.mouse.up();
+    await settle(page);
+    const end = await panel.boundingBox();
+    if (end === null) throw new Error('route panel vanished on release');
+    expect(end.x, 'released left on screen').toBeGreaterThanOrEqual(-1);
+    expect(end.x + end.width, 'released right on screen').toBeLessThanOrEqual(901);
+  });
 });
