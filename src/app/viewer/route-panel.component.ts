@@ -236,7 +236,7 @@ export class RoutePanelComponent {
    * 1024 the button never renders).
    */
   protected dock(): void {
-    this.graph.setPanelDocked('route', true);
+    this.graph.dockPanel('route');
   }
 
   /**

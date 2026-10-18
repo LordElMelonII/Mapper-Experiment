@@ -14,6 +14,13 @@
 @media (min-width: 1024px) {
   .tme-dock {
     flex: 0 0 280px; // the shell's fixed 280px context column
+    // D102/D10 (the owner's review fix #2): the ABSOLUTE CONTAINING BLOCK for
+    // the relocated occupant close. The occupant's own close button (its
+    // data-testid is load-bearing for the e2e corpus) is lifted visually into
+    // THIS header band by the panels' in-dock SCSS — it must resolve its
+    // top/right against the dock, not its own panel. In-flow flex child:
+    // relative changes no layout.
+    position: relative;
     display: flex;
     flex-direction: column;
     min-width: 0;
@@ -32,6 +39,18 @@
     gap: 0.5rem;
     @include caption-band;
     border-bottom: 1px solid rgba(174, 189, 211, 0.25);
+  }
+
+  // D102 (Windows caption order [Float ↗][Close ×], Close rightmost): for the
+  // TWO occupants that ship a close X (Layers/Maps — the template's closable
+  // class), the occupant's close is relocated into the far-right 44px square
+  // of this band (the panels' in-dock `.tme-close` rule). Reserve that square
+  // so Float shifts LEFT by exactly one cell — 0.25rem is the band's own
+  // right padding (the caption-band mixin), + 44px is the close's cell.
+  // Route/Arc/Property have no close verb and match nothing here: their
+  // Float stays at the band's own right edge (no empty square).
+  .tme-dock-closable .tme-dock-head {
+    padding-right: calc(0.25rem + 44px);
   }
 
   .tme-dock-title {

@@ -237,7 +237,7 @@ export class ArcPanelComponent {
    * the other). One service write (R3); shell-gated in the template.
    */
   protected dock(): void {
-    this.graph.setPanelDocked('arc', true);
+    this.graph.dockPanel('arc');
   }
 
   /**

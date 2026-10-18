@@ -173,7 +173,7 @@ export class MapsPanelComponent {
    * the other). One service write (R3); shell-gated in the template.
    */
   protected dock(): void {
-    this.graph.setPanelDocked('maps', true);
+    this.graph.dockPanel('maps');
   }
 
   /**

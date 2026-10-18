@@ -10,7 +10,16 @@
      no machine-closed states). data-testid="tme-dock" joins the
      INTERACTIVE_CHROME set and its e2e mirrors. -->
 @if (graph.shellWide() && graph.dockContext(); as context) {
-  <aside class="tme-dock" data-testid="tme-dock" aria-label="Context panel">
+  <!-- D102 (owner review fix #2): only the occupants that ship a close X
+       (Layers/Maps) relocate it into this band — the class reserves the
+       far-right 44px square for it. Route/Arc/Property reserve nothing, so
+       their Float stays at the band's own right edge. -->
+  <aside
+    class="tme-dock"
+    [class.tme-dock-closable]="context === 'layers' || context === 'maps'"
+    data-testid="tme-dock"
+    aria-label="Context panel"
+  >
     <header class="tme-dock-head">
       <h2 class="tme-dock-title">{{ titleWord() }}</h2>
       <!-- The owner's R29 review: the header's window verbs are ICONS (the

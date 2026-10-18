@@ -172,7 +172,7 @@ export class LayerManagerComponent {
    * the other). One service write (R3); shell-gated in the template.
    */
   protected dock(): void {
-    this.graph.setPanelDocked('layers', true);
+    this.graph.dockPanel('layers');
   }
 
   /**

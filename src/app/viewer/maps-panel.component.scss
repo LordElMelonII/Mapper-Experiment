@@ -510,6 +510,12 @@
     z-index: auto;
     border: none;
     border-radius: 0;
+    // D102 (owner review fix #2): the occupant's close is RELOCATED into the
+    // dock header, i.e. it paints 44px ABOVE this host's own top edge. The
+    // 700px `:host(.tme-open)` rule sets overflow: hidden — that would clip
+    // the button away. The body keeps its own overflow-y: auto, so the host
+    // needs no clip in-dock.
+    overflow: visible;
   }
 
   // The float-form regime controls hide inside the dock — the dock header
@@ -529,11 +535,36 @@
     cursor: default;
     touch-action: auto;
     border-bottom: none; // the dock header's hairline is the separation here
+    // D102 (owner review fix #2): the second header row must NOT exist in the
+    // dock. Every in-flow child (title/regime/dock) is display:none here and
+    // the close is absolutely positioned below, so the row collapses to zero
+    // height and reserves no band. overflow: visible lets the relocated close
+    // paint out of the now-zero-height row.
+    height: 0;
+    min-height: 0;
+    padding: 0;
+    overflow: visible;
   }
 
   :host-context(.tme-dock) .tme-maps-head button,
   :host(.tme-docked) .tme-maps-head button {
     pointer-events: auto;
+  }
+
+  // D102/D10 (owner review fix #2): the occupant's OWN close keeps its
+  // handler, aria-label and data-testid (byte-identical DOM — the e2e corpus
+  // taps tme-maps-panel-close); only its VISUAL home moves. Absolute against
+  // `.tme-dock` (position: relative in context-dock.component.scss): top 0 is
+  // the dock header band, right 0.25rem is the far-right 44px square,
+  // immediately right of Float (whose right edge the dock head's
+  // padding-right reserves). The 44x44 caption-icon geometry is untouched
+  // (F52); the host's overflow: visible above keeps it unclipped.
+  :host-context(.tme-dock) .tme-close,
+  :host(.tme-docked) .tme-close {
+    position: absolute;
+    top: 0;
+    right: 0.25rem;
+    z-index: 1;
   }
   // The dock header owns the title word (C23) — the occupant's duplicate
   // title never renders (the owner's R29 review: two stacked headers read

@@ -1396,6 +1396,32 @@ export class GraphService implements OnDestroy {
   }
 
   /**
+   * D102/D10 (the owner's review fix #1): an EXPLICIT Dock tap — the one the
+   * floater's Dock affordance makes — is user intent to make THIS kind the
+   * dock's occupant NOW. Dock = explicit intent outranks recency, so the
+   * write is the pure flag setter (true branch) PLUS a front-promotion of the
+   * open history; `dockContext`'s first matching entry then returns this kind
+   * instead of the previous occupant. Nothing is closed (D10): the previous
+   * occupant stays open and keeps its own dock flag true — it simply loses
+   * occupancy and renders in its floater form. The property STICKY FORM
+   * (dockContext's first term) still outranks the promotion while a draft
+   * stands; the promoted kind takes the dock the moment the draft resolves.
+   *
+   * The constructor's history-maintenance effect cannot undo the promotion:
+   * it keeps the surviving entries in their existing order, so a manually
+   * front-promoted kind stays front (the same-reference guard still fires
+   * when no open state changed). One service write path (R3) — panels never
+   * touch the history themselves.
+   */
+  dockPanel(kind: ContextKind): void {
+    this.setPanelDocked(kind, true);
+    this.dockOpenHistory.update((history) => {
+      if (history[0] === kind) return history; // already front — the guard keeps the write silent (D2)
+      return [kind, ...history.filter((open) => open !== kind)];
+    });
+  }
+
+  /**
    * B-D2: the dock's OPEN HISTORY — most-recently-OPENED first, maintained by
    * the constructor's history effect: a kind is pushed to the front when it
    * transitions closed→open, closed kinds are pruned, the rest keep their

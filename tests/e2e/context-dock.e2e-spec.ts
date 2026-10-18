@@ -125,6 +125,76 @@ const tapNode = async (page: Page, id: string): Promise<void> => {
 const dockedPanelCount = (page: Page): Promise<number> =>
   page.getByTestId('tme-dock').locator(PANEL_SECTION_TESTIDS.map((t) => `[data-testid="${t}"]`).join(', ')).count();
 
+interface DockChromeRect {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+  width: number;
+  height: number;
+}
+
+interface DockChromeGeometry {
+  head: DockChromeRect;
+  float: DockChromeRect;
+  close: DockChromeRect;
+  /** The occupant's OWN head row (the second band the fix collapses). */
+  occupantHeadHeight: number;
+  /** The occupant body's top minus the dock head's bottom (0 when there is no second band). */
+  bodyTopGap: number;
+  /** True when the relocated close is the element hit at its own center (it is not clipped). */
+  hitIsClose: boolean;
+}
+
+/**
+ * D102 (owner review fix #2) — the relocated occupant close's live geometry.
+ * Reads the DOM only (R1: no hardcoded stage constants beyond the F52 44px
+ * square); the panel-specific selectors are the two occupants that ship a
+ * close X in the dock (layers, maps).
+ */
+const measureDockChrome = (page: Page, kind: 'layers' | 'maps'): Promise<DockChromeGeometry> =>
+  page.evaluate((occupant) => {
+    const panelSelector =
+      occupant === 'layers' ? '[data-testid="tme-layer-manager"]' : '[data-testid="tme-maps-panel"]';
+    const headSelector = occupant === 'layers' ? '.tme-manager-head' : '[data-testid="tme-maps-float-head"]';
+    const bodyTestId = occupant === 'layers' ? 'tme-layer-manager-body' : 'tme-maps-body';
+    const closeTestId = occupant === 'layers' ? 'tme-layer-manager-close' : 'tme-maps-panel-close';
+
+    const one = (parent: ParentNode, selector: string): Element => {
+      const el = parent.querySelector(selector);
+      if (el === null) throw new Error(`missing ${selector}`);
+      return el;
+    };
+    const rect = (el: Element) => {
+      const r = el.getBoundingClientRect();
+      return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height };
+    };
+
+    const dock = one(document, '.tme-dock');
+    const head = one(dock, '.tme-dock-head');
+    const float = one(dock, '[data-testid="tme-dock-float"]');
+    const panel = one(dock, panelSelector);
+    const occupantHead = one(panel, headSelector);
+    const close = one(panel, `[data-testid="${closeTestId}"]`);
+    const body = one(document, `[data-testid="${bodyTestId}"]`);
+
+    const headRect = rect(head);
+    const closeRect = rect(close);
+    const hit = document.elementFromPoint(
+      closeRect.left + closeRect.width / 2,
+      closeRect.top + closeRect.height / 2,
+    );
+
+    return {
+      head: headRect,
+      float: rect(float),
+      close: closeRect,
+      occupantHeadHeight: rect(occupantHead).height,
+      bodyTopGap: rect(body).top - headRect.bottom,
+      hitIsClose: hit === close || (hit !== null && close.contains(hit)),
+    };
+  }, kind);
+
 test.describe('the >=1024px context dock (PKG B-D2, R29 / PROPOSAL-D §2.1)', () => {
   test.beforeEach(async ({ page }) => {
     skipOnPhone();
@@ -494,6 +564,162 @@ test.describe('the >=1024px context dock (PKG B-D2, R29 / PROPOSAL-D §2.1)', ()
     await expect(dock.getByTestId('tme-layer-manager')).toBeVisible();
     expect(await dockedPanelCount(page), 'exactly ONE occupant after the draft resolves (layers)').toBe(1);
     await expect(page.getByTestId('tme-property-panel')).toHaveCount(0);
+
+    expect(bad, 'console clean (housekeeping)').toEqual([]);
+  });
+
+  // The owner's review fix #1 (D102/D10): an explicit Dock tap must make THAT
+  // kind the occupant directly — no "float the current occupant first" ritual.
+  // The per-kind dock flags default TRUE, so before the fix a floater's Dock
+  // tapped while another kind held the dock was a no-op. The write path
+  // (GraphService.dockPanel) now promotes the tapped kind to the front of the
+  // open history: Dock = explicit intent outranks recency. Nothing closes
+  // (D10): the previous occupant stays open, as a floater.
+  test('Dock swaps the occupant directly: tapping Maps\' Dock while Layers holds the dock makes Maps the occupant — Layers stays open as a floater (D102/D10, owner review fix #1)', async ({
+    page,
+  }) => {
+    const bad = collectConsole(page);
+    await settle(page);
+
+    // Boot: FX1 auto-opens Route — the occupant.
+    const dock = page.getByTestId('tme-dock');
+    await expect(dock.getByTestId('tme-route-panel')).toBeVisible();
+    expect(await dockedPanelCount(page), 'route is the boot occupant').toBe(1);
+
+    // Open Maps, then Layers: recency makes each the occupant in turn.
+    await page.getByTestId('tme-maps-toggle').click();
+    await expect(dock.getByTestId('tme-maps-panel')).toBeVisible();
+    await page.getByTestId('tme-layers-tool').click();
+    await expect(dock.getByTestId('tme-layer-manager')).toBeVisible();
+    expect(await dockedPanelCount(page), 'layers is the occupant').toBe(1);
+    await expect(page.getByTestId('tme-maps-panel')).toHaveCount(1); // floater — still open
+
+    // The owner's exact sequence: tap the MAPS FLOATER's Dock WITHOUT floating
+    // Layers first. Explicit intent outranks recency (D102).
+    await page.getByTestId('tme-maps-dock').click();
+    await expect(dock.getByTestId('tme-maps-panel')).toBeVisible();
+    expect(await dockedPanelCount(page), 'exactly ONE occupant, and it is Maps').toBe(1);
+    await expect(dock.locator('.tme-dock-title')).toHaveText('Maps');
+
+    // Nothing was closed (D10): Layers is still open in its floater form — one
+    // live home, outside the dock column.
+    await expect(page.getByTestId('tme-layer-manager')).toHaveCount(1);
+    await expect(dock.getByTestId('tme-layer-manager')).toHaveCount(0);
+
+    expect(bad, 'console clean (housekeeping)').toEqual([]);
+  });
+
+  // The owner's review fix #2 (D102/D10): the dock header is ONE Windows-style
+  // caption band — [Float ↗][Close ×], Close rightmost. The close in it is the
+  // OCCUPANT'S OWN button (its handler, aria-label and data-testid are
+  // byte-identical — the corpus taps tme-layer-manager-close /
+  // tme-maps-panel-close); only its visual home moved, by SCSS alone. The
+  // occupant's second header band collapses to zero height, so there is
+  // exactly one header row.
+  test('the occupant close sits IN the dock header beside Float — [Float][Close], one band (D102/D10, owner review fix #2)', async ({
+    page,
+  }) => {
+    const bad = collectConsole(page);
+    await settle(page);
+
+    // Boot: FX1 auto-opens Route as the occupant. Open Layers: it becomes the
+    // occupant (recency), Route stays open underneath (D10 — nothing closed).
+    await page.getByTestId('tme-layers-tool').click();
+    const dock = page.getByTestId('tme-dock');
+    await expect(dock.getByTestId('tme-layer-manager')).toBeVisible();
+    await settle(page);
+
+    // --- Layers: the occupant's own close renders, in the dock header. ---
+    await expect(page.getByTestId('tme-dock-float')).toBeVisible();
+    await expect(page.getByTestId('tme-layer-manager-close')).toBeVisible();
+    const layers = await measureDockChrome(page, 'layers');
+
+    // Windows caption order: [Float ↗][Close ×] — the close's left edge is
+    // the Float's right edge (exactly one 44px cell apart), same band row.
+    expect(
+      Math.abs(layers.close.left - layers.float.right),
+      'close.left = float.right (one 44px cell, ±1)',
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(layers.close.top - layers.float.top),
+      'close and Float share the same band row (±1)',
+    ).toBeLessThanOrEqual(1);
+
+    // Both squares sit INSIDE the dock head band (the F52 44px cell).
+    expect(layers.float.top, 'Float starts inside the head band').toBeGreaterThanOrEqual(layers.head.top - 1);
+    expect(layers.close.top, 'the close starts inside the head band').toBeGreaterThanOrEqual(layers.head.top - 1);
+    expect(
+      layers.close.top + layers.close.height,
+      'the close ends inside the 44px head band',
+    ).toBeLessThanOrEqual(layers.head.top + 44 + 1);
+    expect(layers.close.width, 'the close keeps the F52 44px square').toBeGreaterThanOrEqual(44);
+    expect(layers.close.height, 'the close keeps the F52 44px square').toBeGreaterThanOrEqual(44);
+
+    // It actually PAINTS and is tappable: its center hit-tests to the button
+    // (the docked host's overflow: visible — the relocated button paints above
+    // the host's own box; overflow: hidden would have clipped it).
+    expect(layers.hitIsClose, 'the relocated close is the hit target at its center (unclipped)').toBe(true);
+
+    // The second header band is gone: the occupant's own head has zero height
+    // and its body begins at the dock head's bottom edge.
+    expect(Math.abs(layers.occupantHeadHeight), 'the occupant head reserves no band (±1)').toBeLessThanOrEqual(1);
+    expect(Math.abs(layers.bodyTopGap), "the body starts at the dock head's bottom (±2)").toBeLessThanOrEqual(2);
+
+    // The relocated close is the LIVE close path (D10): the user's tap closes
+    // Layers and the dock hands back to the next open context (Route, opened
+    // at boot) — nothing machine-closed beyond the user's tap.
+    await page.getByTestId('tme-layer-manager-close').click();
+    await expect(page.getByTestId('tme-layer-manager')).toBeHidden();
+    await expect(dock.getByTestId('tme-route-panel')).toBeVisible();
+    expect(await dockedPanelCount(page), 'route returns as the lone occupant').toBe(1);
+
+    // --- Maps: the same relocated chrome for the second close-X occupant. ---
+    await page.getByTestId('tme-maps-toggle').click();
+    await expect(dock.getByTestId('tme-maps-panel')).toBeVisible();
+    await settle(page);
+    await expect(page.getByTestId('tme-dock-float')).toBeVisible();
+    await expect(page.getByTestId('tme-maps-panel-close')).toBeVisible();
+    const maps = await measureDockChrome(page, 'maps');
+
+    expect(
+      Math.abs(maps.close.left - maps.float.right),
+      'maps: close.left = float.right (±1)',
+    ).toBeLessThanOrEqual(1);
+    expect(Math.abs(maps.close.top - maps.float.top), 'maps: close and Float share the band row (±1)').toBeLessThanOrEqual(
+      1,
+    );
+    expect(maps.close.top, 'maps: the close starts inside the head band').toBeGreaterThanOrEqual(maps.head.top - 1);
+    expect(maps.close.top + maps.close.height, 'maps: the close ends inside the 44px head band').toBeLessThanOrEqual(
+      maps.head.top + 44 + 1,
+    );
+    expect(maps.hitIsClose, 'maps: the relocated close is the hit target at its center (unclipped)').toBe(true);
+    expect(Math.abs(maps.occupantHeadHeight), 'maps: the occupant head reserves no band (±1)').toBeLessThanOrEqual(1);
+    expect(Math.abs(maps.bodyTopGap), "maps: the body starts at the dock head's bottom (±2)").toBeLessThanOrEqual(2);
+
+    // Close Maps through its own (relocated) close: Route returns.
+    await page.getByTestId('tme-maps-panel-close').click();
+    await expect(page.getByTestId('tme-maps-panel')).toBeHidden();
+    await expect(dock.getByTestId('tme-route-panel')).toBeVisible();
+    await settle(page);
+
+    // The reservation is CLOSABLE-ONLY (the lead's review fix): Route has no
+    // close X, so it reserves no square — Float sits at the band's own right
+    // edge (the caption-band's 0.25rem padding), with no empty 44px gap.
+    const routeChrome = await page.evaluate((): { closable: boolean; floatRight: number; dockRight: number } => {
+      const dockEl = document.querySelector('.tme-dock');
+      const floatEl = dockEl?.querySelector('[data-testid="tme-dock-float"]');
+      if (dockEl === null || floatEl === undefined || floatEl === null) throw new Error('dock chrome missing');
+      return {
+        closable: dockEl.classList.contains('tme-dock-closable'),
+        floatRight: floatEl.getBoundingClientRect().right,
+        dockRight: dockEl.getBoundingClientRect().right,
+      };
+    });
+    expect(routeChrome.closable, 'Route (no close verb) is not a closable occupant').toBe(false);
+    expect(
+      Math.abs(routeChrome.floatRight - (routeChrome.dockRight - 4)),
+      "a non-closable occupant's Float stays at the band's own right edge",
+    ).toBeLessThanOrEqual(1);
 
     expect(bad, 'console clean (housekeeping)').toEqual([]);
   });
